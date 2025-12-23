@@ -1,0 +1,24 @@
+{
+  "name": "photo-report-generator",
+  "version": "1.0.0",
+  "description": "**現況照片清冊生成工具**",
+  "main": "tailwind.config.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lianghao02/Photo-Report-Generator.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/lianghao02/Photo-Report-Generator/issues"
+  },
+  "homepage": "https://github.com/lianghao02/Photo-Report-Generator#readme",
+  "devDependencies": {
+    "tailwindcss": "^4.1.18"
+  }
+}
