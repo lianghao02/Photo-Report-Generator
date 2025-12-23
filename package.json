@@ -4,6 +4,8 @@
   "description": "**現況照片清冊生成工具**",
   "main": "tailwind.config.js",
   "scripts": {
+    "dev": "tailwindcss -i ./input.css -o ./output.css --watch",
+    "build": "tailwindcss -i ./input.css -o ./output.css --minify",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
