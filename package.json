@@ -19,6 +19,6 @@
   },
   "homepage": "https://github.com/lianghao02/Photo-Report-Generator#readme",
   "devDependencies": {
-    "tailwindcss": "^4.1.18"
+    "tailwindcss": "^3.4.17"
   }
 }
