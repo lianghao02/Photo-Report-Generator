@@ -1,3 +1,19 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  html {
+    -moz-text-size-adjust: 100%;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+  
+  button, 
+  [type='button'], 
+  [type='reset'], 
+  [type='submit'] {
+    -webkit-appearance: button;
+    appearance: button;
+  }
+}
