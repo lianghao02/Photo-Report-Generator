@@ -1,15 +1,23 @@
-# 📷 現場照片清冊自動套印工具 (v1.1)
+# 📷 現場照片清冊自動套印工具 (v1.1.1)
 
-[![Version](https://img.shields.io/badge/version-v1.1-blue.svg)](https://github.com/lianghao02/Photo-Report-Generator)
+[![Version](https://img.shields.io/badge/version-v1.1.1-blue.svg)](https://github.com/lianghao02/Photo-Report-Generator)
 [![VBA](https://img.shields.io/badge/Engine-VBA%20Late%20Binding-green.svg)](https://microsoft.com)
 
 ## 🏆 v1.1 里程碑：Word/Excel 現場照片自動排版套印
 
 ## 📖 重大更新摘要 (Summary)
 
-本版本為警務與現場勘查照片自動化排版工具之穩定發行版本，採用 VBA Late Binding 技術與 Word/Excel 自動化物件溝通。
+本版本提供警務與現場勘查照片的 Word／Excel 自動排版範本，採用 VBA Late Binding 呼叫本機 Office。
 
-傳統勘查員在整理數百張現場照片時，必須手動貼入 Word 並逐一調整圖片尺寸、對齊表格與輸入備註，處理一份報告往往耗費半天以上時間。本工具透過 VBA 腳本可在 **5 秒內** 自動讀取資料夾中所有相片，依標準規格壓縮、對齊並自動填入表格，極致提升公務處理效率。
+使用者可依既有 Word 範本與 Excel 巨集匯入照片、依比例縮放並放入表格。實際速度與相容性取決於照片數量、Office 版本、巨集安全性設定及電腦效能。
+
+## 使用方式與限制
+
+1. 從 `vba_src/` 取得 Excel 巨集檔與對應 Word 範本。
+2. 先備份原始照片與範本，再於受信任的本機環境啟用巨集。
+3. 確認 Word／Excel 輸出內容、照片順序及備註後再定稿。
+
+本工具需要桌面版 Microsoft Office。巨集檔不可在來源不明或未確認內容時直接啟用。
 
 ## ✨ 重點更新特色
 
