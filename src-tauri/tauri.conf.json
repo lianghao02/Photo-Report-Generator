@@ -1,0 +1,37 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "照片清冊產生器",
+  "identifier": "tw.gov.tnpd.photo-report-generator",
+  "version": "1.0.0",
+  "build": {
+    "frontendDist": "../web",
+    "beforeBuildCommand": "powershell -Command \"Copy-Item -Path '../index.html' -Destination '../web/index.html' -Force\""
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "照片清冊產生器",
+        "width": 1280,
+        "height": 900,
+        "minWidth": 900,
+        "minHeight": 600,
+        "resizable": true,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}

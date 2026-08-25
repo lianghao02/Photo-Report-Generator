@@ -1,114 +1,1830 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="mobile-web-app-capable" content="yes">
-    <title>現況照片清冊生成工具</title>
-    <link rel="icon"
-        href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📄</text></svg>">
+    <title>現況照片清冊生成工具 v2.0</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📷</text></svg>">
+
+    <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome 6 CDN -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- docx.js (OpenXML Word Generator) - UMD Build with Multiple CDN Support -->
+    <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
+    <!-- FileSaver.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <!-- SheetJS (xlsx) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- JSZip -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+    <style>
+        :root {
+            --bg: #F3F5F8;
+            --surface: #FFFFFF;
+            --surface-card: rgba(255, 255, 255, 0.95);
+            --border: rgba(107, 139, 176, 0.22);
+            --text: #2B364B;
+            --text-muted: #667080;
+            --accent: #526F94;
+            --accent-hover: #415875;
+            --accent-light: rgba(107, 139, 176, 0.12);
+            --success: #52745F;
+            --warning: #B45309;
+            --danger: #DC2626;
+            --radius-card: 0.85rem;
+            --shadow: 0 4px 20px rgba(160, 175, 195, 0.14);
+            --font: "Microsoft JhengHei", "Segoe UI", system-ui, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: var(--font);
+            min-height: 100vh;
+        }
+
+        .morandi-card {
+            background: var(--surface-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-card);
+            box-shadow: var(--shadow);
+            backdrop-filter: blur(12px);
+        }
+
+        .btn-primary {
+            background-color: var(--accent);
+            color: #FFFFFF;
+            transition: all 0.2s ease;
+        }
+        .btn-primary:hover {
+            background-color: var(--accent-hover);
+            transform: translateY(-1px);
+        }
+
+        .btn-secondary {
+            background-color: var(--accent-light);
+            color: var(--accent);
+            border: 1px solid var(--border);
+            transition: all 0.2s ease;
+        }
+        .btn-secondary:hover {
+            background-color: rgba(107, 139, 176, 0.2);
+            color: var(--accent-hover);
+        }
+
+        .drop-zone {
+            border: 2px dashed var(--border);
+            transition: all 0.25s ease;
+            background: rgba(255, 255, 255, 0.7);
+        }
+        .drop-zone.drag-over {
+            border-color: var(--accent);
+            background-color: rgba(107, 139, 176, 0.08);
+            transform: scale(1.01);
+        }
+
+        .input-field {
+            background: #FFFFFF;
+            border: 1px solid var(--border);
+            color: var(--text);
+            border-radius: 0.5rem;
+            padding: 0.45rem 0.65rem;
+            transition: border-color 0.2s;
+        }
+        .input-field:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 2px rgba(82, 111, 148, 0.2);
+        }
+
+        /* PaperSwitch 風格之卡片拖曳與排序視覺 */
+        .photo-thumb-card {
+            position: relative;
+            transition: transform 0.18s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.18s ease, border-color 0.18s;
+            cursor: grab;
+            user-select: none;
+        }
+        .photo-thumb-card:active {
+            cursor: grabbing;
+        }
+        .photo-thumb-card.selected {
+            border-color: var(--accent) !important;
+            box-shadow: 0 0 0 2px var(--accent), 0 8px 24px rgba(82, 111, 148, 0.25) !important;
+            background-color: #F0F5FA !important;
+        }
+        .photo-thumb-card.active-editing {
+            border-color: #2563EB !important;
+            box-shadow: 0 0 0 2px #2563EB, 0 8px 20px rgba(37, 99, 235, 0.2) !important;
+        }
+        .photo-thumb-card.dragging-stacked {
+            opacity: 0.35 !important;
+            transform: scale(0.96) !important;
+            border: 2px dashed var(--accent) !important;
+        }
+        .photo-thumb-card.drag-lead {
+            opacity: 0.5 !important;
+        }
+
+        /* 拖曳插入指示線 (左右邊界發光藍線) */
+        .photo-thumb-card.drag-target-left::before {
+            content: '';
+            position: absolute;
+            top: -4px;
+            bottom: -4px;
+            left: -6px;
+            width: 5px;
+            background: #3B82F6;
+            border-radius: 9999px;
+            box-shadow: 0 0 10px rgba(59, 130, 246, 0.8);
+            z-index: 40;
+            pointer-events: none;
+            animation: pulse-line 0.8s infinite alternate;
+        }
+        .photo-thumb-card.drag-target-right::after {
+            content: '';
+            position: absolute;
+            top: -4px;
+            bottom: -4px;
+            right: -6px;
+            width: 5px;
+            background: #3B82F6;
+            border-radius: 9999px;
+            box-shadow: 0 0 10px rgba(59, 130, 246, 0.8);
+            z-index: 40;
+            pointer-events: none;
+            animation: pulse-line 0.8s infinite alternate;
+        }
+
+        @keyframes pulse-line {
+            0% { transform: scaleY(0.95); opacity: 0.8; }
+            100% { transform: scaleY(1.05); opacity: 1; }
+        }
+
+        .modal-backdrop {
+            background-color: rgba(43, 54, 75, 0.45);
+            backdrop-filter: blur(4px);
+        }
+
+        /* 自訂細軸滾動條 */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #EDF2F5;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #A0B2C6;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #7B92B2;
+        }
+    </style>
+</head>
+<body class="p-3 md:p-6 flex flex-col items-center">
+
+    <!-- 拖曳中的 Ghost 浮動徽章 (PaperSwitch 風格) -->
+    <div id="dragGhostBadge" style="position: fixed; top: -9999px; left: -9999px; pointer-events: none; background: #FFFFFF; border: 2px solid #526F94; color: #2B364B; padding: 6px 14px; border-radius: 12px; font-weight: 800; font-size: 0.85rem; box-shadow: 0 10px 25px rgba(82, 111, 148, 0.3); display: flex; align-items: center; gap: 8px; z-index: 100000;">
+        <i class="fa-solid fa-layer-group text-[#526F94]"></i>
+        <span id="dragGhostText">移動中...</span>
+    </div>
+
+    <!-- 頂部導覽列 -->
+    <header class="w-full max-w-7xl mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-[#526F94] to-[#7B92B2] flex items-center justify-center text-white text-lg shadow-md">
+                <i class="fa-solid fa-camera-retro"></i>
+            </div>
+            <div>
+                <div class="flex items-center gap-2">
+                    <h1 class="text-xl font-black tracking-tight text-[#2B364B]">現場照片清冊生成工具</h1>
+                    <span class="text-xs font-bold px-2 py-0.5 rounded-full bg-[#526F94]/15 text-[#526F94] border border-[#526F94]/30">v2.0 專業工作台</span>
+                </div>
+                <p class="text-xs text-[#667080]">瀏覽器即開即用．純正標楷體．頁首頁尾．100% 精準對齊公務 Word 範本</p>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+            <a href="https://github.com/lianghao02/Photo-Report-Generator" target="_blank" class="px-3 py-1.5 rounded-lg text-xs font-semibold btn-secondary flex items-center gap-1.5">
+                <i class="fa-brands fa-github"></i> GitHub 專案
+            </a>
+        </div>
+    </header>
+
+    <!-- 主要工作區域 -->
+    <main class="w-full max-w-7xl flex flex-col gap-4">
+
+        <!-- 1. 全域案件表頭資訊 -->
+        <section class="morandi-card p-4 md:p-5">
+            <div class="flex flex-wrap items-center justify-between border-b border-[#6B8BB0]/20 pb-2.5 mb-3 gap-2">
+                <h2 class="text-sm font-bold text-[#2B364B] flex items-center gap-2">
+                    <i class="fa-solid fa-clipboard-list text-[#526F94]"></i> 案件基本資料與版型設定
+                </h2>
+                <div class="flex items-center gap-2">
+                    <span class="text-xs font-semibold text-[#667080]">Word 版型：</span>
+                    <select id="layoutSelect" class="input-field text-xs font-bold text-[#526F94] bg-[#EDF2F5] py-1 px-2.5">
+                        <option value="up_down_2">上下兩張 (A4 直式．預設經典範本)</option>
+                        <option value="left_right_2">左右兩張 (A4 直式雙欄．對照範本)</option>
+                        <option value="landscape_3">橫式三張 (A4 橫式三欄．廣角範本)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                <div>
+                    <label class="block text-xs font-bold text-[#667080] mb-1">案由 / 案件名稱</label>
+                    <input type="text" id="caseTitle" class="input-field w-full text-xs font-semibold" placeholder="例如：詐欺案、現場勘查案" value="詐欺案">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-[#667080] mb-1">採證日期 (民國年)</label>
+                    <div class="flex gap-1">
+                        <input type="text" id="caseDate" class="input-field w-full text-xs" placeholder="例如：115年8月24日">
+                        <button type="button" id="btnTodayDate" title="填入今天民國日期" class="btn-secondary px-2 py-1 rounded text-xs whitespace-nowrap">今日</button>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-[#667080] mb-1">預設採證地點</label>
+                    <input type="text" id="defaultLocation" class="input-field w-full text-xs" placeholder="例如：現場、新化分局" value="現場">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-[#667080] mb-1">製作單位 (頁首抬頭)</label>
+                    <input type="text" id="deptName" class="input-field w-full text-xs font-semibold" placeholder="例如：臺南市政府警察局新化分局" value="臺南市政府警察局新化分局">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-[#667080] mb-1">製作人 (全冊通用)</label>
+                    <input type="text" id="officerName" class="input-field w-full text-xs font-semibold text-[#526F94]" placeholder="例如：巡官梁家豪" value="巡官梁家豪">
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. 照片批次載入與智慧工具列 -->
+        <section class="morandi-card p-4 md:p-5 flex flex-col gap-3">
+
+            <!-- 上傳拖曳區 (緊湊版) -->
+            <div id="dropZone" class="drop-zone rounded-xl p-4 text-center cursor-pointer flex flex-wrap items-center justify-center gap-3">
+                <input type="file" id="fileInput" multiple accept="image/*" class="hidden">
+                <input type="file" id="folderInput" webkitdirectory directory multiple class="hidden">
+
+                <div class="w-9 h-9 rounded-full bg-[#526F94]/10 text-[#526F94] flex items-center justify-center text-base">
+                    <i class="fa-solid fa-cloud-arrow-up"></i>
+                </div>
+                <div class="text-xs text-[#2B364B]">
+                    <span class="font-bold">拖曳照片至此處</span>，或
+                    <button type="button" onclick="document.getElementById('fileInput').click()" class="text-[#526F94] font-bold underline hover:text-[#415875] mx-1">選擇檔案</button>
+                    /
+                    <button type="button" onclick="document.getElementById('folderInput').click()" class="text-[#526F94] font-bold underline hover:text-[#415875] mx-1">選擇整個資料夾</button>
+                </div>
+            </div>
+
+            <!-- 智慧批次操作工具列 -->
+            <div class="flex flex-wrap items-center justify-between gap-2.5 bg-[#EDF2F5]/80 p-2.5 rounded-xl border border-[#6B8BB0]/20">
+                <div class="flex flex-wrap items-center gap-2">
+                    <!-- 全選/全不選 -->
+                    <button type="button" id="btnToggleSelectAll" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1">
+                        <i class="fa-regular fa-square-check"></i> <span id="selectAllText">全選</span>
+                    </button>
+
+                    <!-- 智慧流水號 -->
+                    <button type="button" id="btnOpenSequenceModal" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1">
+                        <i class="fa-solid fa-arrow-down-1-9 text-[#526F94]"></i> 重排流水號
+                    </button>
+
+                    <!-- 從檔名解析時間 -->
+                    <button type="button" id="btnParseFilenameTime" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1" title="自動從檔名提取日期與時間（如 YYYYMMDD_HHMMSS、Screenshot）">
+                        <i class="fa-solid fa-wand-magic-sparkles text-[#526F94]"></i> 解析檔名時間
+                    </button>
+
+                    <!-- 全選旋轉 90° -->
+                    <button type="button" id="btnBatchRotate" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1" title="選取或全部照片旋轉 90°">
+                        <i class="fa-solid fa-rotate-right text-[#526F94]"></i> 旋轉 90°
+                    </button>
+
+                    <!-- 一鍵套用表頭地點 -->
+                    <button type="button" id="btnFillAllDefaults" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1" title="以表頭的預設地點填入所有照片">
+                        <i class="fa-solid fa-location-dot text-[#526F94]"></i> 套用地點
+                    </button>
+                </div>
+
+                <div class="flex items-center gap-2">
+                    <!-- 視圖切換 -->
+                    <div class="bg-white p-0.5 rounded-lg border border-[#6B8BB0]/30 flex items-center">
+                        <button type="button" id="btnViewWorkspace" class="px-2.5 py-1 rounded text-xs font-bold bg-[#526F94] text-white flex items-center gap-1">
+                            <i class="fa-solid fa-table-columns"></i> 工作台視圖
+                        </button>
+                        <button type="button" id="btnViewGrid" class="px-2.5 py-1 rounded text-xs font-bold text-[#667080] flex items-center gap-1">
+                            <i class="fa-solid fa-table"></i> 試算表視圖
+                        </button>
+                    </div>
+
+                    <!-- 清空清冊 -->
+                    <button type="button" id="btnClearAll" class="px-2 py-1 rounded-lg text-xs font-bold text-red-600 hover:bg-red-50 transition border border-red-200">
+                        <i class="fa-regular fa-trash-can"></i> 清空
+                    </button>
+                </div>
+            </div>
+
+            <!-- 照片數量統計與批次選取狀態列 -->
+            <div class="flex flex-wrap items-center justify-between text-xs text-[#667080] px-1 gap-2">
+                <div class="flex items-center gap-2">
+                    <span>已載入 <b id="photoCount" class="text-[#526F94]">0</b> 張照片</span>
+                    <span id="pageEstimate" class="font-medium text-[#667080]">（約 0 頁 Word 報表）</span>
+                    <span id="selectedCountBadge" class="hidden font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">已選取 0 張</span>
+                </div>
+                <div class="text-[#526F94] flex items-center gap-2">
+                    <span>💡 按住滑鼠即可拖曳卡片調換順序（支援多選打包拖曳）</span>
+                </div>
+            </div>
+
+            <!-- 空狀態提示 -->
+            <div id="emptyState" class="py-12 text-center text-[#667080] flex flex-col items-center gap-2">
+                <div class="text-4xl text-[#6B8BB0]/40"><i class="fa-regular fa-images"></i></div>
+                <div class="text-sm font-semibold">尚未載入任何照片</div>
+                <div class="text-xs">請點選上方選擇檔案，或直接將照片拖曳進來</div>
+            </div>
+
+            <!-- 3. 工作台核心主視圖（左側緊湊畫布 + 右側快捷/批次編輯器） -->
+            <div id="workspaceContainer" class="hidden grid grid-cols-1 lg:grid-cols-12 gap-4 mt-1">
+
+                <!-- 左側：照片縮圖畫布排版區 (佔 8 欄，照片一覽無遺不拖長) -->
+                <div class="lg:col-span-8 flex flex-col gap-2">
+                    <div class="flex items-center justify-between text-xs font-bold text-[#667080] px-1">
+                        <span>📸 照片排版畫布 (點擊卡片選取/編輯，拖曳調換順序)</span>
+                        <span class="text-[11px] text-[#6B8BB0]">可 Shift+Click 連續選取</span>
+                    </div>
+
+                    <div id="thumbGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 max-h-[600px] overflow-y-auto p-2 bg-[#EDF2F5]/50 rounded-xl border border-[#6B8BB0]/20">
+                        <!-- 動態注入縮圖卡片 -->
+                    </div>
+                </div>
+
+                <!-- 右側：智慧單張/批次編輯器 (佔 4 欄，固定顯示，支援多選批次套用) -->
+                <div class="lg:col-span-4 flex flex-col gap-3">
+                    <div class="morandi-card p-4 sticky top-4 flex flex-col gap-3 bg-white border-2 border-[#6B8BB0]/30 shadow-md">
+
+                        <!-- 編輯器標題狀態 -->
+                        <div class="flex items-center justify-between border-b border-[#6B8BB0]/20 pb-2">
+                            <h3 id="editorTitle" class="text-xs font-bold text-[#2B364B] flex items-center gap-1.5">
+                                <i class="fa-solid fa-pen-to-square text-[#526F94]"></i>
+                                <span>編輯照片 #1</span>
+                            </h3>
+                            <span id="editorModeBadge" class="text-[10px] font-bold px-2 py-0.5 rounded bg-[#526F94]/10 text-[#526F94]">
+                                單張編輯
+                            </span>
+                        </div>
+
+                        <!-- 編輯器欄位 -->
+                        <div class="space-y-2.5 text-xs">
+                            <div>
+                                <label class="block font-bold text-[#667080] mb-0.5">照片編號</label>
+                                <input type="text" id="editSeq" class="input-field w-full text-xs font-bold text-[#526F94]">
+                            </div>
+
+                            <div>
+                                <div class="flex items-center justify-between mb-0.5">
+                                    <label class="font-bold text-[#667080]">採證 / 監視器時間</label>
+                                    <button type="button" id="btnFillDownTime" title="將此時間向下填滿" class="text-[10px] text-[#526F94] hover:underline flex items-center gap-0.5">
+                                        <i class="fa-solid fa-arrow-down"></i> 向下填滿
+                                    </button>
+                                </div>
+                                <input type="text" id="editTime" class="input-field w-full text-xs" placeholder="例如：14時32分">
+                            </div>
+
+                            <div>
+                                <div class="flex items-center justify-between mb-0.5">
+                                    <label class="font-bold text-[#667080]">採證地點</label>
+                                    <button type="button" id="btnFillDownLocation" title="將此地點向下填滿" class="text-[10px] text-[#526F94] hover:underline flex items-center gap-0.5">
+                                        <i class="fa-solid fa-arrow-down"></i> 向下填滿
+                                    </button>
+                                </div>
+                                <input type="text" id="editLocation" class="input-field w-full text-xs" placeholder="例如：現場客廳">
+                            </div>
+
+                            <div>
+                                <div class="flex items-center justify-between mb-0.5">
+                                    <label class="font-bold text-[#667080]">現場跡證說明</label>
+                                    <button type="button" id="btnFillDownDescAll" title="向下填滿至所有照片" class="text-[10px] text-[#526F94] font-semibold hover:underline flex items-center gap-0.5">
+                                        <i class="fa-solid fa-arrows-down-to-line"></i> 向下填滿
+                                    </button>
+                                </div>
+                                <textarea id="editDesc" rows="3" class="input-field w-full text-xs leading-relaxed" placeholder="請填寫現場跡證、查扣物或狀況說明..."></textarea>
+                            </div>
+
+                            <!-- 批次套用按鈕 (當選取多張時顯示，完美支援 3~5 張同一說明) -->
+                            <div id="batchApplyBox" class="pt-2 border-t border-[#6B8BB0]/20 hidden flex flex-col gap-1.5">
+                                <button type="button" id="btnApplyToSelected" class="w-full btn-primary py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 shadow">
+                                    <i class="fa-solid fa-check-double"></i> 套用說明與地點至已勾選 (<span id="batchCountNum">0</span>) 張照片
+                                </button>
+                                <p class="text-[10px] text-[#667080] text-center">💡 在左側勾選 3~5 張照片，點擊上方按鈕即可一次寫入！</p>
+                            </div>
+                        </div>
+
+                        <!-- 快速導航與刪除 -->
+                        <div class="flex items-center justify-between pt-2 border-t border-[#6B8BB0]/15 text-xs">
+                            <div class="flex items-center gap-1">
+                                <button type="button" id="btnPrevPhoto" class="btn-secondary px-2.5 py-1 rounded text-xs" title="上一張 (Alt+Left)"><i class="fa-solid fa-chevron-left"></i> 上一張</button>
+                                <button type="button" id="btnNextPhoto" class="btn-secondary px-2.5 py-1 rounded text-xs" title="下一張 (Alt+Right)">下一張 <i class="fa-solid fa-chevron-right"></i></button>
+                            </div>
+                            <button type="button" id="btnDeleteCurrent" class="text-red-500 hover:text-red-700 text-xs font-semibold flex items-center gap-1">
+                                <i class="fa-regular fa-trash-can"></i> 刪除此張
+                            </button>
+                        </div>
+
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- 4. 試算表 DataGrid 視圖 (適合鍵盤快速 Key 表格) -->
+            <div id="gridContainer" class="hidden overflow-x-auto border border-[#6B8BB0]/20 rounded-xl bg-white max-h-[600px] overflow-y-auto">
+                <table class="w-full text-left text-xs">
+                    <thead class="bg-[#EDF2F5] text-[#2B364B] font-bold border-b border-[#6B8BB0]/20 sticky top-0 z-10">
+                        <tr>
+                            <th class="p-2.5 w-10 text-center">
+                                <input type="checkbox" id="gridSelectAll" onclick="window.app.toggleSelectAll(this.checked)" class="rounded text-[#526F94] cursor-pointer">
+                            </th>
+                            <th class="p-2.5 w-12 text-center">縮圖</th>
+                            <th class="p-2.5 w-20">編號</th>
+                            <th class="p-2.5 w-36">
+                                採證時間
+                                <button type="button" onclick="window.app.fillDownFirst('time')" title="向下填滿第一筆時間" class="ml-1 text-[#526F94] hover:underline"><i class="fa-solid fa-arrow-down"></i></button>
+                            </th>
+                            <th class="p-2.5 w-32">
+                                採證地點
+                                <button type="button" onclick="window.app.fillDownFirst('location')" title="向下填滿第一筆地點" class="ml-1 text-[#526F94] hover:underline"><i class="fa-solid fa-arrow-down"></i></button>
+                            </th>
+                            <th class="p-2.5">
+                                現場跡證說明
+                                <button type="button" onclick="window.app.fillDownFirst('desc')" title="向下填滿第一筆說明" class="ml-1 text-[#526F94] hover:underline"><i class="fa-solid fa-arrow-down"></i> 填滿全部</button>
+                            </th>
+                            <th class="p-2.5 w-28">原始檔名</th>
+                            <th class="p-2.5 w-20 text-center">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="gridTbody" class="divide-y divide-[#6B8BB0]/10">
+                        <!-- 動態注入試算表列 -->
+                    </tbody>
+                </table>
+            </div>
+
+        </section>
+
+        <!-- 3. 底部主要輸出與操作列 -->
+        <section class="morandi-card p-4 md:p-5 sticky bottom-3 shadow-2xl bg-white/95 border-2 border-[#526F94]/30 z-30">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <div class="text-sm font-bold text-[#2B364B] flex items-center gap-2">
+                        <i class="fa-solid fa-file-word text-[#526F94] text-base"></i>
+                        準備產出正式現場照片清冊
+                    </div>
+                    <p class="text-[11px] text-[#667080]">純正標楷體．頁首頁尾（第X頁/共Y頁）．標準尺寸．100% 零巨集標準 OpenXML</p>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-2">
+                    <!-- 匯出 Excel 清單 -->
+                    <button type="button" id="btnExportExcel" class="btn-secondary px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5">
+                        <i class="fa-regular fa-file-excel text-emerald-600 text-sm"></i> 匯出 Excel
+                    </button>
+
+                    <!-- 匯入 Excel 說明檔 -->
+                    <label class="btn-secondary px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer">
+                        <i class="fa-solid fa-file-import text-blue-600 text-sm"></i> 匯入 Excel 說明
+                        <input type="file" id="importExcelInput" accept=".xlsx, .xls" class="hidden">
+                    </label>
+
+                    <!-- 匯出照片 ZIP 包 -->
+                    <button type="button" id="btnExportZip" class="btn-secondary px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5">
+                        <i class="fa-regular fa-file-zipper text-amber-600 text-sm"></i> 最佳化 ZIP
+                    </button>
+
+                    <!-- 核心：匯出 Word 清冊 (.docx) -->
+                    <button type="button" id="btnExportDocx" class="btn-primary px-5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-lg hover:shadow-blue-500/20">
+                        <i class="fa-solid fa-download"></i> 匯出 Word 清冊 (.docx)
+                    </button>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- 頁尾版權宣告 -->
+    <footer class="w-full max-w-7xl mt-6 text-center text-xs text-[#667080] pb-6">
+        <p>© <span id="year"></span> LiangHao (梁巡官) | 現況照片清冊生成工具 v2.0</p>
+        <p class="mt-0.5 opacity-75">全域開發憲法 v8.1 規範標準 | 100% 瀏覽器離線安全運作</p>
+    </footer>
+
+    <!-- 彈窗 1：智慧流水號設定 Modal -->
+    <div id="sequenceModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop hidden">
+        <div class="bg-white rounded-2xl p-5 max-w-sm w-full shadow-2xl border border-[#6B8BB0]/30">
+            <h3 class="text-sm font-bold text-[#2B364B] mb-3 flex items-center gap-2">
+                <i class="fa-solid fa-arrow-down-1-9 text-[#526F94]"></i> 重排照片流水編號
+            </h3>
+            <div class="space-y-2.5 text-xs">
+                <div>
+                    <label class="block font-bold text-[#667080] mb-1">編號前綴文字 (可留空)</label>
+                    <input type="text" id="seqPrefix" class="input-field w-full text-xs" placeholder="例如：照片-、證物、圖" value="">
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block font-bold text-[#667080] mb-1">起始編號</label>
+                        <input type="number" id="seqStart" class="input-field w-full text-xs" value="1" min="1">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-[#667080] mb-1">位數補零</label>
+                        <select id="seqDigits" class="input-field w-full text-xs">
+                            <option value="1">不補零 (1, 2, 3)</option>
+                            <option value="2">2 位數 (01, 02, 03)</option>
+                            <option value="3">3 位數 (001, 002, 003)</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="flex justify-end gap-2 mt-4">
+                <button type="button" onclick="window.app.closeModal('sequenceModal')" class="btn-secondary px-3 py-1.5 rounded-lg text-xs font-bold">取消</button>
+                <button type="button" id="btnApplySequence" class="btn-primary px-3 py-1.5 rounded-lg text-xs font-bold">套用</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 圖片點擊放大燈箱 Modal -->
+    <div id="imageLightboxModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop hidden" onclick="window.app.closeModal('imageLightboxModal')">
+        <div class="max-w-4xl max-h-[90vh] bg-white rounded-2xl overflow-hidden shadow-2xl p-2 flex flex-col items-center" onclick="event.stopPropagation()">
+            <img id="lightboxImg" src="" alt="放大預覽" class="max-h-[80vh] w-auto object-contain rounded-lg">
+            <div class="flex justify-between items-center w-full px-4 py-2 text-xs text-[#667080]">
+                <span id="lightboxCaption" class="font-bold text-[#2B364B]"></span>
+                <button type="button" onclick="window.app.closeModal('imageLightboxModal')" class="btn-secondary px-3 py-1 rounded text-xs font-bold">關閉 (ESC)</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 核心應用程式邏輯 -->
     <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    animation: {
-                        'fade-in-up': 'fadeInUp 0.8s ease-out forwards',
-                    },
-                    keyframes: {
-                        fadeInUp: {
-                            '0%': { opacity: '0', transform: 'translateY(20px)' },
-                            '100%': { opacity: '1', transform: 'translateY(0)' },
+        document.getElementById('year').textContent = new Date().getFullYear();
+
+        // 檢查 docx 函式庫是否已掛載至全域
+        function getDocxLib() {
+            if (typeof docx !== 'undefined') return docx;
+            if (window.docx) return window.docx;
+            return null;
+        }
+
+        class PhotoReportApp {
+            constructor() {
+                this.photos = [];
+                this.currentView = 'workspace';
+                this.currentIndex = 0;
+                this.draggedIndices = [];
+                this.lastSelectedIndex = null;
+                this.initElements();
+                this.initEvents();
+                this.setDefaultTodayDate();
+            }
+
+            initElements() {
+                this.dropZone = document.getElementById('dropZone');
+                this.fileInput = document.getElementById('fileInput');
+                this.folderInput = document.getElementById('folderInput');
+                this.workspaceContainer = document.getElementById('workspaceContainer');
+                this.thumbGrid = document.getElementById('thumbGrid');
+                this.gridContainer = document.getElementById('gridContainer');
+                this.gridTbody = document.getElementById('gridTbody');
+                this.emptyState = document.getElementById('emptyState');
+                this.photoCount = document.getElementById('photoCount');
+                this.pageEstimate = document.getElementById('pageEstimate');
+                this.selectedCountBadge = document.getElementById('selectedCountBadge');
+                this.layoutSelect = document.getElementById('layoutSelect');
+
+                // 右側編輯器元件
+                this.editorTitle = document.getElementById('editorTitle');
+                this.editorModeBadge = document.getElementById('editorModeBadge');
+                this.editSeq = document.getElementById('editSeq');
+                this.editTime = document.getElementById('editTime');
+                this.editLocation = document.getElementById('editLocation');
+                this.editDesc = document.getElementById('editDesc');
+                this.batchApplyBox = document.getElementById('batchApplyBox');
+                this.batchCountNum = document.getElementById('batchCountNum');
+            }
+
+            initEvents() {
+                // 上傳拖曳
+                ['dragenter', 'dragover'].forEach(name => {
+                    this.dropZone.addEventListener(name, (e) => {
+                        e.preventDefault();
+                        this.dropZone.classList.add('drag-over');
+                    });
+                });
+                ['dragleave', 'drop'].forEach(name => {
+                    this.dropZone.addEventListener(name, (e) => {
+                        e.preventDefault();
+                        this.dropZone.classList.remove('drag-over');
+                    });
+                });
+                this.dropZone.addEventListener('drop', (e) => {
+                    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+                    if (files.length) this.handleFiles(files);
+                });
+
+                this.fileInput.addEventListener('change', (e) => {
+                    const files = Array.from(e.target.files).filter(f => f.type.startsWith('image/'));
+                    if (files.length) this.handleFiles(files);
+                    this.fileInput.value = '';
+                });
+                this.folderInput.addEventListener('change', (e) => {
+                    const files = Array.from(e.target.files).filter(f => f.type.startsWith('image/'));
+                    if (files.length) this.handleFiles(files);
+                    this.folderInput.value = '';
+                });
+
+                // 按鈕事件
+                document.getElementById('btnTodayDate').addEventListener('click', () => this.setDefaultTodayDate());
+                document.getElementById('btnToggleSelectAll').addEventListener('click', () => this.toggleSelectAll());
+                document.getElementById('btnViewWorkspace').addEventListener('click', () => this.switchView('workspace'));
+                document.getElementById('btnViewGrid').addEventListener('click', () => this.switchView('grid'));
+                document.getElementById('btnClearAll').addEventListener('click', () => this.clearAll());
+                document.getElementById('btnBatchRotate').addEventListener('click', () => this.batchRotate(90));
+                document.getElementById('btnFillAllDefaults').addEventListener('click', () => this.fillAllDefaults());
+                document.getElementById('btnOpenSequenceModal').addEventListener('click', () => this.openModal('sequenceModal'));
+                document.getElementById('btnApplySequence').addEventListener('click', () => this.applySequence());
+                document.getElementById('btnParseFilenameTime').addEventListener('click', () => this.parseFilenameTime());
+                document.getElementById('btnExportDocx').addEventListener('click', () => this.exportDocx());
+                document.getElementById('btnExportExcel').addEventListener('click', () => this.exportExcel());
+                document.getElementById('btnExportZip').addEventListener('click', () => this.exportZip());
+                document.getElementById('importExcelInput').addEventListener('change', (e) => this.importExcel(e));
+                this.layoutSelect.addEventListener('change', () => this.updatePageEstimate());
+
+                // 右側編輯器即時輸入事件
+                this.editSeq.addEventListener('input', (e) => this.updateCurrentPhoto('seq', e.target.value));
+                this.editTime.addEventListener('input', (e) => this.updateCurrentPhoto('time', e.target.value));
+                this.editLocation.addEventListener('input', (e) => this.updateCurrentPhoto('location', e.target.value));
+                this.editDesc.addEventListener('input', (e) => this.updateCurrentPhoto('desc', e.target.value));
+
+                // 右側向下填滿按鈕
+                document.getElementById('btnFillDownTime').addEventListener('click', () => this.fillDownFromIndex(this.currentIndex, 'time'));
+                document.getElementById('btnFillDownLocation').addEventListener('click', () => this.fillDownFromIndex(this.currentIndex, 'location'));
+                document.getElementById('btnFillDownDescAll').addEventListener('click', () => this.fillDownFromIndex(this.currentIndex, 'desc'));
+                document.getElementById('btnApplyToSelected').addEventListener('click', () => this.applyEditorToSelected());
+
+                // 上一張 / 下一張 / 刪除
+                document.getElementById('btnPrevPhoto').addEventListener('click', () => this.navigatePhoto(-1));
+                document.getElementById('btnNextPhoto').addEventListener('click', () => this.navigatePhoto(1));
+                document.getElementById('btnDeleteCurrent').addEventListener('click', () => this.removePhoto(this.currentIndex));
+
+                // 鍵盤快速鍵 (ESC 關閉燈箱, 左右切換照片)
+                window.addEventListener('keydown', (e) => {
+                    if (e.key === 'Escape') this.closeModal('imageLightboxModal');
+                    if (e.altKey && e.key === 'ArrowLeft') this.navigatePhoto(-1);
+                    if (e.altKey && e.key === 'ArrowRight') this.navigatePhoto(1);
+                });
+            }
+
+            setDefaultTodayDate() {
+                const now = new Date();
+                const mYear = now.getFullYear() - 1911;
+                const mMonth = now.getMonth() + 1;
+                const mDay = now.getDate();
+                document.getElementById('caseDate').value = `${mYear}年${mMonth}月${mDay}日`;
+            }
+
+            async handleFiles(files) {
+                const defaultLoc = document.getElementById('defaultLocation').value.trim() || '現場';
+
+                for (let i = 0; i < files.length; i++) {
+                    const file = files[i];
+                    const seqNum = this.photos.length + 1;
+                    const parsedTime = this.extractTimeFromFilename(file.name) || '12時00分';
+
+                    const photoItem = {
+                        uid: 'uid_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9),
+                        file: file,
+                        name: file.name,
+                        src: '',
+                        rotation: 0,
+                        seq: String(seqNum),
+                        time: parsedTime,
+                        location: defaultLoc,
+                        desc: '',
+                        selected: false
+                    };
+
+                    photoItem.src = await this.readFileAsDataURL(file);
+                    this.photos.push(photoItem);
+                }
+
+                if (this.photos.length > 0 && this.currentIndex >= this.photos.length) {
+                    this.currentIndex = 0;
+                }
+                this.render();
+            }
+
+            readFileAsDataURL(file) {
+                return new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.onload = (e) => resolve(e.target.result);
+                    reader.readAsDataURL(file);
+                });
+            }
+
+            extractTimeFromFilename(filename) {
+                const m1 = filename.match(/(\d{4})[-_]?(\d{2})[-_]?(\d{2})[-_]?(\d{2})[-_]?(\d{2})[-_]?(\d{2})/);
+                if (m1) return `${m1[4]}時${m1[5]}分${m1[6]}秒`;
+                const m2 = filename.match(/[-_](\d{2})(\d{2})(\d{2})[-_.]/);
+                if (m2) return `${m2[1]}時${m2[2]}分${m2[3]}秒`;
+                const m3 = filename.match(/[-_](\d{2})(\d{2})[-_.]/);
+                if (m3) return `${m3[1]}時${m3[2]}分`;
+                return null;
+            }
+
+            parseFilenameTime() {
+                if (!this.photos.length) return alert('請先載入照片！');
+                let count = 0;
+                this.photos.forEach(p => {
+                    const t = this.extractTimeFromFilename(p.name);
+                    if (t) {
+                        p.time = t;
+                        count++;
+                    }
+                });
+                this.render();
+                alert(`已成功從檔名解析 ${count} 張照片之時間！`);
+            }
+
+            fillAllDefaults() {
+                if (!this.photos.length) return alert('請先載入照片！');
+                const defaultLoc = document.getElementById('defaultLocation').value.trim();
+                this.photos.forEach(p => {
+                    if (defaultLoc) p.location = defaultLoc;
+                });
+                this.render();
+                alert('已將表頭預設地點套用至所有照片！');
+            }
+
+            batchRotate(degree) {
+                if (!this.photos.length) return;
+                const hasSelected = this.photos.some(p => p.selected);
+                this.photos.forEach(p => {
+                    if (!hasSelected || p.selected) {
+                        p.rotation = (p.rotation + degree) % 360;
+                    }
+                });
+                this.render();
+            }
+
+            applySequence() {
+                const prefix = document.getElementById('seqPrefix').value;
+                const start = parseInt(document.getElementById('seqStart').value, 10) || 1;
+                const digits = parseInt(document.getElementById('seqDigits').value, 10) || 1;
+
+                this.photos.forEach((p, idx) => {
+                    const num = start + idx;
+                    const numStr = String(num).padStart(digits, '0');
+                    p.seq = `${prefix}${numStr}`;
+                });
+
+                this.closeModal('sequenceModal');
+                this.render();
+            }
+
+            fillDownFromIndex(index, field) {
+                if (!this.photos[index]) return;
+                const val = this.photos[index][field];
+                for (let i = index + 1; i < this.photos.length; i++) {
+                    this.photos[i][field] = val;
+                }
+                this.render();
+                alert(`已將第 ${index + 1} 張照片的內容向下填滿至所有照片！`);
+            }
+
+            fillDownFirst(field) {
+                if (!this.photos.length) return;
+                this.fillDownFromIndex(0, field);
+            }
+
+            // 批次套用右側編輯器內容至已選取照片
+            applyEditorToSelected() {
+                const selectedList = this.photos.filter(p => p.selected);
+                if (selectedList.length === 0) return alert('請先在左側勾選要套用的照片！');
+
+                const timeVal = this.editTime.value.trim();
+                const locVal = this.editLocation.value.trim();
+                const descVal = this.editDesc.value.trim();
+
+                selectedList.forEach(p => {
+                    if (timeVal) p.time = timeVal;
+                    if (locVal) p.location = locVal;
+                    if (descVal) p.desc = descVal;
+                });
+
+                this.render();
+                alert(`已成功套用至勾選的 ${selectedList.length} 張照片！`);
+            }
+
+            switchView(view) {
+                this.currentView = view;
+                if (view === 'workspace') {
+                    this.workspaceContainer.classList.remove('hidden');
+                    this.gridContainer.classList.add('hidden');
+                    document.getElementById('btnViewWorkspace').className = "px-2.5 py-1 rounded text-xs font-bold bg-[#526F94] text-white flex items-center gap-1";
+                    document.getElementById('btnViewGrid').className = "px-2.5 py-1 rounded text-xs font-bold text-[#667080] flex items-center gap-1";
+                } else {
+                    this.workspaceContainer.classList.add('hidden');
+                    this.gridContainer.classList.remove('hidden');
+                    document.getElementById('btnViewWorkspace').className = "px-2.5 py-1 rounded text-xs font-bold text-[#667080] flex items-center gap-1";
+                    document.getElementById('btnViewGrid').className = "px-2.5 py-1 rounded text-xs font-bold bg-[#526F94] text-white flex items-center gap-1";
+                }
+                this.render();
+            }
+
+            removePhoto(index) {
+                if (!this.photos[index]) return;
+                this.photos.splice(index, 1);
+                if (this.currentIndex >= this.photos.length) {
+                    this.currentIndex = Math.max(0, this.photos.length - 1);
+                }
+                this.render();
+            }
+
+            rotatePhoto(index) {
+                this.photos[index].rotation = (this.photos[index].rotation + 90) % 360;
+                this.render();
+            }
+
+            clearAll() {
+                if (!this.photos.length) return;
+                if (confirm('確定要清空所有載入的照片與資料嗎？')) {
+                    this.photos = [];
+                    this.currentIndex = 0;
+                    this.render();
+                }
+            }
+
+            updatePageEstimate() {
+                const layout = this.layoutSelect.value;
+                const count = this.photos.length;
+                let perPage = 2;
+                if (layout === 'landscape_3') perPage = 3;
+                const pages = count === 0 ? 0 : Math.ceil(count / perPage);
+                this.photoCount.textContent = count;
+                this.pageEstimate.textContent = `（約 ${pages} 頁 Word 報表）`;
+            }
+
+            // ============================================================
+            // 🎯 PaperSwitch 核心：HTML5 Drag & Drop 拖曳排版系統
+            // ============================================================
+            handleCardDragStart(index, event) {
+                if (this.photos[index].selected) {
+                    this.draggedIndices = this.photos.map((p, idx) => p.selected ? idx : -1).filter(idx => idx !== -1);
+                } else {
+                    this.draggedIndices = [index];
+                }
+
+                event.dataTransfer.effectAllowed = 'move';
+                event.dataTransfer.setData('text/plain', JSON.stringify(this.draggedIndices));
+
+                const ghost = document.getElementById('dragGhostBadge');
+                const ghostText = document.getElementById('dragGhostText');
+                if (ghost && ghostText) {
+                    ghostText.textContent = this.draggedIndices.length > 1
+                        ? `已打包 ${this.draggedIndices.length} 張照片移動中`
+                        : `移動照片 #${this.photos[index].seq}`;
+                    event.dataTransfer.setDragImage(ghost, 30, 20);
+                }
+
+                setTimeout(() => {
+                    this.draggedIndices.forEach(idx => {
+                        const card = document.getElementById(`thumb_${this.photos[idx]?.uid}`);
+                        if (card) {
+                            card.classList.add('dragging-stacked');
+                            if (idx === index) card.classList.add('drag-lead');
                         }
+                    });
+                }, 0);
+            }
+
+            handleCardDragOver(index, event) {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = 'move';
+
+                if (!this.draggedIndices || this.draggedIndices.length === 0) return;
+                if (this.draggedIndices.includes(index)) return;
+
+                const card = document.getElementById(`thumb_${this.photos[index].uid}`);
+                if (card) {
+                    const rect = card.getBoundingClientRect();
+                    const midX = rect.left + rect.width / 2;
+                    if (event.clientX < midX) {
+                        card.classList.add('drag-target-left');
+                        card.classList.remove('drag-target-right');
+                    } else {
+                        card.classList.add('drag-target-right');
+                        card.classList.remove('drag-target-left');
                     }
                 }
             }
+
+            handleCardDragLeave(index, event) {
+                const card = document.getElementById(`thumb_${this.photos[index].uid}`);
+                if (card) {
+                    card.classList.remove('drag-target-left', 'drag-target-right');
+                }
+            }
+
+            handleCardDrop(targetIndex, event) {
+                event.preventDefault();
+                event.stopPropagation();
+
+                if (!this.draggedIndices || this.draggedIndices.length === 0) {
+                    this.handleCardDragEnd();
+                    return;
+                }
+
+                if (this.draggedIndices.includes(targetIndex)) {
+                    this.handleCardDragEnd();
+                    return;
+                }
+
+                const targetItem = this.photos[targetIndex];
+                if (!targetItem) {
+                    this.handleCardDragEnd();
+                    return;
+                }
+
+                const card = document.getElementById(`thumb_${targetItem.uid}`);
+                let isAfter = false;
+                if (card) {
+                    const rect = card.getBoundingClientRect();
+                    const midX = rect.left + rect.width / 2;
+                    if (event.clientX >= midX) isAfter = true;
+                    card.classList.remove('drag-target-left', 'drag-target-right');
+                }
+
+                const movingItems = this.draggedIndices.map(idx => this.photos[idx]);
+                const remaining = this.photos.filter((_, idx) => !this.draggedIndices.includes(idx));
+
+                let targetPos = remaining.findIndex(p => p.uid === targetItem.uid);
+                if (targetPos === -1) targetPos = remaining.length;
+                let insertPos = isAfter ? targetPos + 1 : targetPos;
+                insertPos = Math.max(0, Math.min(insertPos, remaining.length));
+
+                remaining.splice(insertPos, 0, ...movingItems);
+                this.photos = remaining;
+
+                this.currentIndex = insertPos;
+
+                this.handleCardDragEnd();
+                this.render();
+            }
+
+            handleCardDragEnd() {
+                this.draggedIndices = [];
+                document.querySelectorAll('.photo-thumb-card').forEach(c => {
+                    c.classList.remove('dragging-stacked', 'drag-lead', 'drag-target-left', 'drag-target-right');
+                });
+            }
+
+            handleCardClick(index, event) {
+                if (['INPUT', 'BUTTON', 'I'].includes(event.target.tagName)) return;
+
+                if (event.ctrlKey || event.metaKey) {
+                    this.photos[index].selected = !this.photos[index].selected;
+                    this.lastSelectedIndex = index;
+                } else if (event.shiftKey && this.lastSelectedIndex !== null) {
+                    const start = Math.min(this.lastSelectedIndex, index);
+                    const end = Math.max(this.lastSelectedIndex, index);
+                    for (let i = start; i <= end; i++) {
+                        this.photos[i].selected = true;
+                    }
+                } else {
+                    this.currentIndex = index;
+                }
+                this.render();
+            }
+
+            togglePhotoSelect(index, event) {
+                event.stopPropagation();
+                this.photos[index].selected = !this.photos[index].selected;
+                this.lastSelectedIndex = index;
+                this.render();
+            }
+
+            toggleSelectAll(forceState) {
+                const targetState = forceState !== undefined ? forceState : !this.photos.every(p => p.selected);
+                this.photos.forEach(p => p.selected = targetState);
+                this.render();
+            }
+
+            navigatePhoto(delta) {
+                if (!this.photos.length) return;
+                let nextIdx = this.currentIndex + delta;
+                if (nextIdx < 0) nextIdx = 0;
+                if (nextIdx >= this.photos.length) nextIdx = this.photos.length - 1;
+                this.currentIndex = nextIdx;
+                this.render();
+            }
+
+            updateCurrentPhoto(field, value) {
+                if (!this.photos[this.currentIndex]) return;
+                this.photos[this.currentIndex][field] = value;
+                const thumbLabel = document.getElementById(`desc_preview_${this.photos[this.currentIndex].uid}`);
+                if (thumbLabel && field === 'desc') {
+                    thumbLabel.textContent = value || '（無說明）';
+                }
+            }
+
+            // 渲染介面
+            render() {
+                this.updatePageEstimate();
+
+                const totalPhotos = this.photos.length;
+                const selectedCount = this.photos.filter(p => p.selected).length;
+
+                // 批次計數徽章
+                if (selectedCount > 0) {
+                    this.selectedCountBadge.classList.remove('hidden');
+                    this.selectedCountBadge.textContent = `已選取 ${selectedCount} 張`;
+                    this.batchApplyBox.classList.remove('hidden');
+                    this.batchCountNum.textContent = selectedCount;
+                    this.editorModeBadge.textContent = `多選 (${selectedCount}張)`;
+                    this.editorModeBadge.className = "text-[10px] font-bold px-2 py-0.5 rounded bg-blue-500 text-white";
+                } else {
+                    this.selectedCountBadge.classList.add('hidden');
+                    this.batchApplyBox.classList.add('hidden');
+                    this.editorModeBadge.textContent = "單張編輯";
+                    this.editorModeBadge.className = "text-[10px] font-bold px-2 py-0.5 rounded bg-[#526F94]/10 text-[#526F94]";
+                }
+
+                document.getElementById('selectAllText').textContent = (totalPhotos > 0 && selectedCount === totalPhotos) ? '全不選' : '全選';
+
+                if (totalPhotos === 0) {
+                    this.emptyState.classList.remove('hidden');
+                    this.workspaceContainer.classList.add('hidden');
+                    this.gridContainer.classList.add('hidden');
+                    return;
+                }
+
+                this.emptyState.classList.add('hidden');
+                if (this.currentView === 'workspace') {
+                    this.workspaceContainer.classList.remove('hidden');
+                    this.gridContainer.classList.add('hidden');
+                } else {
+                    this.workspaceContainer.classList.add('hidden');
+                    this.gridContainer.classList.remove('hidden');
+                }
+
+                if (this.currentIndex >= totalPhotos) this.currentIndex = totalPhotos - 1;
+                if (this.currentIndex < 0) this.currentIndex = 0;
+
+                const curPhoto = this.photos[this.currentIndex];
+
+                // 更新右側編輯器資料
+                if (curPhoto) {
+                    this.editorTitle.innerHTML = `<i class="fa-solid fa-pen-to-square text-[#526F94]"></i> <span>編輯第 ${this.currentIndex + 1} / ${totalPhotos} 張 (#${curPhoto.seq})</span>`;
+                    this.editSeq.value = curPhoto.seq || '';
+                    this.editTime.value = curPhoto.time || '';
+                    this.editLocation.value = curPhoto.location || '';
+                    this.editDesc.value = curPhoto.desc || '';
+                }
+
+                // 渲染左側縮圖卡片
+                this.thumbGrid.innerHTML = this.photos.map((p, idx) => {
+                    const isSelected = p.selected ? 'selected' : '';
+                    const isCurrent = idx === this.currentIndex ? 'active-editing' : '';
+
+                    return `
+                        <div class="photo-thumb-card morandi-card p-2 flex flex-col gap-1.5 bg-white border border-[#6B8BB0]/25 rounded-xl ${isSelected} ${isCurrent}"
+                             id="thumb_${p.uid}"
+                             draggable="true"
+                             onclick="window.app.handleCardClick(${idx}, event)"
+                             ondragstart="window.app.handleCardDragStart(${idx}, event)"
+                             ondragover="window.app.handleCardDragOver(${idx}, event)"
+                             ondragleave="window.app.handleCardDragLeave(${idx}, event)"
+                             ondrop="window.app.handleCardDrop(${idx}, event)"
+                             ondragend="window.app.handleCardDragEnd(event)">
+
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-1.5">
+                                    <input type="checkbox" ${p.selected ? 'checked' : ''} onclick="window.app.togglePhotoSelect(${idx}, event)" class="rounded text-[#526F94] cursor-pointer" title="勾選">
+                                    <span class="px-1.5 py-0.2 rounded bg-[#526F94] text-white text-[10px] font-bold">#${p.seq}</span>
+                                </div>
+                                <div class="flex items-center gap-1">
+                                    <button type="button" onclick="event.stopPropagation(); window.app.rotatePhoto(${idx})" title="旋轉 90°" class="text-[#6B8BB0] hover:text-[#526F94] text-[11px] p-0.5">
+                                        <i class="fa-solid fa-rotate-right"></i>
+                                    </button>
+                                    <button type="button" onclick="event.stopPropagation(); window.app.removePhoto(${idx})" title="刪除" class="text-red-400 hover:text-red-600 text-[11px] p-0.5">
+                                        <i class="fa-regular fa-trash-can"></i>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="w-full h-24 bg-[#EDF2F5] rounded-lg overflow-hidden flex items-center justify-center relative group cursor-pointer" onclick="event.stopPropagation(); window.app.openLightbox('${p.src}', '${p.name}')">
+                                <img src="${p.src}" alt="${p.name}" style="transform: rotate(${p.rotation}deg);" class="w-full h-full object-contain pointer-events-none">
+                                <div class="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-[10px] gap-1 transition">
+                                    <i class="fa-solid fa-magnifying-glass-plus"></i> 放大
+                                </div>
+                            </div>
+
+                            <div class="text-[10px] text-[#667080] truncate flex items-center gap-1">
+                                <i class="fa-regular fa-clock text-[#526F94]"></i>
+                                <span>${p.time || '未填時間'}</span>
+                            </div>
+                            <div id="desc_preview_${p.uid}" class="text-[10px] text-[#2B364B] bg-[#EDF2F5]/80 p-1 rounded truncate" title="${p.desc || '無說明'}">
+                                ${p.desc || '<span class="text-[#A0AEC0]">（無說明）</span>'}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+                // 渲染試算表視圖 (DataGrid)
+                this.gridTbody.innerHTML = this.photos.map((p, idx) => `
+                    <tr class="hover:bg-[#F3F5F8]/70 ${idx === this.currentIndex ? 'bg-blue-50/50' : ''}">
+                        <td class="p-2 text-center">
+                            <input type="checkbox" ${p.selected ? 'checked' : ''} onclick="window.app.togglePhotoSelect(${idx}, event)" class="rounded text-[#526F94] cursor-pointer">
+                        </td>
+                        <td class="p-2 text-center">
+                            <img src="${p.src}" style="transform: rotate(${p.rotation}deg);" class="w-10 h-10 object-contain mx-auto rounded border bg-[#EDF2F5] cursor-pointer" onclick="window.app.openLightbox('${p.src}', '${p.name}')">
+                        </td>
+                        <td class="p-2">
+                            <input type="text" value="${p.seq}" oninput="window.app.updatePhotoField(${idx}, 'seq', this.value)" class="input-field w-full text-xs font-bold text-[#526F94]">
+                        </td>
+                        <td class="p-2">
+                            <input type="text" value="${p.time}" oninput="window.app.updatePhotoField(${idx}, 'time', this.value)" class="input-field w-full text-xs" placeholder="例如：14時32分">
+                        </td>
+                        <td class="p-2">
+                            <input type="text" value="${p.location}" oninput="window.app.updatePhotoField(${idx}, 'location', this.value)" class="input-field w-full text-xs">
+                        </td>
+                        <td class="p-2">
+                            <input type="text" value="${p.desc}" oninput="window.app.updatePhotoField(${idx}, 'desc', this.value)" class="input-field w-full text-xs" placeholder="請填寫現場跡證或狀況說明">
+                        </td>
+                        <td class="p-2 text-[#667080] truncate max-w-[110px]" title="${p.name}">
+                            ${p.name}
+                        </td>
+                        <td class="p-2 text-center">
+                            <button type="button" onclick="window.app.rotatePhoto(${idx})" title="旋轉" class="p-1 text-[#526F94]"><i class="fa-solid fa-rotate-right"></i></button>
+                            <button type="button" onclick="window.app.removePhoto(${idx})" title="刪除" class="p-1 text-red-500"><i class="fa-regular fa-trash-can"></i></button>
+                        </td>
+                    </tr>
+                `).join('');
+            }
+
+            updatePhotoField(index, field, value) {
+                if (!this.photos[index]) return;
+                this.photos[index][field] = value;
+            }
+
+            openLightbox(src, caption) {
+                document.getElementById('lightboxImg').src = src;
+                document.getElementById('lightboxCaption').textContent = caption;
+                this.openModal('imageLightboxModal');
+            }
+
+            openModal(id) {
+                document.getElementById(id).classList.remove('hidden');
+            }
+
+            closeModal(id) {
+                document.getElementById(id).classList.add('hidden');
+            }
+
+            async processImageToBlob(photoItem, maxDimension = 1600, quality = 0.88) {
+                return new Promise((resolve) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        let w = img.width;
+                        let h = img.height;
+                        const rot = photoItem.rotation % 360;
+
+                        if (w > maxDimension || h > maxDimension) {
+                            if (w > h) {
+                                h = Math.round((h * maxDimension) / w);
+                                w = maxDimension;
+                            } else {
+                                w = Math.round((w * maxDimension) / h);
+                                h = maxDimension;
+                            }
+                        }
+
+                        if (rot === 90 || rot === 270) {
+                            canvas.width = h;
+                            canvas.height = w;
+                        } else {
+                            canvas.width = w;
+                            canvas.height = h;
+                        }
+
+                        const ctx = canvas.getContext('2d');
+                        ctx.fillStyle = '#FFFFFF';
+                        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                        ctx.save();
+                        ctx.translate(canvas.width / 2, canvas.height / 2);
+                        ctx.rotate((rot * Math.PI) / 180);
+                        ctx.drawImage(img, -w / 2, -h / 2, w, h);
+                        ctx.restore();
+
+                        canvas.toBlob((blob) => {
+                            resolve({
+                                blob: blob,
+                                width: canvas.width,
+                                height: canvas.height
+                            });
+                        }, 'image/jpeg', quality);
+                    };
+                    img.src = photoItem.src;
+                });
+            }
+
+            // ============================================================
+            // 📑 100% 精準對齊原 VBA 範本之 OpenXML 報表生成引擎
+            // (全標楷體、頁首頁尾、自然行距、圖片置中、紙張橫直向精確設定)
+            // ============================================================
+            async exportDocx() {
+                if (!this.photos.length) return alert('請先載入照片再匯出！');
+
+                const docxLib = getDocxLib();
+                if (!docxLib) {
+                    return alert('docx.js 函式庫尚未載入完成，請確認網路連線是否正常！');
+                }
+
+                const caseTitle = document.getElementById('caseTitle').value.trim() || '現場照片清冊';
+                const caseDate = document.getElementById('caseDate').value.trim() || '';
+                const deptName = document.getElementById('deptName').value.trim() || '臺南市政府警察局新化分局';
+                const globalOfficer = document.getElementById('officerName').value.trim() || '巡官梁家豪';
+                const layout = this.layoutSelect.value;
+
+                const {
+                    Document, Packer, Paragraph, Table, TableRow, TableCell,
+                    TextRun, WidthType, AlignmentType, HeightRule,
+                    ImageRun, BorderStyle, Header, Footer, PageNumber, PageOrientation
+                } = docxLib;
+
+                const borderSingle = { style: BorderStyle.SINGLE, size: 4, color: "000000" };
+                const bordersAllSingle = { top: borderSingle, bottom: borderSingle, left: borderSingle, right: borderSingle };
+
+                // 處理所有圖片轉 Blob
+                const processedPhotos = [];
+                for (let i = 0; i < this.photos.length; i++) {
+                    const item = this.photos[i];
+                    const processed = await this.processImageToBlob(item, 1600, 0.88);
+                    const arrayBuffer = await processed.blob.arrayBuffer();
+                    processedPhotos.push({
+                        data: new Uint8Array(arrayBuffer),
+                        w: processed.width,
+                        h: processed.height,
+                        item: item
+                    });
+                }
+
+                let docSections = [];
+
+                // -------------------------------------------------------------
+                // 1. 經典版型：上下兩張 (A4 直式，100% 精準對齊 上下兩張.docx 範本)
+                // -------------------------------------------------------------
+                if (layout === 'up_down_2') {
+                    const children = [];
+                    // 範本大圖限制：寬約 520px，高約 360px (精確置中對齊 5726 dxa 高度)
+                    const MAX_IMG_W = 520;
+                    const MAX_IMG_H = 360;
+
+                    for (let i = 0; i < processedPhotos.length; i++) {
+                        const p = processedPhotos[i];
+                        let imgW = p.w;
+                        let imgH = p.h;
+                        const ratio = Math.min(MAX_IMG_W / imgW, MAX_IMG_H / imgH, 1);
+                        imgW = Math.round(imgW * ratio);
+                        imgH = Math.round(imgH * ratio);
+
+                        // 構建與 上下兩張.docx 完全相同的 4 列 9 欄 OpenXML 表格
+                        const table = new Table({
+                            width: { size: 8302, type: WidthType.DXA },
+                            columnWidths: [553, 554, 731, 1559, 709, 1701, 142, 709, 1644],
+                            cantSplit: true,
+                            borders: bordersAllSingle,
+                            rows: [
+                                // Row 1: 案由 | [案由名稱] | 日期 | [採證日期] | 時間 | [時間]
+                                new TableRow({
+                                    height: { value: 420, rule: HeightRule.ATLEAST },
+                                    children: [
+                                        new TableCell({ width: { size: 1107, type: WidthType.DXA }, columnSpan: 2, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "案由", bold: true, font: "標楷體", size: 24 })] })] }),
+                                        new TableCell({ width: { size: 2290, type: WidthType.DXA }, columnSpan: 2, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: caseTitle, font: "標楷體", size: 22 })] })] }),
+                                        new TableCell({ width: { size: 709, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "日期", bold: true, font: "標楷體", size: 24 })] })] }),
+                                        new TableCell({ width: { size: 1843, type: WidthType.DXA }, columnSpan: 2, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: caseDate, font: "標楷體", size: 20 })] })] }),
+                                        new TableCell({ width: { size: 709, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "時間", bold: true, font: "標楷體", size: 24 })] })] }),
+                                        new TableCell({ width: { size: 1644, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: p.item.time, font: "標楷體", size: 20 })] })] }),
+                                    ]
+                                }),
+                                // Row 2: 照片主圖 (全寬 8302 dxa，高度 5726 dxa，精確置中)
+                                new TableRow({
+                                    height: { value: 5726, rule: HeightRule.EXACT },
+                                    children: [
+                                        new TableCell({
+                                            width: { size: 8302, type: WidthType.DXA },
+                                            columnSpan: 9,
+                                            borders: bordersAllSingle,
+                                            children: [
+                                                new Paragraph({
+                                                    alignment: AlignmentType.CENTER,
+                                                    children: [
+                                                        new ImageRun({
+                                                            data: p.data,
+                                                            transformation: { width: imgW, height: imgH },
+                                                        })
+                                                    ]
+                                                })
+                                            ]
+                                        })
+                                    ]
+                                }),
+                                // Row 3: 編號 | [編號] | 地點： | [地點] | 製作人 | [製作人]
+                                new TableRow({
+                                    height: { value: 375, rule: HeightRule.ATLEAST },
+                                    children: [
+                                        new TableCell({ width: { size: 553, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "編號", bold: true, font: "標楷體", size: 22 })] })] }),
+                                        new TableCell({ width: { size: 554, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: p.item.seq, bold: true, font: "標楷體", size: 22 })] })] }),
+                                        new TableCell({ width: { size: 731, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "地點：", bold: true, font: "標楷體", size: 22 })] })] }),
+                                        new TableCell({ width: { size: 3969, type: WidthType.DXA }, columnSpan: 3, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.LEFT, children: [new TextRun({ text: p.item.location, font: "標楷體", size: 22 })] })] }),
+                                        new TableCell({ width: { size: 851, type: WidthType.DXA }, columnSpan: 2, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "製作人", bold: true, font: "標楷體", size: 22 })] })] }),
+                                        new TableCell({ width: { size: 1644, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.LEFT, children: [new TextRun({ text: globalOfficer, font: "標楷體", size: 22 })] })] }),
+                                    ]
+                                }),
+                                // Row 4: 說明 | [現場跡證說明]
+                                new TableRow({
+                                    height: { value: 664, rule: HeightRule.ATLEAST },
+                                    children: [
+                                        new TableCell({ width: { size: 1107, type: WidthType.DXA }, columnSpan: 2, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "說明", bold: true, font: "標楷體", size: 22 })] })] }),
+                                        new TableCell({
+                                            width: { size: 7195, type: WidthType.DXA },
+                                            columnSpan: 7,
+                                            borders: bordersAllSingle,
+                                            children: [
+                                                new Paragraph({
+                                                    alignment: AlignmentType.LEFT,
+                                                    children: [new TextRun({ text: p.item.desc || "現場照片紀錄。", font: "標楷體", size: 20 })]
+                                                })
+                                            ]
+                                        })
+                                    ]
+                                })
+                            ]
+                        });
+
+                        children.push(table);
+
+                        // 上下兩張表格之間：精確設定固定行高 5 點 (line: 100, lineRule: exact)，前後段距離 0
+                        if (i % 2 === 0 && i < processedPhotos.length - 1) {
+                            children.push(new Paragraph({
+                                spacing: { line: 100, lineRule: LineRuleType.EXACT, before: 0, after: 0 }
+                            }));
+                        } else if (i % 2 === 1 && i < processedPhotos.length - 1) {
+                            children.push(new Paragraph({
+                                pageBreakBefore: true,
+                                spacing: { line: 20, lineRule: LineRuleType.EXACT, before: 0, after: 0 }
+                            }));
+                        }
+                    }
+
+                    // 頁首 Header: 置中 標楷體 18pt 粗體
+                    // 頁尾 Footer: 置中 標楷體 10pt (第 X 頁 / 共 Y 頁)
+                    docSections.push({
+                        properties: {
+                            page: {
+                                size: { width: 11906, height: 16838, orientation: PageOrientation.PORTRAIT },
+                                margin: { top: 1077, right: 1797, bottom: 907, left: 1797, header: 850, footer: 567 }
+                            }
+                        },
+                        headers: {
+                            default: new Header({
+                                children: [
+                                    new Paragraph({
+                                        alignment: AlignmentType.CENTER,
+                                        children: [new TextRun({ text: `${deptName}蒐證照片`, bold: true, font: "標楷體", size: 36 })]
+                                    })
+                                ]
+                            })
+                        },
+                        footers: {
+                            default: new Footer({
+                                children: [
+                                    new Paragraph({
+                                        alignment: AlignmentType.CENTER,
+                                        children: [
+                                            new TextRun({ text: "第 ", font: "標楷體", size: 20 }),
+                                            new TextRun({ children: [PageNumber.CURRENT], font: "標楷體", size: 20 }),
+                                            new TextRun({ text: " 頁 / 共 ", font: "標楷體", size: 20 }),
+                                            new TextRun({ children: [PageNumber.TOTAL_PAGES], font: "標楷體", size: 20 }),
+                                            new TextRun({ text: " 頁", font: "標楷體", size: 20 }),
+                                        ]
+                                    })
+                                ]
+                            })
+                        },
+                        children: children
+                    });
+                }
+
+                // -------------------------------------------------------------
+                // 2. 對照版型：左右兩張 (A4 直式雙欄，100% 精準對齊 左右兩張.docx 範本)
+                // -------------------------------------------------------------
+                else if (layout === 'left_right_2') {
+                    const children = [];
+                    // 左右雙欄照片限制：寬約 300px，高約 600px (精確置中對齊 10642 dxa 高度)
+                    const MAX_IMG_W = 300;
+                    const MAX_IMG_H = 600;
+
+                    for (let i = 0; i < processedPhotos.length; i += 2) {
+                        const p1 = processedPhotos[i];
+                        const p2 = processedPhotos[i + 1] || null;
+
+                        let w1 = p1.w, h1 = p1.h;
+                        let r1 = Math.min(MAX_IMG_W / w1, MAX_IMG_H / h1, 1);
+                        w1 = Math.round(w1 * r1);
+                        h1 = Math.round(h1 * r1);
+
+                        let w2 = p2 ? p2.w : 1, h2 = p2 ? p2.h : 1;
+                        if (p2) {
+                            let r2 = Math.min(MAX_IMG_W / w2, MAX_IMG_H / h2, 1);
+                            w2 = Math.round(w2 * r2);
+                            h2 = Math.round(h2 * r2);
+                        }
+
+                        const table = new Table({
+                            width: { size: 9864, type: WidthType.DXA },
+                            columnWidths: [1000, 3932, 1000, 3932],
+                            cantSplit: true,
+                            borders: bordersAllSingle,
+                            rows: [
+                                // Row 1: 案由 (全寬 9864 dxa, 32pt/16pt 粗體置中)
+                                new TableRow({
+                                    height: { value: 500, rule: HeightRule.ATLEAST },
+                                    children: [
+                                        new TableCell({
+                                            width: { size: 9864, type: WidthType.DXA },
+                                            columnSpan: 4,
+                                            borders: bordersAllSingle,
+                                            children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: caseTitle, bold: true, font: "標楷體", size: 32 })] })]
+                                        })
+                                    ]
+                                }),
+                                // Row 2: 蒐證時間/地點 (左) | 蒐證單位 (右)
+                                new TableRow({
+                                    height: { value: 400, rule: HeightRule.ATLEAST },
+                                    children: [
+                                        new TableCell({
+                                            width: { size: 4932, type: WidthType.DXA },
+                                            columnSpan: 2,
+                                            borders: bordersAllSingle,
+                                            children: [
+                                                new Paragraph({ children: [new TextRun({ text: "蒐證時間：", bold: true, font: "標楷體", size: 22 }), new TextRun({ text: `${caseDate} ${p1.item.time}`, font: "標楷體", size: 20 })] }),
+                                                new Paragraph({ children: [new TextRun({ text: "蒐證地點：", bold: true, font: "標楷體", size: 22 }), new TextRun({ text: p1.item.location, font: "標楷體", size: 20 })] })
+                                            ]
+                                        }),
+                                        new TableCell({
+                                            width: { size: 4932, type: WidthType.DXA },
+                                            columnSpan: 2,
+                                            borders: bordersAllSingle,
+                                            children: [
+                                                new Paragraph({ children: [new TextRun({ text: "蒐證單位：", bold: true, font: "標楷體", size: 22 }), new TextRun({ text: globalOfficer, font: "標楷體", size: 20 })] })
+                                            ]
+                                        })
+                                    ]
+                                }),
+                                // Row 3: 左右雙照片 (各 4932 dxa，高度 10642 dxa，精確置中)
+                                new TableRow({
+                                    height: { value: 10642, rule: HeightRule.EXACT },
+                                    children: [
+                                        new TableCell({
+                                            width: { size: 4932, type: WidthType.DXA },
+                                            columnSpan: 2,
+                                            borders: bordersAllSingle,
+                                            children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new ImageRun({ data: p1.data, transformation: { width: w1, height: h1 } })] })]
+                                        }),
+                                        new TableCell({
+                                            width: { size: 4932, type: WidthType.DXA },
+                                            columnSpan: 2,
+                                            borders: bordersAllSingle,
+                                            children: [
+                                                p2 ? new Paragraph({ alignment: AlignmentType.CENTER, children: [new ImageRun({ data: p2.data, transformation: { width: w2, height: h2 } })] })
+                                                   : new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "（無照片）", font: "標楷體", size: 20 })] })
+                                            ]
+                                        })
+                                    ]
+                                }),
+                                // Row 4: 編號 | [編號1] | 編號 | [編號2]
+                                new TableRow({
+                                    height: { value: 380, rule: HeightRule.ATLEAST },
+                                    children: [
+                                        new TableCell({ width: { size: 1000, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "編號", bold: true, font: "標楷體", size: 22 })] })] }),
+                                        new TableCell({ width: { size: 3932, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: p1.item.seq, font: "標楷體", size: 22 })] })] }),
+                                        new TableCell({ width: { size: 1000, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "編號", bold: true, font: "標楷體", size: 22 })] })] }),
+                                        new TableCell({ width: { size: 3932, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: p2 ? p2.item.seq : "", font: "標楷體", size: 22 })] })] }),
+                                    ]
+                                }),
+                                // Row 5: 說明 | [說明1] | 說明 | [說明2]
+                                new TableRow({
+                                    height: { value: 1200, rule: HeightRule.ATLEAST },
+                                    children: [
+                                        new TableCell({ width: { size: 1000, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "說明", bold: true, font: "標楷體", size: 22 })] })] }),
+                                        new TableCell({ width: { size: 3932, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.LEFT, children: [new TextRun({ text: p1.item.desc || "無說明", font: "標楷體", size: 20 })] })] }),
+                                        new TableCell({ width: { size: 1000, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "說明", bold: true, font: "標楷體", size: 22 })] })] }),
+                                        new TableCell({ width: { size: 3932, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.LEFT, children: [new TextRun({ text: p2 ? (p2.item.desc || "無說明") : "", font: "標楷體", size: 20 })] })] }),
+                                    ]
+                                })
+                            ]
+                        });
+
+                        children.push(table);
+
+                        if (i + 2 < processedPhotos.length) {
+                            children.push(new Paragraph({ pageBreakBefore: true }));
+                        }
+                    }
+
+                    docSections.push({
+                        properties: {
+                            page: {
+                                size: { width: 11906, height: 16838, orientation: PageOrientation.PORTRAIT },
+                                margin: { top: 1020, right: 1020, bottom: 1020, left: 1020, header: 720, footer: 720 }
+                            }
+                        },
+                        headers: {
+                            default: new Header({
+                                children: [
+                                    new Paragraph({
+                                        alignment: AlignmentType.CENTER,
+                                        children: [new TextRun({ text: `${deptName}蒐證照片`, bold: true, font: "標楷體", size: 36 })]
+                                    })
+                                ]
+                            })
+                        },
+                        footers: {
+                            default: new Footer({
+                                children: [
+                                    new Paragraph({
+                                        alignment: AlignmentType.CENTER,
+                                        children: [
+                                            new TextRun({ text: "第 ", font: "標楷體", size: 20 }),
+                                            new TextRun({ children: [PageNumber.CURRENT], font: "標楷體", size: 20 }),
+                                            new TextRun({ text: " 頁 / 共 ", font: "標楷體", size: 20 }),
+                                            new TextRun({ children: [PageNumber.TOTAL_PAGES], font: "標楷體", size: 20 }),
+                                            new TextRun({ text: " 頁", font: "標楷體", size: 20 }),
+                                        ]
+                                    })
+                                ]
+                            })
+                        },
+                        children: children
+                    });
+                }
+
+                // -------------------------------------------------------------
+                // 3. 廣角版型：橫式三張 (A4 橫式三欄，100% 精準對齊 橫式三張.docx 範本)
+                // -------------------------------------------------------------
+                else if (layout === 'landscape_3') {
+                    const children = [];
+                    // 橫式三欄照片限制：寬約 320px，高約 480px (精確置中對齊 8254 dxa 高度)
+                    const MAX_IMG_W = 320;
+                    const MAX_IMG_H = 480;
+
+                    for (let i = 0; i < processedPhotos.length; i += 3) {
+                        const p1 = processedPhotos[i];
+                        const p2 = processedPhotos[i + 1] || null;
+                        const p3 = processedPhotos[i + 2] || null;
+
+                        const calcSize = (p) => {
+                            if (!p) return { w: 1, h: 1 };
+                            let w = p.w, h = p.h;
+                            let r = Math.min(MAX_IMG_W / w, MAX_IMG_H / h, 1);
+                            return { w: Math.round(w * r), h: Math.round(h * r) };
+                        };
+
+                        const s1 = calcSize(p1);
+                        const s2 = calcSize(p2);
+                        const s3 = calcSize(p3);
+
+                        const table = new Table({
+                            width: { size: 15648, type: WidthType.DXA },
+                            columnWidths: [1266, 3950, 1295, 3921, 1182, 4034],
+                            cantSplit: true,
+                            borders: bordersAllSingle,
+                            rows: [
+                                // Row 1: 蒐證時間 | [時間] | 蒐證地點 | [地點] | 製作人 | [製作人]
+                                new TableRow({
+                                    height: { value: 420, rule: HeightRule.ATLEAST },
+                                    children: [
+                                        new TableCell({ width: { size: 1266, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "蒐證時間", bold: true, font: "標楷體", size: 24 })] })] }),
+                                        new TableCell({ width: { size: 3950, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: `${caseDate} ${p1.item.time}`, font: "標楷體", size: 24 })] })] }),
+                                        new TableCell({ width: { size: 1295, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "蒐證地點", bold: true, font: "標楷體", size: 24 })] })] }),
+                                        new TableCell({ width: { size: 3921, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: p1.item.location, font: "標楷體", size: 24 })] })] }),
+                                        new TableCell({ width: { size: 1182, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "製作人", bold: true, font: "標楷體", size: 24 })] })] }),
+                                        new TableCell({ width: { size: 4034, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: globalOfficer, font: "標楷體", size: 24 })] })] }),
+                                    ]
+                                }),
+                                // Row 2: 照片編號 | [編號1] | 照片編號 | [編號2] | 照片編號 | [編號3]
+                                new TableRow({
+                                    height: { value: 380, rule: HeightRule.ATLEAST },
+                                    children: [
+                                        new TableCell({ width: { size: 1266, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "照片編號", bold: true, font: "標楷體", size: 24 })] })] }),
+                                        new TableCell({ width: { size: 3950, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: p1.item.seq, font: "標楷體", size: 24 })] })] }),
+                                        new TableCell({ width: { size: 1295, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "照片編號", bold: true, font: "標楷體", size: 24 })] })] }),
+                                        new TableCell({ width: { size: 3921, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: p2 ? p2.item.seq : "", font: "標楷體", size: 24 })] })] }),
+                                        new TableCell({ width: { size: 1182, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "照片編號", bold: true, font: "標楷體", size: 24 })] })] }),
+                                        new TableCell({ width: { size: 4034, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: p3 ? p3.item.seq : "", font: "標楷體", size: 24 })] })] }),
+                                    ]
+                                }),
+                                // Row 3: 並排三照片 (各 5216 dxa，高度 8254 dxa，精確置中)
+                                new TableRow({
+                                    height: { value: 8254, rule: HeightRule.EXACT },
+                                    children: [
+                                        new TableCell({ width: { size: 5216, type: WidthType.DXA }, columnSpan: 2, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new ImageRun({ data: p1.data, transformation: { width: s1.w, height: s1.h } })] })] }),
+                                        new TableCell({ width: { size: 5216, type: WidthType.DXA }, columnSpan: 2, borders: bordersAllSingle, children: [p2 ? new Paragraph({ alignment: AlignmentType.CENTER, children: [new ImageRun({ data: p2.data, transformation: { width: s2.w, height: s2.h } })] }) : new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "（無照片）", font: "標楷體", size: 20 })] })] }),
+                                        new TableCell({ width: { size: 5216, type: WidthType.DXA }, columnSpan: 2, borders: bordersAllSingle, children: [p3 ? new Paragraph({ alignment: AlignmentType.CENTER, children: [new ImageRun({ data: p3.data, transformation: { width: s3.w, height: s3.h } })] }) : new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "（無照片）", font: "標楷體", size: 20 })] })] }),
+                                    ]
+                                }),
+                                // Row 4: 照片說明 | [說明1] | 照片說明 | [說明2] | 照片說明 | [說明3]
+                                new TableRow({
+                                    height: { value: 962, rule: HeightRule.ATLEAST },
+                                    children: [
+                                        new TableCell({ width: { size: 1266, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "照片說明", bold: true, font: "標楷體", size: 24 })] })] }),
+                                        new TableCell({ width: { size: 3950, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: p1.item.desc || "無", font: "標楷體", size: 20 })] })] }),
+                                        new TableCell({ width: { size: 1295, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "照片說明", bold: true, font: "標楷體", size: 24 })] })] }),
+                                        new TableCell({ width: { size: 3921, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: p2 ? (p2.item.desc || "無") : "", font: "標楷體", size: 20 })] })] }),
+                                        new TableCell({ width: { size: 1182, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "照片說明", bold: true, font: "標楷體", size: 24 })] })] }),
+                                        new TableCell({ width: { size: 4034, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: p3 ? (p3.item.desc || "無") : "", font: "標楷體", size: 20 })] })] }),
+                                    ]
+                                })
+                            ]
+                        });
+
+                        children.push(table);
+
+                        if (i + 3 < processedPhotos.length) {
+                            children.push(new Paragraph({ pageBreakBefore: true }));
+                        }
+                    }
+
+                    // 橫式三張 Header: 置中 標楷體 18pt 粗體
+                    // 橫式三張 Footer: 置中 標楷體 10pt (第 X 頁 / 共 Y 頁)
+                    docSections.push({
+                        properties: {
+                            page: {
+                                size: { width: 16838, height: 11906, orientation: PageOrientation.LANDSCAPE },
+                                margin: { top: 454, right: 510, bottom: 680, left: 510, header: 283, footer: 283 }
+                            }
+                        },
+                        headers: {
+                            default: new Header({
+                                children: [
+                                    new Paragraph({
+                                        alignment: AlignmentType.CENTER,
+                                        children: [new TextRun({ text: `${deptName}${caseTitle}蒐證照片`, bold: true, font: "標楷體", size: 36 })]
+                                    })
+                                ]
+                            })
+                        },
+                        footers: {
+                            default: new Footer({
+                                children: [
+                                    new Paragraph({
+                                        alignment: AlignmentType.CENTER,
+                                        children: [
+                                            new TextRun({ text: "第 ", font: "標楷體", size: 20 }),
+                                            new TextRun({ children: [PageNumber.CURRENT], font: "標楷體", size: 20 }),
+                                            new TextRun({ text: " 頁 / 共 ", font: "標楷體", size: 20 }),
+                                            new TextRun({ children: [PageNumber.TOTAL_PAGES], font: "標楷體", size: 20 }),
+                                            new TextRun({ text: " 頁", font: "標楷體", size: 20 }),
+                                        ]
+                                    })
+                                ]
+                            })
+                        },
+                        children: children
+                    });
+                }
+
+                const doc = new Document({
+                    styles: {
+                        default: {
+                            document: {
+                                run: {
+                                    font: "標楷體",
+                                    size: 22,
+                                    color: "000000"
+                                }
+                            }
+                        }
+                    },
+                    sections: docSections
+                });
+
+                const blob = await Packer.toBlob(doc);
+                const safeName = `${caseDate || '報告'}_${caseTitle}_現場照片清冊.docx`.replace(/[\\/:*?"<>|]/g, '_');
+                saveAs(blob, safeName);
+            }
+
+            exportExcel() {
+                if (!this.photos.length) return alert('請先載入照片！');
+                if (typeof XLSX === 'undefined') return alert('SheetJS 尚未載入！');
+
+                const caseTitle = document.getElementById('caseTitle').value.trim() || '詐欺案';
+                const caseDate = document.getElementById('caseDate').value.trim() || '';
+                const globalOfficer = document.getElementById('officerName').value.trim() || '巡官梁家豪';
+
+                const headers = ['編號', '檔名', '案由', '日期', '時間', '地點', '製作人', '說明'];
+                const data = [headers];
+
+                this.photos.forEach(p => {
+                    data.push([
+                        p.seq,
+                        p.name,
+                        caseTitle,
+                        caseDate,
+                        p.time,
+                        p.location,
+                        globalOfficer,
+                        p.desc
+                    ]);
+                });
+
+                const ws = XLSX.utils.aoa_to_sheet(data);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, '工作表1');
+
+                const safeName = `${caseDate || '報告'}_${caseTitle}_資料清單.xlsx`.replace(/[\\/:*?"<>|]/g, '_');
+                XLSX.writeFile(wb, safeName);
+            }
+
+            importExcel(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = (evt) => {
+                    const data = new Uint8Array(evt.target.result);
+                    const wb = XLSX.read(data, { type: 'array' });
+                    const wsName = wb.SheetNames[0];
+                    const ws = wb.Sheets[wsName];
+                    const json = XLSX.utils.sheet_to_json(ws, { header: 1 });
+
+                    if (json.length < 2) return alert('Excel 內無有效資料！');
+
+                    const headerRow = json[0];
+                    const idxSeq = headerRow.findIndex(h => /編號|序號/i.test(h));
+                    const idxName = headerRow.findIndex(h => /檔名|照片/i.test(h));
+                    const idxTime = headerRow.findIndex(h => /時間/i.test(h));
+                    const idxLoc = headerRow.findIndex(h => /地點/i.test(h));
+                    const idxDesc = headerRow.findIndex(h => /說明|內容/i.test(h));
+
+                    let matchCount = 0;
+
+                    for (let r = 1; r < json.length; r++) {
+                        const row = json[r];
+                        if (!row || !row.length) continue;
+
+                        const rowSeq = idxSeq !== -1 ? String(row[idxSeq] || '').trim() : '';
+                        const rowName = idxName !== -1 ? String(row[idxName] || '').trim() : '';
+
+                        const target = this.photos.find(p => (rowName && p.name === rowName) || (rowSeq && p.seq === rowSeq));
+                        if (target) {
+                            if (idxTime !== -1 && row[idxTime]) target.time = String(row[idxTime]).trim();
+                            if (idxLoc !== -1 && row[idxLoc]) target.location = String(row[idxLoc]).trim();
+                            if (idxDesc !== -1 && row[idxDesc]) target.desc = String(row[idxDesc]).trim();
+                            matchCount++;
+                        }
+                    }
+
+                    this.render();
+                    alert(`Excel 匯入完成！成功對齊更新 ${matchCount} 筆照片說明！`);
+                };
+                reader.readAsArrayBuffer(file);
+                e.target.value = '';
+            }
+
+            async exportZip() {
+                if (!this.photos.length) return alert('請先載入照片！');
+                if (typeof JSZip === 'undefined') return alert('JSZip 尚未載入！');
+
+                const zip = new JSZip();
+                const caseTitle = document.getElementById('caseTitle').value.trim() || '現場照片';
+
+                for (let i = 0; i < this.photos.length; i++) {
+                    const p = this.photos[i];
+                    const processed = await this.processImageToBlob(p, 1600, 0.88);
+                    const ext = 'jpg';
+                    const filename = `${p.seq}_${p.name.replace(/\.[^/.]+$/, '')}.${ext}`;
+                    zip.file(filename, processed.blob);
+                }
+
+                const content = await zip.generateAsync({ type: 'blob' });
+                saveAs(content, `${caseTitle}_最佳化照片包.zip`);
+            }
         }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            window.app = new PhotoReportApp();
+        });
     </script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&display=swap"
-        rel="stylesheet">
-    <style>
-        body {
-            font-family: "Microsoft JhengHei", "Segoe UI", system-ui, sans-serif;
-            background: #F3F5F8 !important;
-            color: #2B364B;
-        }
-        .bg-gradient-to-r.from-blue-600.to-blue-800 { background-image: linear-gradient(135deg, #526F94, #486384) !important; }
-        .bg-blue-50, .bg-gray-50 { background-color: #EDF2F5 !important; }
-        .border-blue-100 { border-color: #C8D6E3 !important; }
-        .text-blue-800, .text-blue-600 { color: #58789A !important; }
-        .border-blue-600 { border-color: #526F94 !important; }
-        .bg-blue-600 { background-color: #526F94 !important; }
-        .hover\:bg-blue-700:hover { background-color: #58789A !important; }
-        .text-gray-900 { color: #2B364B !important; }
-        .text-gray-600, .text-gray-500 { color: #667080 !important; }
-        .shadow-xl { box-shadow: 0 8px 30px rgba(160, 175, 195, .16) !important; }
-    </style>
-</head>
-
-<body class="bg-gray-100 min-h-screen text-gray-800 flex flex-col items-center p-6">
-
-    <div class="max-w-3xl w-full bg-white rounded-2xl shadow-xl overflow-hidden mt-8 md:mt-16 animate-fade-in-up">
-        <!-- Header -->
-        <div class="bg-gradient-to-r from-blue-600 to-blue-800 p-8 text-center text-white">
-            <h1 class="text-3xl md:text-4xl font-bold mb-2">現況照片清冊生成工具</h1>
-            <p class="text-blue-100 text-sm md:text-base tracking-wide">Photo Report Generator (VBA) v1.1.2</p>
-        </div>
-
-        <!-- Content -->
-        <div class="p-8 space-y-8">
-            <!-- Introduction -->
-            <section>
-                <h2 class="text-xl font-bold text-gray-900 border-l-4 border-blue-600 pl-3 mb-4">專案簡介</h2>
-                <p class="text-gray-600 leading-relaxed">
-                    這是一個基於 Excel VBA 開發的自動化工具，專為需要製作大量現況照片清冊的工程或行政人員設計。這套工具能協助您快速將照片匯入 Excel，自動調整大小與格式，大幅縮短製作報告的時間。
-                </p>
-            </section>
-
-            <!-- Key Features -->
-            <section class="grid md:grid-cols-2 gap-6">
-                <div class="bg-blue-50 p-5 rounded-lg border border-blue-100">
-                    <h3 class="font-bold text-blue-800 mb-2 flex items-center">
-                        ⚡ 快速匯入
-                    </h3>
-                    <p class="text-sm text-gray-600">一鍵選取資料夾，自動讀取多張照片並依序排列。</p>
-                </div>
-                <div class="bg-blue-50 p-5 rounded-lg border border-blue-100">
-                    <h3 class="font-bold text-blue-800 mb-2 flex items-center">
-                        📏 自動排版
-                    </h3>
-                    <p class="text-sm text-gray-600">自動調整圖片尺寸以符合儲存格大小，無需手動縮放。</p>
-                </div>
-            </section>
-
-            <!-- Download Section -->
-            <section class="text-center pt-6 border-t border-gray-100">
-                <h2 class="text-xl font-bold text-gray-900 mb-4">立即下載</h2>
-                <p class="text-gray-500 mb-6 text-sm">下載包含 .xlsm 程式與 Word 範本的完整壓縮檔</p>
-
-                <a href="downloads/Photo%20Report.rar" download
-                    class="inline-flex items-center justify-center px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-full transition-all duration-300 shadow-lg hover:shadow-blue-500/30 transform hover:-translate-y-1">
-                    <svg width="20" height="20" class="w-5 h-5 mr-2" fill="none" stroke="currentColor"
-                        viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
-                    </svg>
-                    下載完整工具包 (RAR)
-                </a>
-            </section>
-        </div>
-
-        <!-- Footer -->
-        <footer class="bg-gray-50 p-4 text-center text-xs text-gray-400 border-t border-gray-100">
-            <p>&copy; 2025 Photo Report Generator v1.1.2. Hosted on GitHub Pages.</p>
-        
-      <p style="text-align: center; font-size: 0.8rem; color: #888; margin-top: 10px; padding-bottom: 20px;">版本號碼：v1.1.2 (Build 23) | 開發者資訊：Chia-Hao</p>
-    </footer>
-    </div>
-
 </body>
-
 </html>

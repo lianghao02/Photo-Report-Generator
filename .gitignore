@@ -1,4 +1,4 @@
-﻿node_modules/
+node_modules/
 dist/
 build/
 .env
@@ -9,3 +9,9 @@ Thumbs.db
 ~$*
 python_embed/
 python-embed/
+
+# Tauri / Rust 編譯產出（體積龐大，不追蹤）
+src-tauri/target/
+
+# Tauri 前端暫存目錄（由 beforeBuildCommand 自動複製生成）
+web/
