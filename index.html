@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="mobile-web-app-capable" content="yes">
-    <title>現況照片清冊生成工具 v2.1.1</title>
+    <title>現況照片清冊生成工具 v2.1.2</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📷</text></svg>">
 
     <link rel="stylesheet" href="vendor/tailwind.css">
@@ -380,7 +380,7 @@
                     <span id="selectedCountBadge" class="hidden font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">已選取 0 張</span>
                 </div>
                 <div class="text-[#526F94] flex items-center gap-2">
-                    <span>💡 Ctrl＋滾輪調整縮圖；畫布空白處可框選；Ctrl＋←／→ 移動已選照片</span>
+                    <span>💡 Ctrl＋滾輪調整縮圖；畫布空白處可框選；Ctrl＋←／→／↑／↓ 移動已選照片</span>
                 </div>
             </div>
             <div id="processingStatus" class="hidden px-1 text-xs text-[#526F94]" role="status" aria-live="polite">
@@ -440,12 +440,23 @@
 
                             <div>
                                 <div class="flex items-center justify-between mb-0.5">
+                                    <label class="font-bold text-[#667080]">採證日期（個別，民國年）</label>
+                                    <button type="button" id="btnFillDownDate" title="將此日期向下填滿" class="text-[10px] text-[#526F94] hover:underline flex items-center gap-0.5">
+                                        <i class="fa-solid fa-arrow-down"></i> 向下填滿
+                                    </button>
+                                </div>
+                                <input type="text" id="editDate" class="input-field w-full text-xs font-mono tracking-widest" placeholder="留空=用全域日期　輸入7碼：1130826">
+                                <p class="text-[10px] text-[#A0AEC0] mt-0.5">格式 YYY/MM/DD，空白時使用左側全域日期</p>
+                            </div>
+
+                            <div>
+                                <div class="flex items-center justify-between mb-0.5">
                                     <label class="font-bold text-[#667080]">採證 / 監視器時間</label>
                                     <button type="button" id="btnFillDownTime" title="將此時間向下填滿" class="text-[10px] text-[#526F94] hover:underline flex items-center gap-0.5">
                                         <i class="fa-solid fa-arrow-down"></i> 向下填滿
                                     </button>
                                 </div>
-                                <input type="text" id="editTime" class="input-field w-full text-xs" placeholder="例如：14時32分">
+                                <input type="text" id="editTime" class="input-field w-full text-xs font-mono tracking-widest" placeholder="輸入4碼=HH:MM，6碼=HH:MM:SS">
                             </div>
 
                             <div>
@@ -508,6 +519,10 @@
                             </th>
                             <th class="p-2.5 w-12 text-center">縮圖</th>
                             <th class="p-2.5 w-20">編號</th>
+                            <th class="p-2.5 w-32">
+                                採證日期
+                                <button type="button" onclick="window.app.fillDownFirst('date')" title="向下填滿第一筆日期" class="ml-1 text-[#526F94] hover:underline"><i class="fa-solid fa-arrow-down"></i></button>
+                            </th>
                             <th class="p-2.5 w-36">
                                 採證時間
                                 <button type="button" onclick="window.app.fillDownFirst('time')" title="向下填滿第一筆時間" class="ml-1 text-[#526F94] hover:underline"><i class="fa-solid fa-arrow-down"></i></button>
@@ -647,6 +662,7 @@
                 this.editorTitle = document.getElementById('editorTitle');
                 this.editorModeBadge = document.getElementById('editorModeBadge');
                 this.editSeq = document.getElementById('editSeq');
+                this.editDate = document.getElementById('editDate');
                 this.editTime = document.getElementById('editTime');
                 this.editLocation = document.getElementById('editLocation');
                 this.editDesc = document.getElementById('editDesc');
@@ -711,11 +727,36 @@
 
                 // 右側編輯器即時輸入事件
                 this.editSeq.addEventListener('input', (e) => this.updateCurrentPhoto('seq', e.target.value));
-                this.editTime.addEventListener('input', (e) => this.updateCurrentPhoto('time', e.target.value));
+                this.editTime.addEventListener('input', (e) => {
+                    const masked = this.formatTimeMask(e.target.value);
+                    if (masked !== e.target.value) {
+                        const pos = e.target.selectionStart;
+                        e.target.value = masked;
+                        // 游標跟著數字走（跳過自動插入的冒號）
+                        e.target.selectionStart = e.target.selectionEnd = Math.min(pos + (masked.length - e.target.value.length + (masked.length - e.target.value.length)), masked.length);
+                    }
+                    this.updateCurrentPhoto('time', masked);
+                });
+                this.editTime.addEventListener('blur', (e) => {
+                    const masked = this.formatTimeMask(e.target.value, true);
+                    e.target.value = masked;
+                    this.updateCurrentPhoto('time', masked);
+                });
+                this.editDate.addEventListener('input', (e) => {
+                    const masked = this.formatDateMask(e.target.value);
+                    if (masked !== e.target.value) e.target.value = masked;
+                    this.updateCurrentPhoto('date', masked);
+                });
+                this.editDate.addEventListener('blur', (e) => {
+                    const masked = this.formatDateMask(e.target.value, true);
+                    e.target.value = masked;
+                    this.updateCurrentPhoto('date', masked);
+                });
                 this.editLocation.addEventListener('input', (e) => this.updateCurrentPhoto('location', e.target.value));
                 this.editDesc.addEventListener('input', (e) => this.updateCurrentPhoto('desc', e.target.value));
 
                 // 右側向下填滿按鈕
+                document.getElementById('btnFillDownDate').addEventListener('click', () => this.fillDownFromIndex(this.currentIndex, 'date'));
                 document.getElementById('btnFillDownTime').addEventListener('click', () => this.fillDownFromIndex(this.currentIndex, 'time'));
                 document.getElementById('btnFillDownLocation').addEventListener('click', () => this.fillDownFromIndex(this.currentIndex, 'location'));
                 document.getElementById('btnFillDownDescAll').addEventListener('click', () => this.fillDownFromIndex(this.currentIndex, 'desc'));
@@ -726,7 +767,7 @@
                 document.getElementById('btnNextPhoto').addEventListener('click', () => this.navigatePhoto(1));
                 document.getElementById('btnDeleteCurrent').addEventListener('click', () => this.removePhoto(this.currentIndex));
 
-                // 鍵盤快速鍵：Alt＋左右切換；Ctrl＋左右與 Home／End 重排已選照片。
+                // 鍵盤快速鍵：Alt＋左右切換；Ctrl＋上下左右與 Home／End 重排已選照片。
                 window.addEventListener('keydown', (e) => {
                     if (this.isTypingTarget(e.target)) return;
                     if (e.key === 'Escape') this.closeModal('imageLightboxModal');
@@ -745,6 +786,14 @@
                     if (e.ctrlKey && e.key === 'ArrowRight') {
                         e.preventDefault();
                         this.moveSelectedBy(1);
+                    }
+                    if (e.ctrlKey && e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        this.moveSelectedBy(-this.getGridColumns());
+                    }
+                    if (e.ctrlKey && e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        this.moveSelectedBy(this.getGridColumns());
                     }
                     if (!e.ctrlKey && !e.altKey && e.key === 'Home') {
                         e.preventDefault();
@@ -792,7 +841,8 @@
                             rotation: 0,
                             exifRotation: await this.readJpegExifRotation(file),
                             seq: String(this.photos.length + 1),
-                            time: this.extractTimeFromFilename(file.name) || '12時00分',
+                            date: '',
+                            time: this.extractTimeFromFilename(file.name) || '12:00',
                             location: defaultLoc,
                             desc: '',
                             selected: false
@@ -912,11 +962,11 @@
 
             extractTimeFromFilename(filename) {
                 const m1 = filename.match(/(\d{4})[-_]?(\d{2})[-_]?(\d{2})[-_]?(\d{2})[-_]?(\d{2})[-_]?(\d{2})/);
-                if (m1) return `${m1[4]}時${m1[5]}分${m1[6]}秒`;
+                if (m1) return `${m1[4]}:${m1[5]}:${m1[6]}`;
                 const m2 = filename.match(/[-_](\d{2})(\d{2})(\d{2})[-_.]/);
-                if (m2) return `${m2[1]}時${m2[2]}分${m2[3]}秒`;
+                if (m2) return `${m2[1]}:${m2[2]}:${m2[3]}`;
                 const m3 = filename.match(/[-_](\d{2})(\d{2})[-_.]/);
-                if (m3) return `${m3[1]}時${m3[2]}分`;
+                if (m3) return `${m3[1]}:${m3[2]}`;
                 return null;
             }
 
@@ -973,11 +1023,21 @@
             fillDownFromIndex(index, field) {
                 if (!this.photos[index]) return;
                 const val = this.photos[index][field];
+                let skipped = 0;
                 for (let i = index + 1; i < this.photos.length; i++) {
+                    // 跡證說明欄位：若目標格已有資料，跳過不覆寫
+                    if (field === 'desc' && this.photos[i][field].trim() !== '') {
+                        skipped++;
+                        continue;
+                    }
                     this.photos[i][field] = val;
                 }
                 this.render();
-                alert(`已將第 ${index + 1} 張照片的內容向下填滿至所有照片！`);
+                if (field === 'desc' && skipped > 0) {
+                    alert(`已向下填滿說明內容，跳過 ${skipped} 張已有說明的照片。`);
+                } else {
+                    alert(`已將第 ${index + 1} 張照片的內容向下填滿至所有照片！`);
+                }
             }
 
             fillDownFirst(field) {
@@ -985,21 +1045,70 @@
                 this.fillDownFromIndex(0, field);
             }
 
+            // ── 時間遮罩 ────────────────────────────────────────
+            // 純數字 → 自動插入冒號：4碼=HH:MM，6碼=HH:MM:SS
+            // finalise=true 時才做截斷，輸入中允許超過位數以免卡住
+            formatTimeMask(raw, finalise = false) {
+                // 過濾出所有數字和已輸入的冒號（保留冒號讓手動輸入相容）
+                let digits = raw.replace(/[^0-9]/g, '');
+                if (finalise) digits = digits.slice(0, 6);
+
+                let result = '';
+                if (digits.length <= 4) {
+                    // 尚未完整，只插入第一個冒號
+                    result = digits.slice(0, 2);
+                    if (digits.length > 2) result += ':' + digits.slice(2, 4);
+                    else result = digits;
+                } else {
+                    // 6 碼：HH:MM:SS
+                    result = digits.slice(0, 2) + ':' + digits.slice(2, 4) + ':' + digits.slice(4, 6);
+                }
+                return result;
+            }
+
+            // ── 日期遮罩 ────────────────────────────────────────
+            // 民國年 3 碼 + 月 2 碼 + 日 2 碼 = 7 碼數字
+            // 輸入 1130826 → 113/08/26
+            formatDateMask(raw, finalise = false) {
+                let digits = raw.replace(/[^0-9]/g, '');
+                if (finalise) digits = digits.slice(0, 7);
+
+                let result = '';
+                if (digits.length === 0) return '';
+                result = digits.slice(0, 3);
+                if (digits.length > 3) result += '/' + digits.slice(3, 5);
+                if (digits.length > 5) result += '/' + digits.slice(5, 7);
+                return result;
+            }
+
+            // ── 計算目前畫布的欄數（用於 Ctrl+↑↓ 整列移動）────
+            getGridColumns() {
+                try {
+                    const style = window.getComputedStyle(this.thumbGrid);
+                    const cols = style.gridTemplateColumns.split(' ').filter(s => s && s !== '0px').length;
+                    return cols > 0 ? cols : 3;
+                } catch {
+                    return 3;
+                }
+            }
+
             // 批次套用右側編輯器內容至已選取照片
             applyEditorToSelected() {
                 const selectedList = this.photos.filter(p => p.selected);
                 if (selectedList.length === 0) return alert('請先在左側勾選要套用的照片！');
 
+                const dateVal = this.editDate.value.trim();
                 const timeVal = this.editTime.value.trim();
                 const locVal = this.editLocation.value.trim();
                 const descVal = this.editDesc.value.trim();
                 const applyEmptyValues = this.batchApplyEmptyValues.checked;
 
-                if (!applyEmptyValues && !timeVal && !locVal && !descVal) {
-                    return alert('請先填寫要套用的時間、地點或說明；若要清除資料，請勾選「空白欄位也覆寫」。');
+                if (!applyEmptyValues && !dateVal && !timeVal && !locVal && !descVal) {
+                    return alert('請先填寫要套用的日期、時間、地點或說明；若要清除資料，請勾選「空白欄位也覆寫」。');
                 }
 
                 selectedList.forEach(p => {
+                    if (dateVal || applyEmptyValues) p.date = dateVal;
                     if (timeVal || applyEmptyValues) p.time = timeVal;
                     if (locVal || applyEmptyValues) p.location = locVal;
                     if (descVal || applyEmptyValues) p.desc = descVal;
@@ -1203,21 +1312,27 @@
                 const selectedIndices = this.getSelectedIndicesOrCurrent();
                 if (!selectedIndices.length || !delta) return;
                 const currentPhoto = this.photos[this.currentIndex];
-                const selectedSet = new Set(selectedIndices);
 
-                if (delta < 0) {
-                    selectedIndices.forEach(index => {
-                        if (index > 0 && !selectedSet.has(index - 1)) {
-                            [this.photos[index - 1], this.photos[index]] = [this.photos[index], this.photos[index - 1]];
-                        }
-                    });
-                } else {
-                    [...selectedIndices].reverse().forEach(index => {
-                        if (index < this.photos.length - 1 && !selectedSet.has(index + 1)) {
-                            [this.photos[index + 1], this.photos[index]] = [this.photos[index], this.photos[index + 1]];
-                        }
-                    });
+                // 整組同步移動策略：
+                // 1. 分離選取組 (moving) 與非選取組 (remaining)
+                // 2. 找出選取組在 remaining 中的「錨點」(最小選取索引對應在 remaining 的位置)
+                // 3. 以 delta 調整插入位置後重組陣列
+                const selectedSet = new Set(selectedIndices);
+                const moving = this.photos.filter((_, i) => selectedSet.has(i));
+                const remaining = this.photos.filter((_, i) => !selectedSet.has(i));
+
+                // 錨點：選取組在原陣列中最小的索引，delta 決定在 remaining 中偏移幾格
+                const minSelectedIdx = Math.min(...selectedIndices);
+                // 計算 minSelectedIdx 在 remaining 中的對應位置
+                let anchor = 0;
+                for (let i = 0; i < this.photos.length; i++) {
+                    if (i === minSelectedIdx) break;
+                    if (!selectedSet.has(i)) anchor++;
                 }
+                const insertAt = Math.max(0, Math.min(anchor + delta, remaining.length));
+                remaining.splice(insertAt, 0, ...moving);
+                this.photos = remaining;
+
                 this.currentIndex = Math.max(0, this.photos.indexOf(currentPhoto));
                 this.lastSelectedIndex = this.currentIndex;
                 this.render();
@@ -1457,6 +1572,7 @@
                     titleText.textContent = `編輯第 ${this.currentIndex + 1} / ${totalPhotos} 張 (#${curPhoto.seq})`;
                     this.editorTitle.append(titleIcon, document.createTextNode(' '), titleText);
                     this.editSeq.value = curPhoto.seq || '';
+                    this.editDate.value = curPhoto.date || '';
                     this.editTime.value = curPhoto.time || '';
                     this.editLocation.value = curPhoto.location || '';
                     this.editDesc.value = curPhoto.desc || '';
@@ -1502,7 +1618,7 @@
 
                             <div class="text-[10px] text-[#667080] truncate flex items-center gap-1">
                                 <i class="fa-regular fa-clock text-[#526F94]"></i>
-                                <span>${escapeHtml(p.time || '未填時間')}</span>
+                                <span>${p.date ? escapeHtml(p.date + ' ') : ''}${escapeHtml(p.time || '未填時間')}</span>
                             </div>
                             <div id="desc_preview_${p.uid}" class="text-[10px] text-[#2B364B] bg-[#EDF2F5]/80 p-1 rounded truncate" title="${escapeHtml(p.desc || '無說明')}">
                                 ${p.desc ? escapeHtml(p.desc) : '<span class="text-[#A0AEC0]">（無說明）</span>'}
@@ -1525,7 +1641,10 @@
                             <input type="text" value="${escapeHtml(p.seq)}" oninput="window.app.updatePhotoField(${idx}, 'seq', this.value)" class="input-field w-full text-xs font-bold text-[#526F94]">
                         </td>
                         <td class="p-2">
-                            <input type="text" value="${escapeHtml(p.time)}" oninput="window.app.updatePhotoField(${idx}, 'time', this.value)" class="input-field w-full text-xs" placeholder="例如：14時32分">
+                            <input type="text" value="${escapeHtml(p.date || '')}" oninput="this.value = window.app.formatDateMask(this.value); window.app.updatePhotoField(${idx}, 'date', this.value)" class="input-field w-full text-xs font-mono" placeholder="留空=全域日期">
+                        </td>
+                        <td class="p-2">
+                            <input type="text" value="${escapeHtml(p.time)}" oninput="this.value = window.app.formatTimeMask(this.value); window.app.updatePhotoField(${idx}, 'time', this.value)" class="input-field w-full text-xs font-mono" placeholder="例如：14:32">
                         </td>
                         <td class="p-2">
                             <input type="text" value="${escapeHtml(p.location)}" oninput="window.app.updatePhotoField(${idx}, 'location', this.value)" class="input-field w-full text-xs">
@@ -1710,7 +1829,7 @@
                                         new TableCell({ width: { size: 1107, type: WidthType.DXA }, columnSpan: 2, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "案由", bold: true, font: "標楷體", size: 24 })] })] }),
                                         new TableCell({ width: { size: 2290, type: WidthType.DXA }, columnSpan: 2, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: caseTitle, font: "標楷體", size: 22 })] })] }),
                                         new TableCell({ width: { size: 709, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "日期", bold: true, font: "標楷體", size: 24 })] })] }),
-                                        new TableCell({ width: { size: 1843, type: WidthType.DXA }, columnSpan: 2, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: caseDate, font: "標楷體", size: 20 })] })] }),
+                                        new TableCell({ width: { size: 1843, type: WidthType.DXA }, columnSpan: 2, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: p.item.date || caseDate, font: "標楷體", size: 20 })] })] }),
                                         new TableCell({ width: { size: 709, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "時間", bold: true, font: "標楷體", size: 24 })] })] }),
                                         new TableCell({ width: { size: 1644, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: p.item.time, font: "標楷體", size: 20 })] })] }),
                                     ]
@@ -1878,7 +1997,7 @@
                                             borders: bordersAllSingle,
                                             verticalAlign: VerticalAlign.CENTER,
                                             children: [
-                                                new Paragraph({ children: [new TextRun({ text: "蒐證時間：", bold: true, font: "標楷體", size: 22 }), new TextRun({ text: `${caseDate} ${p1.item.time}`, font: "標楷體", size: 20 })] }),
+                                                new Paragraph({ children: [new TextRun({ text: "蒐證時間：", bold: true, font: "標楷體", size: 22 }), new TextRun({ text: `${p1.item.date || caseDate} ${p1.item.time}`, font: "標楷體", size: 20 })] }),
                                                 new Paragraph({ children: [new TextRun({ text: "蒐證地點：", bold: true, font: "標楷體", size: 22 }), new TextRun({ text: p1.item.location, font: "標楷體", size: 20 })] })
                                             ]
                                         }),
@@ -2017,7 +2136,7 @@
                                     height: { value: 420, rule: HeightRule.ATLEAST },
                                     children: [
                                         new TableCell({ width: { size: 1266, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "蒐證時間", bold: true, font: "標楷體", size: 24 })] })] }),
-                                        new TableCell({ width: { size: 3950, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: `${caseDate} ${p1.item.time}`, font: "標楷體", size: 24 })] })] }),
+                                        new TableCell({ width: { size: 3950, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: `${p1.item.date || caseDate} ${p1.item.time}`, font: "標楷體", size: 24 })] })] }),
                                         new TableCell({ width: { size: 1295, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "蒐證地點", bold: true, font: "標楷體", size: 24 })] })] }),
                                         new TableCell({ width: { size: 3921, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: p1.item.location, font: "標楷體", size: 24 })] })] }),
                                         new TableCell({ width: { size: 1182, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "製作人", bold: true, font: "標楷體", size: 24 })] })] }),
@@ -2143,7 +2262,7 @@
                         p.seq,
                         p.name,
                         caseTitle,
-                        caseDate,
+                        p.date || caseDate,
                         p.time,
                         p.location,
                         globalOfficer,
@@ -2178,6 +2297,7 @@
                         const headerRow = json[0];
                         const idxSeq = headerRow.findIndex(h => /編號|序號/i.test(h));
                         const idxName = headerRow.findIndex(h => /檔名|照片/i.test(h));
+                        const idxDate = headerRow.findIndex(h => /日期/i.test(h));
                         const idxTime = headerRow.findIndex(h => /時間/i.test(h));
                         const idxLoc = headerRow.findIndex(h => /地點/i.test(h));
                         const idxDesc = headerRow.findIndex(h => /說明|內容/i.test(h));
@@ -2195,6 +2315,7 @@
 
                             if (matches.length === 1) {
                                 const target = matches[0];
+                                if (idxDate !== -1 && row[idxDate]) target.date = String(row[idxDate]).trim();
                                 if (idxTime !== -1 && row[idxTime]) target.time = String(row[idxTime]).trim();
                                 if (idxLoc !== -1 && row[idxLoc]) target.location = String(row[idxLoc]).trim();
                                 if (idxDesc !== -1 && row[idxDesc]) target.desc = String(row[idxDesc]).trim();
