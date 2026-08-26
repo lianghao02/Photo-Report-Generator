@@ -12,6 +12,7 @@ python-embed/
 
 # Tauri / Rust 編譯產出（體積龐大，不追蹤）
 src-tauri/target/
+src-tauri/gen/
 
 # Tauri 前端暫存目錄（由 beforeBuildCommand 自動複製生成）
 web/

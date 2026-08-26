@@ -53,12 +53,21 @@ v2.0/v2.1 版本迎來重大架構革新：**徹底淘汰舊有 VBA 巨集與本
 
 ## 🚀 使用方式
 
+### 大量照片模式
+載入時會以低解析縮圖預覽，原圖只在 Word 或 ZIP 匯出時處理，適合數百張照片的清冊。超過 500 張或合計 2GB 時，系統會先顯示確認提示；超大批次仍建議依案情分冊匯出。
+
+### 工作台選取與排序
+- 在照片畫布按住 `Ctrl` 後滾動滑鼠滾輪，可將縮圖尺寸連續調整為 90–400px；一般滾輪仍用於捲動。
+- `Ctrl` 點選可多選、`Shift` 點選可連續選取，也可從畫布空白處拖曳框選；選取後直接拖曳任一卡片即可整組調整順序。
+- `Ctrl + ← / →` 可讓已選照片前後移動一格，`Home / End` 可直接移至首尾。
+- 在右側修改時間、地點或說明後，按「將已填欄位套用至已選照片」才會批次寫入；勾選「空白欄位也覆寫」可清除既有資料。
+
 ### 線上即用（推薦）
 直接點擊瀏覽器開啟：[https://lianghao02.github.io/Photo-Report-Generator/](https://lianghao02.github.io/Photo-Report-Generator/)
 
 ### 離線單機使用
-1. 下載專案根目錄下的 `index.html`。
-2. 直接雙擊 `index.html` 於瀏覽器開啟即可開始使用，完全不需要安裝 Python、Node.js 或 Office 巨集。
+1. 下載發行版的 Portable ZIP，或完整下載專案中的 `index.html` 與 `vendor/` 目錄。
+2. 保持兩者相對路徑不變後直接開啟 `index.html`，即可在無網路環境使用；完全不需要安裝 Python、Node.js 或 Office 巨集。
 
 ---
 
@@ -66,17 +75,33 @@ v2.0/v2.1 版本迎來重大架構革新：**徹底淘汰舊有 VBA 巨集與本
 
 ```text
 04_Photo-Report-Generator/
-├── .nojekyll
-├── CHANGELOG.md             # 版本更新紀錄
+├── .nojekyll                # 避免 GitHub Pages 略過下底線或 vendor 資源
+├── CHANGELOG.md             # 版本更新歷程紀錄
 ├── README.md                # 專案說明文件
-├── index.html               # 核心應用程式 (v2.0 純前端 SPA 工作台)
-├── legacy_vba/              # 舊版 VBA 歷史封存目錄 (清冊編輯VBA-0820.xlsm、三大 docx 範本)
+├── index.html               # 核心應用程式 (v2.1 純前端 SPA 工作台)
+├── vendor/                  # 100% 離線第三方函式庫 (Tailwind CSS, FontAwesome, docx.js, JSZip 等)
+├── test_photos/             # 現場照片測試資料集 (提供即時功能與排版驗證)
+├── src-tauri/               # Tauri v2 輕量桌面應用程式設定與 Rust 核心
 └── scripts/
+    ├── build-portable.ps1   # 一鍵桌面版打包腳本 (產出 NSIS 安裝包 + Portable ZIP)
+    ├── prepare-web.ps1      # 桌面版前端資源同步腳本 (自動整合 index.html 與 vendor/)
+    ├── prepare-assets.ps1   # 離線靜態資源產製與驗證腳本
+    ├── tailwind-input.css   # 離線樣式來源定義
     └── qa.ps1               # 專案品質與敏感資料檢核腳本
 ```
 
 ---
 
-## 📜 歷史版本說明
+## 📜 歷史版本與現代化架構演進
 
-舊版基於 Excel VBA 之巨集工具（`清冊編輯VBA-0820.xlsm`）與原始範本已完整封存於 `legacy_vba/` 資料夾內，僅供歷史查閱，新開發與實務作業全面推薦使用 `index.html` 網頁版。
+本專案經歷了完整的公務自動化技術演進：
+
+1. **早期舊版（Excel VBA 巨集）**：
+   - 早期依賴 `清冊編輯.xlsm` 搭配本機 Office COM 物件進行巨集套印。
+   - 缺點：易觸發公務電腦巨集資安警告、跨電腦版面易跑位、受限於 Office 版本安裝。已於 v2.0 全面除役退場。
+2. **評估方案（Python 自動化腳本）**：
+   - 曾評估以 Python (`python-docx` / `PySide6` / `PyInstaller`) 實作。
+   - 缺點：打包後體積龐大（通常達 40MB~80MB）、在無 Python 環境或內網封閉電腦常遇相依性地獄。
+3. **現行正式版（純前端 Web SPA + Tauri v2 桌面應用程式）**：
+   - **首選 Web**：直接採用純前端技術（HTML5 + Canvas + `docx.js` 記憶體即時組裝 OpenXML），瀏覽器開箱即用、零環境安裝負擔。
+   - **首選桌面**：以 **Tauri v2** 直接複用 Windows 內建 Edge WebView2 核心，打造出僅 **1.15 MB** 的安裝包與 **3.08 MB** 的免安裝單檔桌面程式，完美兼顧原生桌面手感與極致分發效率。

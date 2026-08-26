@@ -5,7 +5,7 @@
   "version": "1.0.0",
   "build": {
     "frontendDist": "../web",
-    "beforeBuildCommand": "powershell -Command \"Copy-Item -Path '../index.html' -Destination '../web/index.html' -Force\""
+    "beforeBuildCommand": "powershell -ExecutionPolicy Bypass -File scripts/prepare-web.ps1"
   },
   "app": {
     "windows": [
@@ -20,7 +20,7 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'"
     }
   },
   "bundle": {

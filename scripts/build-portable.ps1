@@ -15,11 +15,14 @@ $WebView2Dll = Join-Path $ReleaseDir "WebView2Loader.dll"
 
 Set-Location $Root
 
-Write-Host ">> Step 1: sync index.html" -ForegroundColor Cyan
-Copy-Item (Join-Path $Root "index.html") (Join-Path $Root "web\index.html") -Force
+Write-Host ">> Step 1: sync web assets" -ForegroundColor Cyan
+& (Join-Path $PSScriptRoot "prepare-web.ps1")
 
 Write-Host ">> Step 2: tauri build" -ForegroundColor Cyan
 & npx tauri build --target $Target
+if ($LASTEXITCODE -ne 0) {
+    throw "Tauri 建置失敗（結束碼：$LASTEXITCODE）。"
+}
 if (-not (Test-Path $RawExe)) {
     Write-Host "FAILED: exe not found" -ForegroundColor Red
     exit 1

@@ -4,21 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="mobile-web-app-capable" content="yes">
-    <title>現況照片清冊生成工具 v2.0</title>
+    <title>現況照片清冊生成工具 v2.1.1</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📷</text></svg>">
 
-    <!-- Tailwind CSS CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- FontAwesome 6 CDN -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- docx.js (OpenXML Word Generator) - UMD Build with Multiple CDN Support -->
-    <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
-    <!-- FileSaver.js -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
-    <!-- SheetJS (xlsx) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <!-- JSZip -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <link rel="stylesheet" href="vendor/tailwind.css">
+    <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css">
+    <script src="vendor/docx.umd.js"></script>
+    <script src="vendor/FileSaver.min.js"></script>
+    <script src="vendor/xlsx.full.min.js"></script>
+    <script src="vendor/jszip.min.js"></script>
 
     <style>
         :root {
@@ -128,6 +122,15 @@
             opacity: 0.5 !important;
         }
 
+        .selection-marquee {
+            position: absolute;
+            z-index: 20;
+            pointer-events: none;
+            border: 1px solid #2563EB;
+            background: rgba(37, 99, 235, 0.12);
+            border-radius: 4px;
+        }
+
         /* 拖曳插入指示線 (左右邊界發光藍線) */
         .photo-thumb-card.drag-target-left::before {
             content: '';
@@ -217,8 +220,10 @@
     </header>
 
     <!-- 主要工作區域 -->
-    <main class="w-full max-w-7xl flex flex-col gap-4">
+    <main class="w-full max-w-7xl grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
 
+        <!-- 左側固定操作欄：不受右側照片高度影響 -->
+        <aside class="lg:col-span-1 flex flex-col gap-4 lg:sticky lg:top-4 self-start">
         <!-- 1. 全域案件表頭資訊 -->
         <section class="morandi-card p-4 md:p-5">
             <div class="flex flex-wrap items-center justify-between border-b border-[#6B8BB0]/20 pb-2.5 mb-3 gap-2">
@@ -235,7 +240,7 @@
                 </div>
             </div>
 
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+            <div class="grid grid-cols-1 gap-3">
                 <div>
                     <label class="block text-xs font-bold text-[#667080] mb-1">案由 / 案件名稱</label>
                     <input type="text" id="caseTitle" class="input-field w-full text-xs font-semibold" placeholder="例如：詐欺案、現場勘查案" value="詐欺案">
@@ -262,8 +267,38 @@
             </div>
         </section>
 
+        <!-- 3. 正式輸出與操作列 -->
+        <section class="morandi-card p-4 md:p-5 shadow-xl bg-white/95 border-2 border-[#526F94]/30">
+            <div class="flex flex-col gap-3">
+                <div>
+                    <div class="text-sm font-bold text-[#2B364B] flex items-center gap-2">
+                        <i class="fa-solid fa-file-word text-[#526F94] text-base"></i>
+                        準備產出正式現場照片清冊
+                    </div>
+                    <p class="text-[11px] text-[#667080]">純正標楷體．頁首頁尾（第X頁/共Y頁）．標準尺寸．100% 零巨集標準 OpenXML</p>
+                </div>
+
+                <div class="flex flex-col gap-2">
+                    <button type="button" id="btnExportExcel" class="btn-secondary w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-start gap-1.5">
+                        <i class="fa-regular fa-file-excel text-emerald-600 text-sm"></i> 匯出 Excel
+                    </button>
+                    <label class="btn-secondary w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer">
+                        <i class="fa-solid fa-file-import text-blue-600 text-sm"></i> 匯入 Excel 說明
+                        <input type="file" id="importExcelInput" accept=".xlsx, .xls" class="hidden">
+                    </label>
+                    <button type="button" id="btnExportZip" class="btn-secondary w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-start gap-1.5">
+                        <i class="fa-regular fa-file-zipper text-amber-600 text-sm"></i> 最佳化 ZIP
+                    </button>
+                    <button type="button" id="btnExportDocx" class="btn-primary w-full px-5 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-lg hover:shadow-blue-500/20">
+                        <i class="fa-solid fa-download"></i> 匯出 Word 清冊 (.docx)
+                    </button>
+                </div>
+            </div>
+        </section>
+        </aside>
+
         <!-- 2. 照片批次載入與智慧工具列 -->
-        <section class="morandi-card p-4 md:p-5 flex flex-col gap-3">
+        <section class="morandi-card p-4 md:p-5 flex flex-col gap-3 lg:col-span-2">
 
             <!-- 上傳拖曳區 (緊湊版) -->
             <div id="dropZone" class="drop-zone rounded-xl p-4 text-center cursor-pointer flex flex-wrap items-center justify-center gap-3">
@@ -321,6 +356,15 @@
                         </button>
                     </div>
 
+                    <div id="workspaceLayoutControls" class="bg-white px-2 py-1 rounded-lg border border-[#6B8BB0]/30 flex items-center gap-1.5" aria-label="縮圖尺寸設定">
+                        <i class="fa-solid fa-magnifying-glass text-[#526F94] text-xs"></i>
+                        <span id="thumbnailSizeLabel" class="text-xs font-bold text-[#526F94] whitespace-nowrap">縮圖 220px</span>
+                        <button type="button" id="btnResetThumbnailSize" class="text-[10px] text-[#667080] hover:text-[#526F94] hover:underline" title="重設為 220px">重設</button>
+                    </div>
+                    <button type="button" id="btnToggleEditor" class="btn-secondary px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1" title="收合或展開右側編輯器">
+                        <i class="fa-solid fa-panel-right"></i> <span>收合編輯</span>
+                    </button>
+
                     <!-- 清空清冊 -->
                     <button type="button" id="btnClearAll" class="px-2 py-1 rounded-lg text-xs font-bold text-red-600 hover:bg-red-50 transition border border-red-200">
                         <i class="fa-regular fa-trash-can"></i> 清空
@@ -336,7 +380,16 @@
                     <span id="selectedCountBadge" class="hidden font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">已選取 0 張</span>
                 </div>
                 <div class="text-[#526F94] flex items-center gap-2">
-                    <span>💡 按住滑鼠即可拖曳卡片調換順序（支援多選打包拖曳）</span>
+                    <span>💡 Ctrl＋滾輪調整縮圖；畫布空白處可框選；Ctrl＋←／→ 移動已選照片</span>
+                </div>
+            </div>
+            <div id="processingStatus" class="hidden px-1 text-xs text-[#526F94]" role="status" aria-live="polite">
+                <div class="flex items-center justify-between gap-2 mb-1">
+                    <span id="processingMessage" class="font-semibold">準備處理照片…</span>
+                    <span id="processingCount">0 / 0</span>
+                </div>
+                <div class="h-1.5 rounded-full bg-[#6B8BB0]/20 overflow-hidden">
+                    <div id="processingBar" class="h-full bg-[#526F94] transition-all duration-150" style="width: 0%"></div>
                 </div>
             </div>
 
@@ -351,19 +404,20 @@
             <div id="workspaceContainer" class="hidden grid grid-cols-1 lg:grid-cols-12 gap-4 mt-1">
 
                 <!-- 左側：照片縮圖畫布排版區 (佔 8 欄，照片一覽無遺不拖長) -->
-                <div class="lg:col-span-8 flex flex-col gap-2">
+                <div id="photoPanel" class="lg:col-span-8 flex flex-col gap-2">
                     <div class="flex items-center justify-between text-xs font-bold text-[#667080] px-1">
-                        <span>📸 照片排版畫布 (點擊卡片選取/編輯，拖曳調換順序)</span>
-                        <span class="text-[11px] text-[#6B8BB0]">可 Shift+Click 連續選取</span>
+                        <span>📸 照片排版畫布（點擊選取／編輯，拖曳調換順序）</span>
+                        <span class="text-[11px] text-[#6B8BB0]">Ctrl 點選多選・Shift 點選連續選取・空白處框選</span>
                     </div>
 
-                    <div id="thumbGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 max-h-[600px] overflow-y-auto p-2 bg-[#EDF2F5]/50 rounded-xl border border-[#6B8BB0]/20">
+                    <div id="thumbGrid" class="grid relative gap-2.5 max-h-[600px] overflow-y-auto p-2 bg-[#EDF2F5]/50 rounded-xl border border-[#6B8BB0]/20">
+                        <div id="selectionMarquee" class="selection-marquee hidden" aria-hidden="true"></div>
                         <!-- 動態注入縮圖卡片 -->
                     </div>
                 </div>
 
                 <!-- 右側：智慧單張/批次編輯器 (佔 4 欄，固定顯示，支援多選批次套用) -->
-                <div class="lg:col-span-4 flex flex-col gap-3">
+                <div id="editorPanel" class="lg:col-span-4 flex flex-col gap-3">
                     <div class="morandi-card p-4 sticky top-4 flex flex-col gap-3 bg-white border-2 border-[#6B8BB0]/30 shadow-md">
 
                         <!-- 編輯器標題狀態 -->
@@ -414,12 +468,17 @@
                                 <textarea id="editDesc" rows="3" class="input-field w-full text-xs leading-relaxed" placeholder="請填寫現場跡證、查扣物或狀況說明..."></textarea>
                             </div>
 
-                            <!-- 批次套用按鈕 (當選取多張時顯示，完美支援 3~5 張同一說明) -->
-                            <div id="batchApplyBox" class="pt-2 border-t border-[#6B8BB0]/20 hidden flex flex-col gap-1.5">
+                            <!-- 已選照片的明確批次套用流程 -->
+                            <div id="batchApplyBox" class="pt-2 border-t border-[#6B8BB0]/20 hidden flex flex-col gap-2">
+                                <p class="text-[11px] font-semibold text-[#526F94] text-center">已選取 <span id="batchCountNum">0</span> 張：修改上方欄位後，再明確套用</p>
+                                <label class="flex items-center justify-center gap-1.5 text-[10px] text-[#667080] cursor-pointer">
+                                    <input type="checkbox" id="batchApplyEmptyValues" class="rounded text-[#526F94]">
+                                    空白欄位也覆寫（用於清除原有資料）
+                                </label>
                                 <button type="button" id="btnApplyToSelected" class="w-full btn-primary py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 shadow">
-                                    <i class="fa-solid fa-check-double"></i> 套用說明與地點至已勾選 (<span id="batchCountNum">0</span>) 張照片
+                                    <i class="fa-solid fa-check-double"></i> 將已填欄位套用至已選照片
                                 </button>
-                                <p class="text-[10px] text-[#667080] text-center">💡 在左側勾選 3~5 張照片，點擊上方按鈕即可一次寫入！</p>
+                                <p class="text-[10px] text-[#667080] text-center">可同步時間、地點與說明；照片編號不會批次覆寫。</p>
                             </div>
                         </div>
 
@@ -471,42 +530,6 @@
                 </table>
             </div>
 
-        </section>
-
-        <!-- 3. 底部主要輸出與操作列 -->
-        <section class="morandi-card p-4 md:p-5 sticky bottom-3 shadow-2xl bg-white/95 border-2 border-[#526F94]/30 z-30">
-            <div class="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                    <div class="text-sm font-bold text-[#2B364B] flex items-center gap-2">
-                        <i class="fa-solid fa-file-word text-[#526F94] text-base"></i>
-                        準備產出正式現場照片清冊
-                    </div>
-                    <p class="text-[11px] text-[#667080]">純正標楷體．頁首頁尾（第X頁/共Y頁）．標準尺寸．100% 零巨集標準 OpenXML</p>
-                </div>
-
-                <div class="flex flex-wrap items-center gap-2">
-                    <!-- 匯出 Excel 清單 -->
-                    <button type="button" id="btnExportExcel" class="btn-secondary px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5">
-                        <i class="fa-regular fa-file-excel text-emerald-600 text-sm"></i> 匯出 Excel
-                    </button>
-
-                    <!-- 匯入 Excel 說明檔 -->
-                    <label class="btn-secondary px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer">
-                        <i class="fa-solid fa-file-import text-blue-600 text-sm"></i> 匯入 Excel 說明
-                        <input type="file" id="importExcelInput" accept=".xlsx, .xls" class="hidden">
-                    </label>
-
-                    <!-- 匯出照片 ZIP 包 -->
-                    <button type="button" id="btnExportZip" class="btn-secondary px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5">
-                        <i class="fa-regular fa-file-zipper text-amber-600 text-sm"></i> 最佳化 ZIP
-                    </button>
-
-                    <!-- 核心：匯出 Word 清冊 (.docx) -->
-                    <button type="button" id="btnExportDocx" class="btn-primary px-5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-lg hover:shadow-blue-500/20">
-                        <i class="fa-solid fa-download"></i> 匯出 Word 清冊 (.docx)
-                    </button>
-                </div>
-            </div>
         </section>
 
     </main>
@@ -572,6 +595,12 @@
             return null;
         }
 
+        function escapeHtml(value) {
+            return String(value ?? '').replace(/[&<>"']/g, char => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            })[char]);
+        }
+
         class PhotoReportApp {
             constructor() {
                 this.photos = [];
@@ -579,8 +608,14 @@
                 this.currentIndex = 0;
                 this.draggedIndices = [];
                 this.lastSelectedIndex = null;
+                this.maxRecommendedPhotos = 500;
+                this.maxRecommendedBytes = 2 * 1024 * 1024 * 1024;
+                this.thumbnailSize = Math.max(90, Math.min(400, this.loadWorkspacePreference('thumbnailSize', 220)));
+                this.editorCollapsed = this.loadWorkspacePreference('editorCollapsed', true);
+                this.marqueeState = null;
                 this.initElements();
                 this.initEvents();
+                this.applyWorkspaceLayout();
                 this.setDefaultTodayDate();
             }
 
@@ -590,6 +625,12 @@
                 this.folderInput = document.getElementById('folderInput');
                 this.workspaceContainer = document.getElementById('workspaceContainer');
                 this.thumbGrid = document.getElementById('thumbGrid');
+                this.photoPanel = document.getElementById('photoPanel');
+                this.editorPanel = document.getElementById('editorPanel');
+                this.workspaceLayoutControls = document.getElementById('workspaceLayoutControls');
+                this.thumbnailSizeLabel = document.getElementById('thumbnailSizeLabel');
+                this.selectionMarquee = document.getElementById('selectionMarquee');
+                this.btnToggleEditor = document.getElementById('btnToggleEditor');
                 this.gridContainer = document.getElementById('gridContainer');
                 this.gridTbody = document.getElementById('gridTbody');
                 this.emptyState = document.getElementById('emptyState');
@@ -597,6 +638,10 @@
                 this.pageEstimate = document.getElementById('pageEstimate');
                 this.selectedCountBadge = document.getElementById('selectedCountBadge');
                 this.layoutSelect = document.getElementById('layoutSelect');
+                this.processingStatus = document.getElementById('processingStatus');
+                this.processingMessage = document.getElementById('processingMessage');
+                this.processingCount = document.getElementById('processingCount');
+                this.processingBar = document.getElementById('processingBar');
 
                 // 右側編輯器元件
                 this.editorTitle = document.getElementById('editorTitle');
@@ -607,6 +652,7 @@
                 this.editDesc = document.getElementById('editDesc');
                 this.batchApplyBox = document.getElementById('batchApplyBox');
                 this.batchCountNum = document.getElementById('batchCountNum');
+                this.batchApplyEmptyValues = document.getElementById('batchApplyEmptyValues');
             }
 
             initEvents() {
@@ -644,15 +690,22 @@
                 document.getElementById('btnToggleSelectAll').addEventListener('click', () => this.toggleSelectAll());
                 document.getElementById('btnViewWorkspace').addEventListener('click', () => this.switchView('workspace'));
                 document.getElementById('btnViewGrid').addEventListener('click', () => this.switchView('grid'));
+                document.getElementById('btnResetThumbnailSize').addEventListener('click', () => this.setThumbnailSize(220));
+                this.thumbGrid.addEventListener('wheel', (event) => this.handleThumbnailWheel(event), { passive: false });
+                this.thumbGrid.addEventListener('pointerdown', (event) => this.beginMarqueeSelection(event));
+                this.thumbGrid.addEventListener('pointermove', (event) => this.updateMarqueeSelection(event));
+                this.thumbGrid.addEventListener('pointerup', (event) => this.endMarqueeSelection(event));
+                this.thumbGrid.addEventListener('pointercancel', (event) => this.endMarqueeSelection(event));
+                this.btnToggleEditor.addEventListener('click', () => this.toggleEditor());
                 document.getElementById('btnClearAll').addEventListener('click', () => this.clearAll());
                 document.getElementById('btnBatchRotate').addEventListener('click', () => this.batchRotate(90));
                 document.getElementById('btnFillAllDefaults').addEventListener('click', () => this.fillAllDefaults());
                 document.getElementById('btnOpenSequenceModal').addEventListener('click', () => this.openModal('sequenceModal'));
                 document.getElementById('btnApplySequence').addEventListener('click', () => this.applySequence());
                 document.getElementById('btnParseFilenameTime').addEventListener('click', () => this.parseFilenameTime());
-                document.getElementById('btnExportDocx').addEventListener('click', () => this.exportDocx());
+                document.getElementById('btnExportDocx').addEventListener('click', () => this.exportDocx().catch(error => this.handleExportError(error)));
                 document.getElementById('btnExportExcel').addEventListener('click', () => this.exportExcel());
-                document.getElementById('btnExportZip').addEventListener('click', () => this.exportZip());
+                document.getElementById('btnExportZip').addEventListener('click', () => this.exportZip().catch(error => this.handleExportError(error)));
                 document.getElementById('importExcelInput').addEventListener('change', (e) => this.importExcel(e));
                 this.layoutSelect.addEventListener('change', () => this.updatePageEstimate());
 
@@ -673,11 +726,34 @@
                 document.getElementById('btnNextPhoto').addEventListener('click', () => this.navigatePhoto(1));
                 document.getElementById('btnDeleteCurrent').addEventListener('click', () => this.removePhoto(this.currentIndex));
 
-                // 鍵盤快速鍵 (ESC 關閉燈箱, 左右切換照片)
+                // 鍵盤快速鍵：Alt＋左右切換；Ctrl＋左右與 Home／End 重排已選照片。
                 window.addEventListener('keydown', (e) => {
+                    if (this.isTypingTarget(e.target)) return;
                     if (e.key === 'Escape') this.closeModal('imageLightboxModal');
-                    if (e.altKey && e.key === 'ArrowLeft') this.navigatePhoto(-1);
-                    if (e.altKey && e.key === 'ArrowRight') this.navigatePhoto(1);
+                    if (e.altKey && e.key === 'ArrowLeft') {
+                        e.preventDefault();
+                        this.navigatePhoto(-1);
+                    }
+                    if (e.altKey && e.key === 'ArrowRight') {
+                        e.preventDefault();
+                        this.navigatePhoto(1);
+                    }
+                    if (e.ctrlKey && e.key === 'ArrowLeft') {
+                        e.preventDefault();
+                        this.moveSelectedBy(-1);
+                    }
+                    if (e.ctrlKey && e.key === 'ArrowRight') {
+                        e.preventDefault();
+                        this.moveSelectedBy(1);
+                    }
+                    if (!e.ctrlKey && !e.altKey && e.key === 'Home') {
+                        e.preventDefault();
+                        this.moveSelectedToBoundary('start');
+                    }
+                    if (!e.ctrlKey && !e.altKey && e.key === 'End') {
+                        e.preventDefault();
+                        this.moveSelectedToBoundary('end');
+                    }
                 });
             }
 
@@ -691,41 +767,147 @@
 
             async handleFiles(files) {
                 const defaultLoc = document.getElementById('defaultLocation').value.trim() || '現場';
+                const incomingBytes = files.reduce((total, file) => total + file.size, 0);
+                const totalBytes = this.photos.reduce((total, photo) => total + photo.file.size, 0) + incomingBytes;
+                const totalPhotos = this.photos.length + files.length;
 
+                if ((totalPhotos > this.maxRecommendedPhotos || totalBytes > this.maxRecommendedBytes) && !confirm(
+                    `即將載入 ${totalPhotos} 張照片（約 ${this.formatBytes(totalBytes)}）。\n` +
+                    '大量照片會需要較長處理與匯出時間，建議分冊處理。是否仍要繼續？'
+                )) return;
+
+                let failedCount = 0;
+                this.setProgress('正在建立低記憶體縮圖…', 0, files.length);
                 for (let i = 0; i < files.length; i++) {
                     const file = files[i];
-                    const seqNum = this.photos.length + 1;
-                    const parsedTime = this.extractTimeFromFilename(file.name) || '12時00分';
-
-                    const photoItem = {
-                        uid: 'uid_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9),
-                        file: file,
-                        name: file.name,
-                        src: '',
-                        rotation: 0,
-                        seq: String(seqNum),
-                        time: parsedTime,
-                        location: defaultLoc,
-                        desc: '',
-                        selected: false
-                    };
-
-                    photoItem.src = await this.readFileAsDataURL(file);
-                    this.photos.push(photoItem);
+                    let sourceUrl = '';
+                    try {
+                        sourceUrl = URL.createObjectURL(file);
+                        const photoItem = {
+                            uid: 'uid_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9),
+                            file: file,
+                            name: file.name,
+                            src: sourceUrl,
+                            thumbnailSrc: await this.createThumbnailUrl(file, sourceUrl),
+                            rotation: 0,
+                            exifRotation: await this.readJpegExifRotation(file),
+                            seq: String(this.photos.length + 1),
+                            time: this.extractTimeFromFilename(file.name) || '12時00分',
+                            location: defaultLoc,
+                            desc: '',
+                            selected: false
+                        };
+                        this.photos.push(photoItem);
+                    } catch (error) {
+                        if (sourceUrl) URL.revokeObjectURL(sourceUrl);
+                        failedCount++;
+                        console.warn(`略過無法載入的圖片：${file.name}`, error);
+                    }
+                    this.setProgress('正在建立低記憶體縮圖…', i + 1, files.length);
+                    if ((i + 1) % 10 === 0) {
+                        this.render();
+                        await this.yieldToBrowser();
+                    }
                 }
 
                 if (this.photos.length > 0 && this.currentIndex >= this.photos.length) {
                     this.currentIndex = 0;
                 }
                 this.render();
+                this.clearProgress();
+                if (failedCount) alert(`已載入 ${files.length - failedCount} 張照片；${failedCount} 張因無法解碼而略過。`);
             }
 
-            readFileAsDataURL(file) {
-                return new Promise((resolve) => {
-                    const reader = new FileReader();
-                    reader.onload = (e) => resolve(e.target.result);
-                    reader.readAsDataURL(file);
+            async createThumbnailUrl(file, sourceUrl) {
+                const maxDimension = 320;
+                let source;
+                try {
+                    source = typeof createImageBitmap === 'function'
+                        ? await createImageBitmap(file)
+                        : await this.loadImage(sourceUrl);
+                    const ratio = Math.min(maxDimension / source.width, maxDimension / source.height, 1);
+                    const canvas = document.createElement('canvas');
+                    canvas.width = Math.max(1, Math.round(source.width * ratio));
+                    canvas.height = Math.max(1, Math.round(source.height * ratio));
+                    const context = canvas.getContext('2d');
+                    if (!context) throw new Error('無法建立縮圖畫布。');
+                    context.drawImage(source, 0, 0, canvas.width, canvas.height);
+                    const blob = await new Promise((resolve, reject) => canvas.toBlob(
+                        result => result ? resolve(result) : reject(new Error('無法產生縮圖。')),
+                        'image/jpeg', 0.8
+                    ));
+                    return URL.createObjectURL(blob);
+                } finally {
+                    if (source && typeof source.close === 'function') source.close();
+                }
+            }
+
+            loadImage(src) {
+                return new Promise((resolve, reject) => {
+                    const image = new Image();
+                    image.onload = () => resolve(image);
+                    image.onerror = () => reject(new Error('無法解碼圖片。'));
+                    image.src = src;
                 });
+            }
+
+            setProgress(message, current, total) {
+                const percent = total ? Math.round((current / total) * 100) : 0;
+                this.processingStatus.classList.remove('hidden');
+                this.processingMessage.textContent = message;
+                this.processingCount.textContent = `${current} / ${total}`;
+                this.processingBar.style.width = `${percent}%`;
+            }
+
+            clearProgress() {
+                this.processingStatus.classList.add('hidden');
+            }
+
+            yieldToBrowser() {
+                return new Promise(resolve => requestAnimationFrame(resolve));
+            }
+
+            formatBytes(bytes) {
+                if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+                if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+                return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`;
+            }
+
+            async readJpegExifRotation(file) {
+                if (file.type !== 'image/jpeg') return 0;
+                try {
+                    const bytes = new DataView(await file.slice(0, 65536).arrayBuffer());
+                    if (bytes.getUint16(0) !== 0xFFD8) return 0;
+                    let offset = 2;
+                    while (offset + 4 <= bytes.byteLength) {
+                        const marker = bytes.getUint16(offset);
+                        const length = bytes.getUint16(offset + 2);
+                        if (marker === 0xFFE1 && offset + 10 <= bytes.byteLength && bytes.getUint32(offset + 4) === 0x45786966) {
+                            const tiff = offset + 10;
+                            const littleEndian = bytes.getUint16(tiff) === 0x4949;
+                            const ifd = tiff + bytes.getUint32(tiff + 4, littleEndian);
+                            const count = bytes.getUint16(ifd, littleEndian);
+                            for (let i = 0; i < count; i++) {
+                                const entry = ifd + 2 + i * 12;
+                                if (entry + 12 <= bytes.byteLength && bytes.getUint16(entry, littleEndian) === 0x0112) {
+                                    return ({ 3: 180, 6: 90, 8: 270 })[bytes.getUint16(entry + 8, littleEndian)] || 0;
+                                }
+                            }
+                            return 0;
+                        }
+                        if ((marker & 0xFF00) !== 0xFF00 || length < 2) break;
+                        offset += 2 + length;
+                    }
+                } catch (error) {
+                    console.warn('無法讀取 EXIF 方向，將保留原始方向。', error);
+                }
+                return 0;
+            }
+
+            handleExportError(error) {
+                this.clearProgress();
+                console.error(error);
+                alert(`匯出失敗：${error.message || '圖片無法處理，請確認檔案格式是否受支援。'}`);
             }
 
             extractTimeFromFilename(filename) {
@@ -811,11 +993,16 @@
                 const timeVal = this.editTime.value.trim();
                 const locVal = this.editLocation.value.trim();
                 const descVal = this.editDesc.value.trim();
+                const applyEmptyValues = this.batchApplyEmptyValues.checked;
+
+                if (!applyEmptyValues && !timeVal && !locVal && !descVal) {
+                    return alert('請先填寫要套用的時間、地點或說明；若要清除資料，請勾選「空白欄位也覆寫」。');
+                }
 
                 selectedList.forEach(p => {
-                    if (timeVal) p.time = timeVal;
-                    if (locVal) p.location = locVal;
-                    if (descVal) p.desc = descVal;
+                    if (timeVal || applyEmptyValues) p.time = timeVal;
+                    if (locVal || applyEmptyValues) p.location = locVal;
+                    if (descVal || applyEmptyValues) p.desc = descVal;
                 });
 
                 this.render();
@@ -838,8 +1025,64 @@
                 this.render();
             }
 
+            loadWorkspacePreference(key, fallback) {
+                try {
+                    const value = localStorage.getItem(`photoReport.${key}`);
+                    if (value === null) return fallback;
+                    return typeof fallback === 'boolean' ? value === 'true' : Number(value) || fallback;
+                } catch {
+                    return fallback;
+                }
+            }
+
+            saveWorkspacePreference(key, value) {
+                try {
+                    localStorage.setItem(`photoReport.${key}`, String(value));
+                } catch {
+                    // 隱私模式或受限制環境不儲存版面偏好，仍維持本次操作。
+                }
+            }
+
+            setThumbnailSize(size) {
+                this.thumbnailSize = Math.max(90, Math.min(400, Math.round(size)));
+                this.saveWorkspacePreference('thumbnailSize', this.thumbnailSize);
+                this.applyWorkspaceLayout();
+            }
+
+            handleThumbnailWheel(event) {
+                if (!event.ctrlKey) return;
+                event.preventDefault();
+                const direction = event.deltaY < 0 ? 1 : -1;
+                this.setThumbnailSize(this.thumbnailSize + direction * 15);
+            }
+
+            toggleEditor() {
+                this.editorCollapsed = !this.editorCollapsed;
+                this.saveWorkspacePreference('editorCollapsed', this.editorCollapsed);
+                this.applyWorkspaceLayout();
+            }
+
+            applyWorkspaceLayout() {
+                this.thumbGrid.style.gridTemplateColumns = `repeat(auto-fill, minmax(min(100%, ${this.thumbnailSize}px), 1fr))`;
+                this.thumbGrid.style.setProperty('--thumbnail-preview-height', `${Math.round(this.thumbnailSize * 0.72)}px`);
+                this.thumbnailSizeLabel.textContent = `縮圖 ${this.thumbnailSize}px`;
+
+                this.workspaceContainer.classList.toggle('lg:grid-cols-12', !this.editorCollapsed);
+                this.workspaceContainer.classList.toggle('lg:grid-cols-1', this.editorCollapsed);
+                this.photoPanel.classList.toggle('lg:col-span-8', !this.editorCollapsed);
+                this.photoPanel.classList.toggle('lg:col-span-1', this.editorCollapsed);
+                this.editorPanel.classList.toggle('hidden', this.editorCollapsed);
+
+                const label = this.btnToggleEditor.querySelector('span');
+                const icon = this.btnToggleEditor.querySelector('i');
+                label.textContent = this.editorCollapsed ? '展開編輯' : '收合編輯';
+                icon.className = this.editorCollapsed ? 'fa-solid fa-panel-right-open' : 'fa-solid fa-panel-right';
+                this.btnToggleEditor.setAttribute('aria-pressed', String(this.editorCollapsed));
+            }
+
             removePhoto(index) {
                 if (!this.photos[index]) return;
+                this.releasePhotoUrls(this.photos[index]);
                 this.photos.splice(index, 1);
                 if (this.currentIndex >= this.photos.length) {
                     this.currentIndex = Math.max(0, this.photos.length - 1);
@@ -855,10 +1098,15 @@
             clearAll() {
                 if (!this.photos.length) return;
                 if (confirm('確定要清空所有載入的照片與資料嗎？')) {
+                    this.photos.forEach(photo => this.releasePhotoUrls(photo));
                     this.photos = [];
                     this.currentIndex = 0;
                     this.render();
                 }
+            }
+
+            releasePhotoUrls(photo) {
+                [photo.src, photo.thumbnailSrc].filter(Boolean).forEach(url => URL.revokeObjectURL(url));
             }
 
             updatePageEstimate() {
@@ -874,6 +1122,120 @@
             // ============================================================
             // 🎯 PaperSwitch 核心：HTML5 Drag & Drop 拖曳排版系統
             // ============================================================
+            isTypingTarget(target) {
+                return target instanceof HTMLElement && (
+                    ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable
+                );
+            }
+
+            beginMarqueeSelection(event) {
+                if (event.button !== 0 || event.target.closest('.photo-thumb-card')) return;
+
+                const rect = this.thumbGrid.getBoundingClientRect();
+                this.marqueeState = {
+                    pointerId: event.pointerId,
+                    startX: event.clientX - rect.left + this.thumbGrid.scrollLeft,
+                    startY: event.clientY - rect.top + this.thumbGrid.scrollTop,
+                    additive: event.ctrlKey || event.metaKey,
+                    initialSelection: this.photos.map(photo => photo.selected),
+                    moved: false
+                };
+                this.thumbGrid.setPointerCapture(event.pointerId);
+                this.selectionMarquee.classList.remove('hidden');
+                this.updateMarqueeSelection(event);
+            }
+
+            updateMarqueeSelection(event) {
+                const state = this.marqueeState;
+                if (!state || event.pointerId !== state.pointerId) return;
+
+                const gridRect = this.thumbGrid.getBoundingClientRect();
+                const currentX = event.clientX - gridRect.left + this.thumbGrid.scrollLeft;
+                const currentY = event.clientY - gridRect.top + this.thumbGrid.scrollTop;
+                const left = Math.min(state.startX, currentX);
+                const top = Math.min(state.startY, currentY);
+                const width = Math.abs(currentX - state.startX);
+                const height = Math.abs(currentY - state.startY);
+                state.moved ||= width > 4 || height > 4;
+
+                Object.assign(this.selectionMarquee.style, {
+                    left: `${left}px`, top: `${top}px`, width: `${width}px`, height: `${height}px`
+                });
+                if (!state.moved) return;
+
+                const selectionRect = {
+                    left: gridRect.left + left - this.thumbGrid.scrollLeft,
+                    top: gridRect.top + top - this.thumbGrid.scrollTop,
+                    right: gridRect.left + left + width - this.thumbGrid.scrollLeft,
+                    bottom: gridRect.top + top + height - this.thumbGrid.scrollTop
+                };
+                this.photos.forEach((photo, index) => {
+                    const card = document.getElementById(`thumb_${photo.uid}`);
+                    if (!card) return;
+                    const cardRect = card.getBoundingClientRect();
+                    const intersects = cardRect.left < selectionRect.right && cardRect.right > selectionRect.left &&
+                        cardRect.top < selectionRect.bottom && cardRect.bottom > selectionRect.top;
+                    photo.selected = state.additive ? state.initialSelection[index] || intersects : intersects;
+                    card.classList.toggle('selected', photo.selected);
+                    const checkbox = card.querySelector('input[type="checkbox"]');
+                    if (checkbox) checkbox.checked = photo.selected;
+                });
+                this.updateSelectionUi();
+            }
+
+            endMarqueeSelection(event) {
+                const state = this.marqueeState;
+                if (!state || event.pointerId !== state.pointerId) return;
+                if (this.thumbGrid.hasPointerCapture(event.pointerId)) this.thumbGrid.releasePointerCapture(event.pointerId);
+                this.selectionMarquee.classList.add('hidden');
+                this.marqueeState = null;
+                if (!state.moved && !state.additive) this.photos.forEach(photo => photo.selected = false);
+                this.render();
+            }
+
+            getSelectedIndicesOrCurrent() {
+                const selectedIndices = this.photos.map((photo, index) => photo.selected ? index : -1).filter(index => index !== -1);
+                if (selectedIndices.length) return selectedIndices;
+                return this.photos[this.currentIndex] ? [this.currentIndex] : [];
+            }
+
+            moveSelectedBy(delta) {
+                const selectedIndices = this.getSelectedIndicesOrCurrent();
+                if (!selectedIndices.length || !delta) return;
+                const currentPhoto = this.photos[this.currentIndex];
+                const selectedSet = new Set(selectedIndices);
+
+                if (delta < 0) {
+                    selectedIndices.forEach(index => {
+                        if (index > 0 && !selectedSet.has(index - 1)) {
+                            [this.photos[index - 1], this.photos[index]] = [this.photos[index], this.photos[index - 1]];
+                        }
+                    });
+                } else {
+                    [...selectedIndices].reverse().forEach(index => {
+                        if (index < this.photos.length - 1 && !selectedSet.has(index + 1)) {
+                            [this.photos[index + 1], this.photos[index]] = [this.photos[index], this.photos[index + 1]];
+                        }
+                    });
+                }
+                this.currentIndex = Math.max(0, this.photos.indexOf(currentPhoto));
+                this.lastSelectedIndex = this.currentIndex;
+                this.render();
+            }
+
+            moveSelectedToBoundary(boundary) {
+                const selectedIndices = this.getSelectedIndicesOrCurrent();
+                if (!selectedIndices.length) return;
+                const currentPhoto = this.photos[this.currentIndex];
+                const selectedSet = new Set(selectedIndices);
+                const moving = this.photos.filter((_, index) => selectedSet.has(index));
+                const remaining = this.photos.filter((_, index) => !selectedSet.has(index));
+                this.photos = boundary === 'start' ? [...moving, ...remaining] : [...remaining, ...moving];
+                this.currentIndex = Math.max(0, this.photos.indexOf(currentPhoto));
+                this.lastSelectedIndex = this.currentIndex;
+                this.render();
+            }
+
             handleCardDragStart(index, event) {
                 if (this.photos[index].selected) {
                     this.draggedIndices = this.photos.map((p, idx) => p.selected ? idx : -1).filter(idx => idx !== -1);
@@ -994,18 +1356,22 @@
                 } else if (event.shiftKey && this.lastSelectedIndex !== null) {
                     const start = Math.min(this.lastSelectedIndex, index);
                     const end = Math.max(this.lastSelectedIndex, index);
-                    for (let i = start; i <= end; i++) {
-                        this.photos[i].selected = true;
-                    }
+                    this.photos.forEach((photo, photoIndex) => photo.selected = photoIndex >= start && photoIndex <= end);
                 } else {
+                    if (!this.photos[index].selected) {
+                        this.photos.forEach((photo, photoIndex) => photo.selected = photoIndex === index);
+                    }
                     this.currentIndex = index;
+                    this.lastSelectedIndex = index;
                 }
+                this.currentIndex = index;
                 this.render();
             }
 
             togglePhotoSelect(index, event) {
                 event.stopPropagation();
                 this.photos[index].selected = !this.photos[index].selected;
+                if (this.photos[index].selected) this.currentIndex = index;
                 this.lastSelectedIndex = index;
                 this.render();
             }
@@ -1034,27 +1400,30 @@
                 }
             }
 
-            // 渲染介面
-            render() {
-                this.updatePageEstimate();
-
-                const totalPhotos = this.photos.length;
-                const selectedCount = this.photos.filter(p => p.selected).length;
-
-                // 批次計數徽章
+            updateSelectionUi() {
+                const selectedCount = this.photos.filter(photo => photo.selected).length;
                 if (selectedCount > 0) {
                     this.selectedCountBadge.classList.remove('hidden');
                     this.selectedCountBadge.textContent = `已選取 ${selectedCount} 張`;
                     this.batchApplyBox.classList.remove('hidden');
                     this.batchCountNum.textContent = selectedCount;
-                    this.editorModeBadge.textContent = `多選 (${selectedCount}張)`;
-                    this.editorModeBadge.className = "text-[10px] font-bold px-2 py-0.5 rounded bg-blue-500 text-white";
+                    this.editorModeBadge.textContent = `已選取 ${selectedCount} 張`;
+                    this.editorModeBadge.className = 'text-[10px] font-bold px-2 py-0.5 rounded bg-blue-500 text-white';
                 } else {
                     this.selectedCountBadge.classList.add('hidden');
                     this.batchApplyBox.classList.add('hidden');
-                    this.editorModeBadge.textContent = "單張編輯";
-                    this.editorModeBadge.className = "text-[10px] font-bold px-2 py-0.5 rounded bg-[#526F94]/10 text-[#526F94]";
+                    this.editorModeBadge.textContent = '單張編輯';
+                    this.editorModeBadge.className = 'text-[10px] font-bold px-2 py-0.5 rounded bg-[#526F94]/10 text-[#526F94]';
                 }
+                return selectedCount;
+            }
+
+            // 渲染介面
+            render() {
+                this.updatePageEstimate();
+
+                const totalPhotos = this.photos.length;
+                const selectedCount = this.updateSelectionUi();
 
                 document.getElementById('selectAllText').textContent = (totalPhotos > 0 && selectedCount === totalPhotos) ? '全不選' : '全選';
 
@@ -1081,7 +1450,12 @@
 
                 // 更新右側編輯器資料
                 if (curPhoto) {
-                    this.editorTitle.innerHTML = `<i class="fa-solid fa-pen-to-square text-[#526F94]"></i> <span>編輯第 ${this.currentIndex + 1} / ${totalPhotos} 張 (#${curPhoto.seq})</span>`;
+                    this.editorTitle.replaceChildren();
+                    const titleIcon = document.createElement('i');
+                    titleIcon.className = 'fa-solid fa-pen-to-square text-[#526F94]';
+                    const titleText = document.createElement('span');
+                    titleText.textContent = `編輯第 ${this.currentIndex + 1} / ${totalPhotos} 張 (#${curPhoto.seq})`;
+                    this.editorTitle.append(titleIcon, document.createTextNode(' '), titleText);
                     this.editSeq.value = curPhoto.seq || '';
                     this.editTime.value = curPhoto.time || '';
                     this.editLocation.value = curPhoto.location || '';
@@ -1089,7 +1463,7 @@
                 }
 
                 // 渲染左側縮圖卡片
-                this.thumbGrid.innerHTML = this.photos.map((p, idx) => {
+                this.thumbGrid.innerHTML = '<div id="selectionMarquee" class="selection-marquee hidden" aria-hidden="true"></div>' + this.photos.map((p, idx) => {
                     const isSelected = p.selected ? 'selected' : '';
                     const isCurrent = idx === this.currentIndex ? 'active-editing' : '';
 
@@ -1107,7 +1481,7 @@
                             <div class="flex items-center justify-between">
                                 <div class="flex items-center gap-1.5">
                                     <input type="checkbox" ${p.selected ? 'checked' : ''} onclick="window.app.togglePhotoSelect(${idx}, event)" class="rounded text-[#526F94] cursor-pointer" title="勾選">
-                                    <span class="px-1.5 py-0.2 rounded bg-[#526F94] text-white text-[10px] font-bold">#${p.seq}</span>
+                                    <span class="px-1.5 py-0.2 rounded bg-[#526F94] text-white text-[10px] font-bold">#${escapeHtml(p.seq)}</span>
                                 </div>
                                 <div class="flex items-center gap-1">
                                     <button type="button" onclick="event.stopPropagation(); window.app.rotatePhoto(${idx})" title="旋轉 90°" class="text-[#6B8BB0] hover:text-[#526F94] text-[11px] p-0.5">
@@ -1119,8 +1493,8 @@
                                 </div>
                             </div>
 
-                            <div class="w-full h-24 bg-[#EDF2F5] rounded-lg overflow-hidden flex items-center justify-center relative group cursor-pointer" onclick="event.stopPropagation(); window.app.openLightbox('${p.src}', '${p.name}')">
-                                <img src="${p.src}" alt="${p.name}" style="transform: rotate(${p.rotation}deg);" class="w-full h-full object-contain pointer-events-none">
+                            <div class="w-full bg-[#EDF2F5] rounded-lg overflow-hidden flex items-center justify-center relative group cursor-pointer" style="height: var(--thumbnail-preview-height)" onclick="event.stopPropagation(); window.app.openLightboxByIndex(${idx})">
+                                <img src="${p.thumbnailSrc}" alt="${escapeHtml(p.name)}" style="transform: rotate(${p.rotation}deg);" class="w-full h-full object-contain pointer-events-none">
                                 <div class="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-[10px] gap-1 transition">
                                     <i class="fa-solid fa-magnifying-glass-plus"></i> 放大
                                 </div>
@@ -1128,14 +1502,15 @@
 
                             <div class="text-[10px] text-[#667080] truncate flex items-center gap-1">
                                 <i class="fa-regular fa-clock text-[#526F94]"></i>
-                                <span>${p.time || '未填時間'}</span>
+                                <span>${escapeHtml(p.time || '未填時間')}</span>
                             </div>
-                            <div id="desc_preview_${p.uid}" class="text-[10px] text-[#2B364B] bg-[#EDF2F5]/80 p-1 rounded truncate" title="${p.desc || '無說明'}">
-                                ${p.desc || '<span class="text-[#A0AEC0]">（無說明）</span>'}
+                            <div id="desc_preview_${p.uid}" class="text-[10px] text-[#2B364B] bg-[#EDF2F5]/80 p-1 rounded truncate" title="${escapeHtml(p.desc || '無說明')}">
+                                ${p.desc ? escapeHtml(p.desc) : '<span class="text-[#A0AEC0]">（無說明）</span>'}
                             </div>
                         </div>
                     `;
                 }).join('');
+                this.selectionMarquee = document.getElementById('selectionMarquee');
 
                 // 渲染試算表視圖 (DataGrid)
                 this.gridTbody.innerHTML = this.photos.map((p, idx) => `
@@ -1144,22 +1519,22 @@
                             <input type="checkbox" ${p.selected ? 'checked' : ''} onclick="window.app.togglePhotoSelect(${idx}, event)" class="rounded text-[#526F94] cursor-pointer">
                         </td>
                         <td class="p-2 text-center">
-                            <img src="${p.src}" style="transform: rotate(${p.rotation}deg);" class="w-10 h-10 object-contain mx-auto rounded border bg-[#EDF2F5] cursor-pointer" onclick="window.app.openLightbox('${p.src}', '${p.name}')">
+                            <img src="${p.thumbnailSrc}" style="transform: rotate(${p.rotation}deg);" class="w-10 h-10 object-contain mx-auto rounded border bg-[#EDF2F5] cursor-pointer" onclick="window.app.openLightboxByIndex(${idx})">
                         </td>
                         <td class="p-2">
-                            <input type="text" value="${p.seq}" oninput="window.app.updatePhotoField(${idx}, 'seq', this.value)" class="input-field w-full text-xs font-bold text-[#526F94]">
+                            <input type="text" value="${escapeHtml(p.seq)}" oninput="window.app.updatePhotoField(${idx}, 'seq', this.value)" class="input-field w-full text-xs font-bold text-[#526F94]">
                         </td>
                         <td class="p-2">
-                            <input type="text" value="${p.time}" oninput="window.app.updatePhotoField(${idx}, 'time', this.value)" class="input-field w-full text-xs" placeholder="例如：14時32分">
+                            <input type="text" value="${escapeHtml(p.time)}" oninput="window.app.updatePhotoField(${idx}, 'time', this.value)" class="input-field w-full text-xs" placeholder="例如：14時32分">
                         </td>
                         <td class="p-2">
-                            <input type="text" value="${p.location}" oninput="window.app.updatePhotoField(${idx}, 'location', this.value)" class="input-field w-full text-xs">
+                            <input type="text" value="${escapeHtml(p.location)}" oninput="window.app.updatePhotoField(${idx}, 'location', this.value)" class="input-field w-full text-xs">
                         </td>
                         <td class="p-2">
-                            <input type="text" value="${p.desc}" oninput="window.app.updatePhotoField(${idx}, 'desc', this.value)" class="input-field w-full text-xs" placeholder="請填寫現場跡證或狀況說明">
+                            <input type="text" value="${escapeHtml(p.desc)}" oninput="window.app.updatePhotoField(${idx}, 'desc', this.value)" class="input-field w-full text-xs" placeholder="請填寫現場跡證或狀況說明">
                         </td>
-                        <td class="p-2 text-[#667080] truncate max-w-[110px]" title="${p.name}">
-                            ${p.name}
+                        <td class="p-2 text-[#667080] truncate max-w-[110px]" title="${escapeHtml(p.name)}">
+                            ${escapeHtml(p.name)}
                         </td>
                         <td class="p-2 text-center">
                             <button type="button" onclick="window.app.rotatePhoto(${idx})" title="旋轉" class="p-1 text-[#526F94]"><i class="fa-solid fa-rotate-right"></i></button>
@@ -1180,6 +1555,11 @@
                 this.openModal('imageLightboxModal');
             }
 
+            openLightboxByIndex(index) {
+                const photo = this.photos[index];
+                if (photo) this.openLightbox(photo.src, photo.name);
+            }
+
             openModal(id) {
                 document.getElementById(id).classList.remove('hidden');
             }
@@ -1189,13 +1569,20 @@
             }
 
             async processImageToBlob(photoItem, maxDimension = 1600, quality = 0.88) {
-                return new Promise((resolve) => {
+                return new Promise((resolve, reject) => {
                     const img = new Image();
-                    img.onload = () => {
+                    img.onload = async () => {
+                        let source = img;
+                        let exifRotation = 0;
+                        try {
+                            if (photoItem.exifRotation && typeof createImageBitmap === 'function') {
+                                source = await createImageBitmap(photoItem.file, { imageOrientation: 'none' });
+                                exifRotation = photoItem.exifRotation;
+                            }
                         const canvas = document.createElement('canvas');
-                        let w = img.width;
-                        let h = img.height;
-                        const rot = photoItem.rotation % 360;
+                        let w = source.width;
+                        let h = source.height;
+                        const rot = (photoItem.rotation + exifRotation) % 360;
 
                         if (w > maxDimension || h > maxDimension) {
                             if (w > h) {
@@ -1216,23 +1603,31 @@
                         }
 
                         const ctx = canvas.getContext('2d');
+                        if (!ctx) return reject(new Error('瀏覽器無法建立影像處理畫布。'));
                         ctx.fillStyle = '#FFFFFF';
                         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
                         ctx.save();
                         ctx.translate(canvas.width / 2, canvas.height / 2);
                         ctx.rotate((rot * Math.PI) / 180);
-                        ctx.drawImage(img, -w / 2, -h / 2, w, h);
+                        ctx.drawImage(source, -w / 2, -h / 2, w, h);
                         ctx.restore();
 
                         canvas.toBlob((blob) => {
+                            if (!blob) return reject(new Error(`無法轉換圖片：${photoItem.name}`));
                             resolve({
                                 blob: blob,
                                 width: canvas.width,
                                 height: canvas.height
                             });
                         }, 'image/jpeg', quality);
+                        } catch (error) {
+                            reject(new Error(`無法處理圖片：${photoItem.name}（${error.message}）`));
+                        } finally {
+                            if (source !== img && typeof source.close === 'function') source.close();
+                        }
                     };
+                    img.onerror = () => reject(new Error(`無法解碼圖片：${photoItem.name}`));
                     img.src = photoItem.src;
                 });
             }
@@ -1258,7 +1653,8 @@
                 const {
                     Document, Packer, Paragraph, Table, TableRow, TableCell,
                     TextRun, WidthType, AlignmentType, HeightRule,
-                    ImageRun, BorderStyle, Header, Footer, PageNumber, PageOrientation
+                    ImageRun, BorderStyle, Header, Footer, PageNumber, PageOrientation, VerticalAlign,
+                    LineRuleType
                 } = docxLib;
 
                 const borderSingle = { style: BorderStyle.SINGLE, size: 4, color: "000000" };
@@ -1266,6 +1662,7 @@
 
                 // 處理所有圖片轉 Blob
                 const processedPhotos = [];
+                this.setProgress('正在壓縮照片並建立 Word 報表…', 0, this.photos.length);
                 for (let i = 0; i < this.photos.length; i++) {
                     const item = this.photos[i];
                     const processed = await this.processImageToBlob(item, 1600, 0.88);
@@ -1276,6 +1673,8 @@
                         h: processed.height,
                         item: item
                     });
+                    this.setProgress('正在壓縮照片並建立 Word 報表…', i + 1, this.photos.length);
+                    if ((i + 1) % 5 === 0) await this.yieldToBrowser();
                 }
 
                 let docSections = [];
@@ -1285,15 +1684,15 @@
                 // -------------------------------------------------------------
                 if (layout === 'up_down_2') {
                     const children = [];
-                    // 範本大圖限制：寬約 520px，高約 360px (精確置中對齊 5726 dxa 高度)
-                    const MAX_IMG_W = 520;
-                    const MAX_IMG_H = 360;
+                    // 圖片儲存格可用範圍：約 535 × 365px；以較先觸頂的一邊決定等比例縮放
+                    const MAX_IMG_W = 535;
+                    const MAX_IMG_H = 365;
 
                     for (let i = 0; i < processedPhotos.length; i++) {
                         const p = processedPhotos[i];
                         let imgW = p.w;
                         let imgH = p.h;
-                        const ratio = Math.min(MAX_IMG_W / imgW, MAX_IMG_H / imgH, 1);
+                        const ratio = Math.min(MAX_IMG_W / imgW, MAX_IMG_H / imgH);
                         imgW = Math.round(imgW * ratio);
                         imgH = Math.round(imgH * ratio);
 
@@ -1324,6 +1723,7 @@
                                             width: { size: 8302, type: WidthType.DXA },
                                             columnSpan: 9,
                                             borders: bordersAllSingle,
+                                            verticalAlign: VerticalAlign.CENTER,
                                             children: [
                                                 new Paragraph({
                                                     alignment: AlignmentType.CENTER,
@@ -1430,22 +1830,22 @@
                 // -------------------------------------------------------------
                 else if (layout === 'left_right_2') {
                     const children = [];
-                    // 左右雙欄照片限制：寬約 300px，高約 600px (精確置中對齊 10642 dxa 高度)
-                    const MAX_IMG_W = 300;
-                    const MAX_IMG_H = 600;
+                    // 每欄圖片儲存格可用範圍：約 315 × 690px；以較先觸頂的一邊決定等比例縮放
+                    const MAX_IMG_W = 315;
+                    const MAX_IMG_H = 690;
 
                     for (let i = 0; i < processedPhotos.length; i += 2) {
                         const p1 = processedPhotos[i];
                         const p2 = processedPhotos[i + 1] || null;
 
                         let w1 = p1.w, h1 = p1.h;
-                        let r1 = Math.min(MAX_IMG_W / w1, MAX_IMG_H / h1, 1);
+                        let r1 = Math.min(MAX_IMG_W / w1, MAX_IMG_H / h1);
                         w1 = Math.round(w1 * r1);
                         h1 = Math.round(h1 * r1);
 
                         let w2 = p2 ? p2.w : 1, h2 = p2 ? p2.h : 1;
                         if (p2) {
-                            let r2 = Math.min(MAX_IMG_W / w2, MAX_IMG_H / h2, 1);
+                            let r2 = Math.min(MAX_IMG_W / w2, MAX_IMG_H / h2);
                             w2 = Math.round(w2 * r2);
                             h2 = Math.round(h2 * r2);
                         }
@@ -1476,6 +1876,7 @@
                                             width: { size: 4932, type: WidthType.DXA },
                                             columnSpan: 2,
                                             borders: bordersAllSingle,
+                                            verticalAlign: VerticalAlign.CENTER,
                                             children: [
                                                 new Paragraph({ children: [new TextRun({ text: "蒐證時間：", bold: true, font: "標楷體", size: 22 }), new TextRun({ text: `${caseDate} ${p1.item.time}`, font: "標楷體", size: 20 })] }),
                                                 new Paragraph({ children: [new TextRun({ text: "蒐證地點：", bold: true, font: "標楷體", size: 22 }), new TextRun({ text: p1.item.location, font: "標楷體", size: 20 })] })
@@ -1485,6 +1886,7 @@
                                             width: { size: 4932, type: WidthType.DXA },
                                             columnSpan: 2,
                                             borders: bordersAllSingle,
+                                            verticalAlign: VerticalAlign.CENTER,
                                             children: [
                                                 new Paragraph({ children: [new TextRun({ text: "蒐證單位：", bold: true, font: "標楷體", size: 22 }), new TextRun({ text: globalOfficer, font: "標楷體", size: 20 })] })
                                             ]
@@ -1584,9 +1986,9 @@
                 // -------------------------------------------------------------
                 else if (layout === 'landscape_3') {
                     const children = [];
-                    // 橫式三欄照片限制：寬約 320px，高約 480px (精確置中對齊 8254 dxa 高度)
-                    const MAX_IMG_W = 320;
-                    const MAX_IMG_H = 480;
+                    // 每欄圖片儲存格可用範圍：約 335 × 535px；以較先觸頂的一邊決定等比例縮放
+                    const MAX_IMG_W = 335;
+                    const MAX_IMG_H = 535;
 
                     for (let i = 0; i < processedPhotos.length; i += 3) {
                         const p1 = processedPhotos[i];
@@ -1596,7 +1998,7 @@
                         const calcSize = (p) => {
                             if (!p) return { w: 1, h: 1 };
                             let w = p.w, h = p.h;
-                            let r = Math.min(MAX_IMG_W / w, MAX_IMG_H / h, 1);
+                            let r = Math.min(MAX_IMG_W / w, MAX_IMG_H / h);
                             return { w: Math.round(w * r), h: Math.round(h * r) };
                         };
 
@@ -1638,9 +2040,9 @@
                                 new TableRow({
                                     height: { value: 8254, rule: HeightRule.EXACT },
                                     children: [
-                                        new TableCell({ width: { size: 5216, type: WidthType.DXA }, columnSpan: 2, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new ImageRun({ data: p1.data, transformation: { width: s1.w, height: s1.h } })] })] }),
-                                        new TableCell({ width: { size: 5216, type: WidthType.DXA }, columnSpan: 2, borders: bordersAllSingle, children: [p2 ? new Paragraph({ alignment: AlignmentType.CENTER, children: [new ImageRun({ data: p2.data, transformation: { width: s2.w, height: s2.h } })] }) : new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "（無照片）", font: "標楷體", size: 20 })] })] }),
-                                        new TableCell({ width: { size: 5216, type: WidthType.DXA }, columnSpan: 2, borders: bordersAllSingle, children: [p3 ? new Paragraph({ alignment: AlignmentType.CENTER, children: [new ImageRun({ data: p3.data, transformation: { width: s3.w, height: s3.h } })] }) : new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "（無照片）", font: "標楷體", size: 20 })] })] }),
+                                        new TableCell({ width: { size: 5216, type: WidthType.DXA }, columnSpan: 2, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new ImageRun({ data: p1.data, transformation: { width: s1.w, height: s1.h } })] })] }),
+                                        new TableCell({ width: { size: 5216, type: WidthType.DXA }, columnSpan: 2, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [p2 ? new Paragraph({ alignment: AlignmentType.CENTER, children: [new ImageRun({ data: p2.data, transformation: { width: s2.w, height: s2.h } })] }) : new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "（無照片）", font: "標楷體", size: 20 })] })] }),
+                                        new TableCell({ width: { size: 5216, type: WidthType.DXA }, columnSpan: 2, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [p3 ? new Paragraph({ alignment: AlignmentType.CENTER, children: [new ImageRun({ data: p3.data, transformation: { width: s3.w, height: s3.h } })] }) : new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "（無照片）", font: "標楷體", size: 20 })] })] }),
                                     ]
                                 }),
                                 // Row 4: 照片說明 | [說明1] | 照片說明 | [說明2] | 照片說明 | [說明3]
@@ -1670,7 +2072,7 @@
                     docSections.push({
                         properties: {
                             page: {
-                                size: { width: 16838, height: 11906, orientation: PageOrientation.LANDSCAPE },
+                                size: { width: 11906, height: 16838, orientation: PageOrientation.LANDSCAPE },
                                 margin: { top: 454, right: 510, bottom: 680, left: 510, header: 283, footer: 283 }
                             }
                         },
@@ -1722,6 +2124,7 @@
                 const blob = await Packer.toBlob(doc);
                 const safeName = `${caseDate || '報告'}_${caseTitle}_現場照片清冊.docx`.replace(/[\\/:*?"<>|]/g, '_');
                 saveAs(blob, safeName);
+                this.clearProgress();
             }
 
             exportExcel() {
@@ -1759,45 +2162,57 @@
             importExcel(e) {
                 const file = e.target.files[0];
                 if (!file) return;
+                if (typeof XLSX === 'undefined') return alert('SheetJS 尚未載入！');
 
                 const reader = new FileReader();
                 reader.onload = (evt) => {
-                    const data = new Uint8Array(evt.target.result);
-                    const wb = XLSX.read(data, { type: 'array' });
-                    const wsName = wb.SheetNames[0];
-                    const ws = wb.Sheets[wsName];
-                    const json = XLSX.utils.sheet_to_json(ws, { header: 1 });
+                    try {
+                        const data = new Uint8Array(evt.target.result);
+                        const wb = XLSX.read(data, { type: 'array' });
+                        const wsName = wb.SheetNames[0];
+                        const ws = wb.Sheets[wsName];
+                        const json = XLSX.utils.sheet_to_json(ws, { header: 1 });
 
-                    if (json.length < 2) return alert('Excel 內無有效資料！');
+                        if (json.length < 2) return alert('Excel 內無有效資料！');
 
-                    const headerRow = json[0];
-                    const idxSeq = headerRow.findIndex(h => /編號|序號/i.test(h));
-                    const idxName = headerRow.findIndex(h => /檔名|照片/i.test(h));
-                    const idxTime = headerRow.findIndex(h => /時間/i.test(h));
-                    const idxLoc = headerRow.findIndex(h => /地點/i.test(h));
-                    const idxDesc = headerRow.findIndex(h => /說明|內容/i.test(h));
+                        const headerRow = json[0];
+                        const idxSeq = headerRow.findIndex(h => /編號|序號/i.test(h));
+                        const idxName = headerRow.findIndex(h => /檔名|照片/i.test(h));
+                        const idxTime = headerRow.findIndex(h => /時間/i.test(h));
+                        const idxLoc = headerRow.findIndex(h => /地點/i.test(h));
+                        const idxDesc = headerRow.findIndex(h => /說明|內容/i.test(h));
 
-                    let matchCount = 0;
+                        let matchCount = 0;
+                        let ambiguousCount = 0;
 
-                    for (let r = 1; r < json.length; r++) {
-                        const row = json[r];
-                        if (!row || !row.length) continue;
+                        for (let r = 1; r < json.length; r++) {
+                            const row = json[r];
+                            if (!row || !row.length) continue;
 
-                        const rowSeq = idxSeq !== -1 ? String(row[idxSeq] || '').trim() : '';
-                        const rowName = idxName !== -1 ? String(row[idxName] || '').trim() : '';
+                            const rowSeq = idxSeq !== -1 ? String(row[idxSeq] || '').trim() : '';
+                            const rowName = idxName !== -1 ? String(row[idxName] || '').trim() : '';
+                            const matches = this.photos.filter(p => (rowName && p.name === rowName) || (rowSeq && p.seq === rowSeq));
 
-                        const target = this.photos.find(p => (rowName && p.name === rowName) || (rowSeq && p.seq === rowSeq));
-                        if (target) {
-                            if (idxTime !== -1 && row[idxTime]) target.time = String(row[idxTime]).trim();
-                            if (idxLoc !== -1 && row[idxLoc]) target.location = String(row[idxLoc]).trim();
-                            if (idxDesc !== -1 && row[idxDesc]) target.desc = String(row[idxDesc]).trim();
-                            matchCount++;
+                            if (matches.length === 1) {
+                                const target = matches[0];
+                                if (idxTime !== -1 && row[idxTime]) target.time = String(row[idxTime]).trim();
+                                if (idxLoc !== -1 && row[idxLoc]) target.location = String(row[idxLoc]).trim();
+                                if (idxDesc !== -1 && row[idxDesc]) target.desc = String(row[idxDesc]).trim();
+                                matchCount++;
+                            } else if (matches.length > 1) {
+                                ambiguousCount++;
+                            }
                         }
-                    }
 
-                    this.render();
-                    alert(`Excel 匯入完成！成功對齊更新 ${matchCount} 筆照片說明！`);
+                        this.render();
+                        const ambiguousMessage = ambiguousCount ? `另有 ${ambiguousCount} 筆因編號或檔名重複而略過。` : '';
+                        alert(`Excel 匯入完成！成功對齊更新 ${matchCount} 筆照片說明！${ambiguousMessage}`);
+                    } catch (error) {
+                        console.error(error);
+                        alert('Excel 讀取失敗，請確認檔案未損毀且格式正確。');
+                    }
                 };
+                reader.onerror = () => alert('Excel 檔案讀取失敗。');
                 reader.readAsArrayBuffer(file);
                 e.target.value = '';
             }
@@ -1809,16 +2224,21 @@
                 const zip = new JSZip();
                 const caseTitle = document.getElementById('caseTitle').value.trim() || '現場照片';
 
+                this.setProgress('正在壓縮照片並建立 ZIP…', 0, this.photos.length);
                 for (let i = 0; i < this.photos.length; i++) {
                     const p = this.photos[i];
                     const processed = await this.processImageToBlob(p, 1600, 0.88);
                     const ext = 'jpg';
                     const filename = `${p.seq}_${p.name.replace(/\.[^/.]+$/, '')}.${ext}`;
                     zip.file(filename, processed.blob);
+                    this.setProgress('正在壓縮照片並建立 ZIP…', i + 1, this.photos.length);
+                    if ((i + 1) % 5 === 0) await this.yieldToBrowser();
                 }
 
+                this.setProgress('正在封裝 ZIP 檔案…', this.photos.length, this.photos.length);
                 const content = await zip.generateAsync({ type: 'blob' });
                 saveAs(content, `${caseTitle}_最佳化照片包.zip`);
+                this.clearProgress();
             }
         }
 
