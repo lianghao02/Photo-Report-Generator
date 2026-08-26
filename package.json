@@ -1,4 +1,6 @@
 {
+  "name": "photo-report-generator",
+  "version": "2.1.2",
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.4"
   },
