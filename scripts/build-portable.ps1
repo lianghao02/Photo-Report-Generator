@@ -1,4 +1,4 @@
-# build-portable.ps1
+﻿# build-portable.ps1
 # Usage: .\scripts\build-portable.ps1
 
 Set-StrictMode -Version Latest
@@ -19,7 +19,9 @@ Write-Host ">> Step 1: sync web assets" -ForegroundColor Cyan
 & (Join-Path $PSScriptRoot "prepare-web.ps1")
 
 Write-Host ">> Step 2: tauri build" -ForegroundColor Cyan
-& npx tauri build --target $Target
+$npxCmd = Get-Command npx.cmd, npx -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -First 1
+if (-not $npxCmd) { throw "找不到 npx 命令，請確認 Node.js 已正確安裝。" }
+& $npxCmd tauri build --target $Target
 if ($LASTEXITCODE -ne 0) {
     throw "Tauri 建置失敗（結束碼：$LASTEXITCODE）。"
 }
