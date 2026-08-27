@@ -11,3 +11,6 @@ $web = Join-Path $root 'web'
 New-Item -ItemType Directory -Force -Path $web | Out-Null
 Copy-Item (Join-Path $root 'index.html') (Join-Path $web 'index.html') -Force
 Copy-Item (Join-Path $root 'vendor') (Join-Path $web 'vendor') -Recurse -Force
+if (Test-Path (Join-Path $root 'version.txt')) {
+    Copy-Item (Join-Path $root 'version.txt') (Join-Path $web 'version.txt') -Force
+}
