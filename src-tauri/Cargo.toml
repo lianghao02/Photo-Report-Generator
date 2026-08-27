@@ -1,6 +1,6 @@
 [package]
 name = "photo-report-generator"
-version = "2.1.2"
+version = "2.2.0"
 description = "照片清冊產生器"
 authors = ["臺南市政府警察局"]
 edition = "2021"

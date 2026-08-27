@@ -1,11 +1,11 @@
-# 📷 現場照片清冊自動套印工具 (Photo Report Generator) v2.1.2
+# 📷 現場照片清冊自動套印工具 (Photo Report Generator) v2.2.0
 
-[![Version](https://img.shields.io/badge/version-v2.1.2-blue.svg)](https://github.com/lianghao02/Photo-Report-Generator)
+[![Version](https://img.shields.io/badge/version-v2.2.0-blue.svg)](https://github.com/lianghao02/Photo-Report-Generator)
 [![Platform](https://img.shields.io/badge/Platform-Pure%20Web%20SPA%20%2F%20Tauri%20Desktop-emerald.svg)](https://lianghao02.github.io/Photo-Report-Generator/)
 [![Security](https://img.shields.io/badge/Security-Zero%20Macro%20Warning-brightgreen.svg)](https://microsoft.com)
 [![License](https://img.shields.io/badge/License-MIT-gray.svg)](LICENSE)
 
-> **版本**：v2.1.2 (純前端現代化 SPA 工作台．Tauri v2 輕量桌面版．三大經典版型支援)<br>
+> **版本**：v2.2.0 (可復原工作台．PDF／Word 雙輸出．Tauri v2 桌面版)<br>
 > **線上即用網址**：[https://lianghao02.github.io/Photo-Report-Generator/](https://lianghao02.github.io/Photo-Report-Generator/)<br>
 > **最新釋出版下載**：[GitHub Releases 最新版本](https://github.com/lianghao02/Photo-Report-Generator/releases/latest)<br>
 > **維護者**：LiangHao (梁巡官)
@@ -60,6 +60,13 @@ v2.0/v2.1/v2.2 版本迎來重大架構革新：**徹底淘汰舊有 VBA 巨集�
 - 📊 **匯出 Excel 清單 (`.xlsx`)**：輸出結構化資料表格（包含自訂日期、時間、地點、說明）。
 - 📥 **匯入 Excel 說明檔 (`.xlsx`)**：支援將外部編輯好的 Excel 檔案匯入，自動依編號或檔名對齊填回說明。
 - 🗜️ **匯出最佳化照片 ZIP (`.zip`)**：打包經旋轉校正與壓縮後的清晰照片。
+- 📕 **匯出 PDF 清冊 (`.pdf`)**：以既有上下兩張、左右兩張、橫式三張版型產生可直接傳閱的 PDF，中文文字以本機 Canvas 嵌入，無須安裝 PDF 印表機。
+
+### 6. 🛡️ 大量照片安全工作台
+- **Undo／Redo（50 步）**：支援照片刪除、清空、旋轉、排序、流水號與批次欄位套用的復原／重做；歷程只保留照片資料參照，不複製原始影像。
+- **快速定位**：可依編號、檔名、地點、說明搜尋，篩選未填欄位或已選照片，並直接跳至指定照片位置。
+- **可取消處理**：載入、Word、PDF、ZIP 大型處理程序提供取消按鈕；縮圖啟用延遲解碼，降低一次顯示數百張照片的負擔。
+- **版本一致性**：桌面建置前會驗證 `version.txt` 與 Tauri 設定相同；介面可主動檢查 GitHub Releases。
 
 ---
 

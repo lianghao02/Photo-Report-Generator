@@ -15,6 +15,15 @@ $WebView2Dll = Join-Path $ReleaseDir "WebView2Loader.dll"
 
 Set-Location $Root
 
+$versionFile = Join-Path $Root 'version.txt'
+$tauriConfigPath = Join-Path $Root 'src-tauri\tauri.conf.json'
+if (-not (Test-Path -LiteralPath $versionFile)) { throw '找不到 version.txt，已取消建置。' }
+$declaredVersion = (Get-Content -LiteralPath $versionFile -Raw -Encoding UTF8).Trim().TrimStart('v')
+$tauriVersion = (Get-Content -LiteralPath $tauriConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json).version
+if (-not $declaredVersion -or $declaredVersion -ne $tauriVersion) {
+    throw "版本不一致：version.txt 為 v$declaredVersion，tauri.conf.json 為 v$tauriVersion。請先統一版本後再建置。"
+}
+
 Write-Host ">> Step 1: sync web assets" -ForegroundColor Cyan
 & (Join-Path $PSScriptRoot "prepare-web.ps1")
 

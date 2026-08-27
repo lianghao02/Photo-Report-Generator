@@ -14,7 +14,8 @@ $assets = @(
     @{ Source = 'node_modules\docx\build\index.umd.js'; Destination = 'docx.umd.js' },
     @{ Source = 'node_modules\file-saver\dist\FileSaver.min.js'; Destination = 'FileSaver.min.js' },
     @{ Source = 'node_modules\xlsx\dist\xlsx.full.min.js'; Destination = 'xlsx.full.min.js' },
-    @{ Source = 'node_modules\jszip\dist\jszip.min.js'; Destination = 'jszip.min.js' }
+    @{ Source = 'node_modules\jszip\dist\jszip.min.js'; Destination = 'jszip.min.js' },
+    @{ Source = 'node_modules\jspdf\dist\jspdf.umd.min.js'; Destination = 'jspdf.umd.min.js' }
 )
 foreach ($asset in $assets) {
     $sourcePath = Join-Path $root $asset.Source
