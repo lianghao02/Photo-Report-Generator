@@ -297,6 +297,13 @@
                 </div>
 
                 <div class="flex flex-col gap-2">
+                    <button type="button" id="btnSaveProject" class="btn-secondary w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-start gap-1.5" title="將照片與編輯資料儲存成單一專案檔">
+                        <i class="fa-solid fa-floppy-disk text-[#526F94] text-sm"></i> 儲存專案
+                    </button>
+                    <label class="btn-secondary w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer" title="開啟先前儲存的專案檔">
+                        <i class="fa-solid fa-folder-open text-[#526F94] text-sm"></i> 開啟專案
+                        <input type="file" id="importProjectInput" accept=".photo-report,application/zip" class="hidden">
+                    </label>
                     <button type="button" id="btnExportExcel" class="btn-secondary w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-start gap-1.5">
                         <i class="fa-regular fa-file-excel text-emerald-600 text-sm"></i> 匯出 Excel
                     </button>
@@ -344,9 +351,6 @@
                     <button type="button" id="btnToggleSelectAll" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1">
                         <i class="fa-regular fa-square-check"></i> <span id="selectAllText">全選</span>
                     </button>
-                    <button type="button" id="btnUndo" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 disabled:opacity-50" title="復原（Ctrl＋Z）" disabled><i class="fa-solid fa-rotate-left"></i> 復原</button>
-                    <button type="button" id="btnRedo" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 disabled:opacity-50" title="重做（Ctrl＋Shift＋Z）" disabled><i class="fa-solid fa-rotate-right"></i> 重做</button>
-
                     <!-- 智慧流水號 -->
                     <button type="button" id="btnOpenSequenceModal" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1">
                         <i class="fa-solid fa-arrow-down-1-9 text-[#526F94]"></i> 重排流水號
@@ -355,6 +359,13 @@
                     <!-- 從檔名解析時間 -->
                     <button type="button" id="btnParseFilenameTime" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1" title="自動從檔名提取日期與時間（如 YYYYMMDD_HHMMSS、Screenshot）">
                         <i class="fa-solid fa-wand-magic-sparkles text-[#526F94]"></i> 解析檔名時間
+                    </button>
+
+                    <button type="button" id="btnUndo" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed" title="復原（Ctrl+Z）" disabled>
+                        <i class="fa-solid fa-rotate-left text-[#526F94]"></i> 復原
+                    </button>
+                    <button type="button" id="btnRedo" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed" title="重做（Ctrl+Y 或 Ctrl+Shift+Z）" disabled>
+                        <i class="fa-solid fa-rotate-right text-[#526F94]"></i> 重做
                     </button>
 
                     <!-- 全選旋轉 90° -->
@@ -372,6 +383,9 @@
                         </button>
                         <button type="button" id="btnViewGrid" class="px-2.5 py-1 rounded text-xs font-bold text-[#667080] flex items-center gap-1">
                             <i class="fa-solid fa-table"></i> 試算表視圖
+                        </button>
+                        <button type="button" id="btnViewPreview" class="px-2.5 py-1 rounded text-xs font-bold text-[#667080] flex items-center gap-1">
+                            <i class="fa-solid fa-table-cells-large"></i> 分頁預覽
                         </button>
                     </div>
 
@@ -534,6 +548,9 @@
                 </div>
 
             </div>
+
+            <!-- Word 分頁拼貼預覽：依所選版型分組，僅供畫面確認，實際格式以 DOCX 匯出為準。 -->
+            <div id="previewContainer" class="hidden max-h-[600px] overflow-y-auto p-3 bg-[#EDF2F5]/50 rounded-xl border border-[#6B8BB0]/20"></div>
 
             <!-- 4. 試算表 DataGrid 視圖 (適合鍵盤快速 Key 表格) -->
             <div id="gridContainer" class="hidden overflow-x-auto border border-[#6B8BB0]/20 rounded-xl bg-white max-h-[600px] overflow-y-auto">
@@ -754,9 +771,11 @@
                 this.editorCollapsed = this.loadWorkspacePreference('editorCollapsed', true);
                 this.marqueeState = null;
                 this.history = [];
-                this.redoHistory = [];
+                this.historyIndex = -1;
                 this.historyLimit = 50;
-                this.editHistorySnapshot = null;
+                this.historyTimer = null;
+                this.isRestoringHistory = false;
+                this.managedUrls = new Set();
                 this.processingCancelled = false;
                 this.photoSearchTerm = '';
                 this.photoFilterMode = 'all';
@@ -765,6 +784,7 @@
                 this.applyWorkspaceLayout();
                 this.setDefaultTodayDate();
                 this.loadAppVersion();
+                this.recordHistory('初始狀態');
             }
 
             initElements() {
@@ -780,6 +800,7 @@
                 this.selectionMarquee = document.getElementById('selectionMarquee');
                 this.btnToggleEditor = document.getElementById('btnToggleEditor');
                 this.gridContainer = document.getElementById('gridContainer');
+                this.previewContainer = document.getElementById('previewContainer');
                 this.gridTbody = document.getElementById('gridTbody');
                 this.emptyState = document.getElementById('emptyState');
                 this.photoCount = document.getElementById('photoCount');
@@ -850,6 +871,7 @@
                 document.getElementById('btnToggleSelectAll').addEventListener('click', () => this.toggleSelectAll());
                 document.getElementById('btnViewWorkspace').addEventListener('click', () => this.switchView('workspace'));
                 document.getElementById('btnViewGrid').addEventListener('click', () => this.switchView('grid'));
+                document.getElementById('btnViewPreview').addEventListener('click', () => this.switchView('preview'));
                 document.getElementById('btnResetThumbnailSize').addEventListener('click', () => this.setThumbnailSize(220));
                 this.thumbGrid.addEventListener('wheel', (event) => this.handleThumbnailWheel(event), { passive: false });
                 this.thumbGrid.addEventListener('pointerdown', (event) => this.beginMarqueeSelection(event));
@@ -864,25 +886,29 @@
                 document.getElementById('btnApplySequence').addEventListener('click', () => this.applySequence());
                 document.getElementById('btnParseFilenameTime').addEventListener('click', () => this.parseFilenameTime());
                 document.getElementById('btnExportDocx').addEventListener('click', () => this.exportDocx().catch(error => this.handleExportError(error)));
+                document.getElementById('btnSaveProject').addEventListener('click', () => this.saveProject().catch(error => this.handleProjectError(error)));
+                document.getElementById('importProjectInput').addEventListener('change', (e) => this.openProject(e));
+                document.getElementById('btnUndo').addEventListener('click', () => this.undo());
+                document.getElementById('btnRedo').addEventListener('click', () => this.redo());
                 document.getElementById('btnExportExcel').addEventListener('click', () => this.exportExcel());
                 document.getElementById('btnExportZip').addEventListener('click', () => this.exportZip().catch(error => this.handleExportError(error)));
                 document.getElementById('btnExportPdf').addEventListener('click', () => this.exportPdf().catch(error => this.handleExportError(error)));
                 document.getElementById('importExcelInput').addEventListener('change', (e) => this.importExcel(e));
-                this.layoutSelect.addEventListener('change', () => this.updatePageEstimate());
+                this.layoutSelect.addEventListener('change', () => {
+                    this.updatePageEstimate();
+                    this.scheduleHistory('變更 Word 版型');
+                });
                 this.btnCheckUpdate.addEventListener('click', () => this.checkForUpdates());
-                this.btnUndo.addEventListener('click', () => this.undo());
-                this.btnRedo.addEventListener('click', () => this.redo());
                 this.btnCancelProcessing.addEventListener('click', () => { this.processingCancelled = true; });
                 this.photoSearch.addEventListener('input', (event) => { this.photoSearchTerm = event.target.value.trim().toLowerCase(); this.render(); });
                 this.photoFilter.addEventListener('change', (event) => { this.photoFilterMode = event.target.value; this.render(); });
                 document.getElementById('btnJumpPhoto').addEventListener('click', () => this.jumpToPhoto());
+                ['caseTitle', 'caseDate', 'defaultLocation', 'deptName', 'officerName'].forEach(id => {
+                    document.getElementById(id).addEventListener('input', () => this.scheduleHistory('修改案件基本資料'));
+                });
 
                 // 右側編輯器即時輸入事件
                 this.editSeq.addEventListener('input', (e) => this.updateCurrentPhoto('seq', e.target.value));
-                [this.editSeq, this.editDate, this.editTime, this.editLocation, this.editDesc].forEach(input => {
-                    input.addEventListener('focus', () => { this.editHistorySnapshot ??= this.captureState(); });
-                    input.addEventListener('blur', () => this.commitEditHistory());
-                });
                 this.editTime.addEventListener('input', (e) => {
                     const rawValue = e.target.value;
                     const cursorPosition = e.target.selectionStart ?? rawValue.length;
@@ -934,8 +960,16 @@
                 // 鍵盤快速鍵：方向鍵切換單張選取；Ctrl＋方向鍵與 Ctrl＋Home／End 重排已選照片。
                 window.addEventListener('keydown', (e) => {
                     if (this.isTypingTarget(e.target)) return;
-                    if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'z') { e.preventDefault(); this.undo(); return; }
-                    if ((e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'z') || (e.ctrlKey && e.key.toLowerCase() === 'y')) { e.preventDefault(); this.redo(); return; }
+                    if (e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'z') {
+                        e.preventDefault();
+                        if (e.shiftKey) this.redo(); else this.undo();
+                        return;
+                    }
+                    if (e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'y') {
+                        e.preventDefault();
+                        this.redo();
+                        return;
+                    }
                     if (e.key === 'Escape') this.closeModal('imageLightboxModal');
                     if (e.altKey && e.key === 'ArrowLeft') {
                         e.preventDefault();
@@ -994,91 +1028,7 @@
                 const mMonth = now.getMonth() + 1;
                 const mDay = now.getDate();
                 document.getElementById('caseDate').value = `${mYear}年${mMonth}月${mDay}日`;
-            }
-
-            captureState() {
-                return {
-                    photos: this.photos.map(photo => ({ ...photo })),
-                    currentIndex: this.currentIndex,
-                    lastSelectedIndex: this.lastSelectedIndex
-                };
-            }
-
-            statesEqual(left, right) {
-                return JSON.stringify(left.photos.map(({ file, src, thumbnailSrc, ...photo }) => photo)) ===
-                    JSON.stringify(right.photos.map(({ file, src, thumbnailSrc, ...photo }) => photo)) &&
-                    left.currentIndex === right.currentIndex && left.lastSelectedIndex === right.lastSelectedIndex;
-            }
-
-            pushHistory(before, label = '操作') {
-                const after = this.captureState();
-                if (this.statesEqual(before, after)) return;
-                const discardedRedo = this.redoHistory;
-                this.history.push({ before, after, label });
-                const discardedHistory = this.history.length > this.historyLimit ? [this.history.shift()] : [];
-                this.redoHistory = [];
-                this.releaseDiscardedHistoryUrls([...discardedRedo, ...discardedHistory].filter(Boolean));
-                this.updateHistoryUi();
-            }
-
-            getPhotoUrls(photos) {
-                return photos.flatMap(photo => [photo.src, photo.thumbnailSrc].filter(Boolean));
-            }
-
-            releaseDiscardedHistoryUrls(entries) {
-                if (!entries.length) return;
-                const retainedUrls = new Set([
-                    ...this.getPhotoUrls(this.photos),
-                    ...this.history.flatMap(entry => this.getPhotoUrls([...entry.before.photos, ...entry.after.photos])),
-                    ...this.redoHistory.flatMap(entry => this.getPhotoUrls([...entry.before.photos, ...entry.after.photos]))
-                ]);
-                const discardedUrls = new Set(entries.flatMap(entry => this.getPhotoUrls([
-                    ...entry.before.photos,
-                    ...entry.after.photos
-                ])));
-                discardedUrls.forEach(url => {
-                    if (!retainedUrls.has(url)) URL.revokeObjectURL(url);
-                });
-            }
-
-            updateHistoryUi() {
-                this.btnUndo.disabled = this.history.length === 0;
-                this.btnRedo.disabled = this.redoHistory.length === 0;
-                this.btnUndo.title = this.history.length ? `復原：${this.history.at(-1).label}（Ctrl＋Z）` : '沒有可復原的操作';
-                this.btnRedo.title = this.redoHistory.length ? `重做：${this.redoHistory.at(-1).label}（Ctrl＋Shift＋Z）` : '沒有可重做的操作';
-            }
-
-            restoreState(state) {
-                this.photos = state.photos.map(photo => ({ ...photo }));
-                this.currentIndex = state.currentIndex;
-                this.lastSelectedIndex = state.lastSelectedIndex;
-                this.render();
-            }
-
-            undo() {
-                const entry = this.history.pop();
-                if (!entry) return;
-                this.redoHistory.push(entry);
-                this.restoreState(entry.before);
-                this.updateHistoryUi();
-            }
-
-            redo() {
-                const entry = this.redoHistory.pop();
-                if (!entry) return;
-                this.history.push(entry);
-                this.restoreState(entry.after);
-                this.updateHistoryUi();
-            }
-
-            commitEditHistory() {
-                if (!this.editHistorySnapshot) return;
-                this.pushHistory(this.editHistorySnapshot, '編輯照片資料');
-                this.editHistorySnapshot = null;
-            }
-
-            beginHistory() {
-                return this.captureState();
+                this.scheduleHistory('填入今天日期');
             }
 
             jumpToPhoto() {
@@ -1223,7 +1173,6 @@
 
             async handleFiles(files) {
                 this.processingCancelled = false;
-                const before = this.beginHistory();
                 const defaultLoc = document.getElementById('defaultLocation').value.trim() || '現場';
                 const incomingBytes = files.reduce((total, file) => total + file.size, 0);
                 const totalBytes = this.photos.reduce((total, photo) => total + photo.file.size, 0) + incomingBytes;
@@ -1257,6 +1206,8 @@
                             selected: false
                         };
                         this.photos.push(photoItem);
+                        this.managedUrls.add(sourceUrl);
+                        this.managedUrls.add(photoItem.thumbnailSrc);
                     } catch (error) {
                         if (sourceUrl) URL.revokeObjectURL(sourceUrl);
                         failedCount++;
@@ -1265,7 +1216,7 @@
                     this.setProgress('正在建立低記憶體縮圖…', i + 1, files.length);
                     if (this.processingCancelled) {
                         this.render();
-                        this.pushHistory(before, '載入照片');
+                        this.recordHistory('載入照片（已取消）');
                         throw new Error('使用者已取消處理。');
                     }
                     if ((i + 1) % 10 === 0) {
@@ -1279,7 +1230,7 @@
                 }
                 this.render();
                 this.clearProgress();
-                this.pushHistory(before, '載入照片');
+                this.recordHistory(`載入 ${files.length - failedCount} 張照片`);
                 if (failedCount) alert(`已載入 ${files.length - failedCount} 張照片；${failedCount} 張因無法解碼而略過。`);
             }
 
@@ -1404,7 +1355,6 @@
 
             parseFilenameTime() {
                 if (!this.photos.length) return alert('請先載入照片！');
-                const before = this.beginHistory();
                 let count = 0;
                 this.photos.forEach(p => {
                     const t = this.extractTimeFromFilename(p.name);
@@ -1414,25 +1364,23 @@
                     }
                 });
                 this.render();
-                this.pushHistory(before, '解析檔名時間');
+                this.recordHistory('解析檔名時間');
                 alert(`已成功從檔名解析 ${count} 張照片之時間！`);
             }
 
             fillAllDefaults() {
                 if (!this.photos.length) return alert('請先載入照片！');
-                const before = this.beginHistory();
                 const defaultLoc = document.getElementById('defaultLocation').value.trim();
                 this.photos.forEach(p => {
                     if (defaultLoc) p.location = defaultLoc;
                 });
                 this.render();
-                this.pushHistory(before, '套用預設地點');
+                this.recordHistory('套用預設地點');
                 alert('已將表頭預設地點套用至所有照片！');
             }
 
             batchRotate(degree) {
                 if (!this.photos.length) return;
-                const before = this.beginHistory();
                 const hasSelected = this.photos.some(p => p.selected);
                 this.photos.forEach(p => {
                     if (!hasSelected || p.selected) {
@@ -1440,11 +1388,10 @@
                     }
                 });
                 this.render();
-                this.pushHistory(before, '批次旋轉照片');
+                this.recordHistory('批次旋轉照片');
             }
 
             applySequence() {
-                const before = this.beginHistory();
                 const prefix = document.getElementById('seqPrefix').value;
                 const start = parseInt(document.getElementById('seqStart').value, 10) || 1;
                 const digits = parseInt(document.getElementById('seqDigits').value, 10) || 1;
@@ -1457,12 +1404,11 @@
 
                 this.closeModal('sequenceModal');
                 this.render();
-                this.pushHistory(before, '重排流水號');
+                this.recordHistory('重排流水號');
             }
 
             fillDownFromIndex(index, field) {
                 if (!this.photos[index]) return;
-                const before = this.beginHistory();
                 const val = this.photos[index][field];
                 let skipped = 0;
                 for (let i = index + 1; i < this.photos.length; i++) {
@@ -1474,7 +1420,7 @@
                     this.photos[i][field] = val;
                 }
                 this.render();
-                this.pushHistory(before, '向下填滿欄位');
+                this.recordHistory(`向下填滿${field}`);
                 if (field === 'desc' && skipped > 0) {
                     alert(`已向下填滿說明內容，跳過 ${skipped} 張已有說明的照片。`);
                 } else {
@@ -1538,7 +1484,6 @@
             applyEditorToSelected() {
                 const selectedList = this.photos.filter(p => p.selected);
                 if (selectedList.length === 0) return alert('請先在左側勾選要套用的照片！');
-                const before = this.beginHistory();
 
                 const dateVal = this.editDate.value.trim();
                 const timeVal = this.editTime.value.trim();
@@ -1558,23 +1503,20 @@
                 });
 
                 this.render();
-                this.pushHistory(before, '批次套用照片資料');
+                this.recordHistory('批次套用編輯欄位');
                 alert(`已成功套用至勾選的 ${selectedList.length} 張照片！`);
             }
 
             switchView(view) {
                 this.currentView = view;
-                if (view === 'workspace') {
-                    this.workspaceContainer.classList.remove('hidden');
-                    this.gridContainer.classList.add('hidden');
-                    document.getElementById('btnViewWorkspace').className = "px-2.5 py-1 rounded text-xs font-bold bg-[#526F94] text-white flex items-center gap-1";
-                    document.getElementById('btnViewGrid').className = "px-2.5 py-1 rounded text-xs font-bold text-[#667080] flex items-center gap-1";
-                } else {
-                    this.workspaceContainer.classList.add('hidden');
-                    this.gridContainer.classList.remove('hidden');
-                    document.getElementById('btnViewWorkspace').className = "px-2.5 py-1 rounded text-xs font-bold text-[#667080] flex items-center gap-1";
-                    document.getElementById('btnViewGrid').className = "px-2.5 py-1 rounded text-xs font-bold bg-[#526F94] text-white flex items-center gap-1";
-                }
+                this.workspaceContainer.classList.toggle('hidden', view !== 'workspace');
+                this.gridContainer.classList.toggle('hidden', view !== 'grid');
+                this.previewContainer.classList.toggle('hidden', view !== 'preview');
+                const activeClass = "px-2.5 py-1 rounded text-xs font-bold bg-[#526F94] text-white flex items-center gap-1";
+                const idleClass = "px-2.5 py-1 rounded text-xs font-bold text-[#667080] flex items-center gap-1";
+                document.getElementById('btnViewWorkspace').className = view === 'workspace' ? activeClass : idleClass;
+                document.getElementById('btnViewGrid').className = view === 'grid' ? activeClass : idleClass;
+                document.getElementById('btnViewPreview').className = view === 'preview' ? activeClass : idleClass;
                 this.render();
             }
 
@@ -1594,6 +1536,181 @@
                 } catch {
                     // 隱私模式或受限制環境不儲存版面偏好，仍維持本次操作。
                 }
+            }
+
+            getCaseData() {
+                return Object.fromEntries(['caseTitle', 'caseDate', 'defaultLocation', 'deptName', 'officerName', 'layoutSelect']
+                    .map(id => [id, document.getElementById(id).value]));
+            }
+
+            applyCaseData(data = {}) {
+                ['caseTitle', 'caseDate', 'defaultLocation', 'deptName', 'officerName', 'layoutSelect'].forEach(id => {
+                    if (typeof data[id] === 'string') document.getElementById(id).value = data[id];
+                });
+            }
+
+            snapshotState(label = '') {
+                return {
+                    label,
+                    caseData: this.getCaseData(),
+                    currentIndex: this.currentIndex,
+                    lastSelectedIndex: this.lastSelectedIndex,
+                    photos: this.photos.map(photo => ({ ...photo }))
+                };
+            }
+
+            historySignature(state) {
+                return JSON.stringify({
+                    caseData: state.caseData,
+                    currentIndex: state.currentIndex,
+                    lastSelectedIndex: state.lastSelectedIndex,
+                    photos: state.photos.map(({ uid, rotation, seq, date, time, location, desc, selected }) =>
+                        ({ uid, rotation, seq, date, time, location, desc, selected }))
+                });
+            }
+
+            recordHistory(label = '') {
+                if (this.isRestoringHistory) return;
+                const next = this.snapshotState(label);
+                const current = this.history[this.historyIndex];
+                if (current && this.historySignature(current) === this.historySignature(next)) return;
+                this.history.splice(this.historyIndex + 1);
+                this.history.push(next);
+                if (this.history.length > this.historyLimit) this.history.shift();
+                this.historyIndex = this.history.length - 1;
+                this.releaseUnusedPhotoUrls();
+                this.updateHistoryControls();
+            }
+
+            scheduleHistory(label) {
+                if (this.isRestoringHistory) return;
+                clearTimeout(this.historyTimer);
+                this.historyTimer = setTimeout(() => this.recordHistory(label), 450);
+            }
+
+            restoreHistory(index) {
+                const state = this.history[index];
+                if (!state) return;
+                clearTimeout(this.historyTimer);
+                this.isRestoringHistory = true;
+                this.photos = state.photos.map(photo => ({ ...photo }));
+                this.currentIndex = state.currentIndex;
+                this.lastSelectedIndex = state.lastSelectedIndex;
+                this.applyCaseData(state.caseData);
+                this.isRestoringHistory = false;
+                this.historyIndex = index;
+                this.render();
+                this.updateHistoryControls();
+            }
+
+            undo() {
+                if (this.historyIndex <= 0) return;
+                this.restoreHistory(this.historyIndex - 1);
+            }
+
+            redo() {
+                if (this.historyIndex >= this.history.length - 1) return;
+                this.restoreHistory(this.historyIndex + 1);
+            }
+
+            updateHistoryControls() {
+                const undo = document.getElementById('btnUndo');
+                const redo = document.getElementById('btnRedo');
+                undo.disabled = this.historyIndex <= 0;
+                redo.disabled = this.historyIndex >= this.history.length - 1;
+            }
+
+            getPhotosPerPage() {
+                return this.layoutSelect.value === 'landscape_3' ? 3 : 2;
+            }
+
+            async saveProject() {
+                if (!this.photos.length) return alert('請先載入照片再儲存專案！');
+                if (typeof JSZip === 'undefined') throw new Error('JSZip 尚未載入，無法儲存專案。');
+                const zip = new JSZip();
+                const manifestPhotos = [];
+                this.setProgress('正在封裝專案檔…', 0, this.photos.length);
+                for (let index = 0; index < this.photos.length; index++) {
+                    const photo = this.photos[index];
+                    const archiveName = `${String(index + 1).padStart(4, '0')}_${photo.uid}_${photo.name}`;
+                    zip.file(`images/${archiveName}`, photo.file);
+                    manifestPhotos.push({
+                        uid: photo.uid, archiveName, name: photo.name, type: photo.file.type,
+                        rotation: photo.rotation, exifRotation: photo.exifRotation || 0, seq: photo.seq, date: photo.date, time: photo.time,
+                        location: photo.location, desc: photo.desc, selected: photo.selected
+                    });
+                    this.setProgress('正在封裝專案檔…', index + 1, this.photos.length);
+                    if ((index + 1) % 10 === 0) await this.yieldToBrowser();
+                }
+                zip.file('manifest.json', JSON.stringify({
+                    format: 'photo-report-project', version: 1, savedAt: new Date().toISOString(),
+                    caseData: this.getCaseData(), currentIndex: this.currentIndex,
+                    lastSelectedIndex: this.lastSelectedIndex, photos: manifestPhotos
+                }));
+                const content = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+                const caseTitle = this.getCaseData().caseTitle || '現場照片清冊';
+                saveAs(content, `${caseTitle}_照片清冊專案.photo-report`);
+                this.clearProgress();
+            }
+
+            async openProject(event) {
+                const file = event.target.files?.[0];
+                event.target.value = '';
+                if (!file) return;
+                if (typeof JSZip === 'undefined') return this.handleProjectError(new Error('JSZip 尚未載入，無法開啟專案。'));
+                if (this.photos.length && !confirm('開啟專案會取代目前工作內容；尚未儲存的修改將遺失。確定繼續嗎？')) return;
+                try {
+                    const zip = await JSZip.loadAsync(file);
+                    const manifestFile = zip.file('manifest.json');
+                    if (!manifestFile) throw new Error('這不是有效的照片清冊專案檔（缺少 manifest.json）。');
+                    const manifest = JSON.parse(await manifestFile.async('text'));
+                    if (manifest.format !== 'photo-report-project' || !Array.isArray(manifest.photos)) {
+                        throw new Error('專案檔格式不支援或內容不完整。');
+                    }
+                    this.setProgress('正在還原專案照片…', 0, manifest.photos.length);
+                    const restored = [];
+                    for (let index = 0; index < manifest.photos.length; index++) {
+                        const saved = manifest.photos[index];
+                        const entry = zip.file(`images/${saved.archiveName}`);
+                        if (!entry) throw new Error(`專案檔缺少照片：${saved.name}`);
+                        const blob = await entry.async('blob');
+                        const imageFile = new File([blob], saved.name, { type: saved.type || blob.type || 'image/jpeg' });
+                        const src = URL.createObjectURL(imageFile);
+                        restored.push({
+                            uid: saved.uid || crypto.randomUUID(), file: imageFile, name: saved.name,
+                            src, thumbnailSrc: await this.createThumbnailUrl(imageFile, src),
+                            rotation: Number(saved.rotation) || 0, exifRotation: Number(saved.exifRotation) || 0,
+                            seq: String(saved.seq ?? index + 1), date: saved.date || '', time: saved.time || '',
+                            location: saved.location || '', desc: saved.desc || '', selected: Boolean(saved.selected)
+                        });
+                        this.setProgress('正在還原專案照片…', index + 1, manifest.photos.length);
+                        if ((index + 1) % 5 === 0) await this.yieldToBrowser();
+                    }
+                    this.photos.forEach(photo => this.releasePhotoUrls(photo));
+                    this.history = [];
+                    this.historyIndex = -1;
+                    this.releaseUnusedPhotoUrls();
+                    this.photos = restored;
+                    restored.forEach(photo => {
+                        this.managedUrls.add(photo.src);
+                        this.managedUrls.add(photo.thumbnailSrc);
+                    });
+                    this.applyCaseData(manifest.caseData);
+                    this.currentIndex = Math.max(0, Math.min(Number(manifest.currentIndex) || 0, Math.max(0, restored.length - 1)));
+                    this.lastSelectedIndex = manifest.lastSelectedIndex ?? this.currentIndex;
+                    this.recordHistory('開啟專案');
+                    this.clearProgress();
+                    this.render();
+                    alert(`已開啟專案，共還原 ${restored.length} 張照片。`);
+                } catch (error) {
+                    this.clearProgress();
+                    this.handleProjectError(error);
+                }
+            }
+
+            handleProjectError(error) {
+                console.error(error);
+                alert(`專案檔處理失敗：${error?.message || error}`);
             }
 
             setThumbnailSize(size) {
@@ -1635,37 +1752,49 @@
 
             removePhoto(index) {
                 if (!this.photos[index]) return;
-                const before = this.beginHistory();
-                // 先保留 Object URL，讓 Ctrl＋Z 可完整還原已刪除照片。
                 this.photos.splice(index, 1);
                 if (this.currentIndex >= this.photos.length) {
                     this.currentIndex = Math.max(0, this.photos.length - 1);
                 }
                 this.render();
-                this.pushHistory(before, '刪除照片');
+                this.recordHistory('刪除照片');
             }
 
             rotatePhoto(index) {
-                const before = this.beginHistory();
                 this.photos[index].rotation = (this.photos[index].rotation + 90) % 360;
                 this.render();
-                this.pushHistory(before, '旋轉照片');
+                this.recordHistory('旋轉照片');
             }
 
             clearAll() {
                 if (!this.photos.length) return;
                 if (confirm('確定要清空所有載入的照片與資料嗎？')) {
-                    const before = this.beginHistory();
-                    // 保留暫存圖片參照，讓本次清空可透過 Ctrl＋Z 還原。
                     this.photos = [];
                     this.currentIndex = 0;
                     this.render();
-                    this.pushHistory(before, '清空所有照片');
+                    this.recordHistory('清空照片');
                 }
             }
 
             releasePhotoUrls(photo) {
-                [photo.src, photo.thumbnailSrc].filter(Boolean).forEach(url => URL.revokeObjectURL(url));
+                [photo.src, photo.thumbnailSrc].filter(Boolean).forEach(url => {
+                    URL.revokeObjectURL(url);
+                    this.managedUrls.delete(url);
+                });
+            }
+
+            releaseUnusedPhotoUrls() {
+                const retained = new Set();
+                [...this.photos, ...this.history.flatMap(state => state.photos)].forEach(photo => {
+                    if (photo.src) retained.add(photo.src);
+                    if (photo.thumbnailSrc) retained.add(photo.thumbnailSrc);
+                });
+                this.managedUrls.forEach(url => {
+                    if (!retained.has(url)) {
+                        URL.revokeObjectURL(url);
+                        this.managedUrls.delete(url);
+                    }
+                });
             }
 
             updatePageEstimate() {
@@ -1750,6 +1879,7 @@
                 this.marqueeState = null;
                 if (!state.moved && !state.additive) this.photos.forEach(photo => photo.selected = false);
                 this.render();
+                this.recordHistory('框選照片');
             }
 
             getSelectedIndicesOrCurrent() {
@@ -1765,13 +1895,13 @@
                 this.currentIndex = nextIndex;
                 this.lastSelectedIndex = nextIndex;
                 this.render();
+                this.recordHistory('切換目前照片');
                 document.getElementById(`thumb_${this.photos[nextIndex].uid}`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
             }
 
             moveSelectedBy(delta) {
                 const selectedIndices = this.getSelectedIndicesOrCurrent();
                 if (!selectedIndices.length || !delta) return;
-                const before = this.beginHistory();
                 const currentPhoto = this.photos[this.currentIndex];
 
                 // 整組同步移動策略：
@@ -1797,13 +1927,12 @@
                 this.currentIndex = Math.max(0, this.photos.indexOf(currentPhoto));
                 this.lastSelectedIndex = this.currentIndex;
                 this.render();
-                this.pushHistory(before, '鍵盤移動照片');
+                this.recordHistory('移動已選照片');
             }
 
             moveSelectedToBoundary(boundary) {
                 const selectedIndices = this.getSelectedIndicesOrCurrent();
                 if (!selectedIndices.length) return;
-                const before = this.beginHistory();
                 const currentPhoto = this.photos[this.currentIndex];
                 const selectedSet = new Set(selectedIndices);
                 const moving = this.photos.filter((_, index) => selectedSet.has(index));
@@ -1812,7 +1941,7 @@
                 this.currentIndex = Math.max(0, this.photos.indexOf(currentPhoto));
                 this.lastSelectedIndex = this.currentIndex;
                 this.render();
-                this.pushHistory(before, boundary === 'start' ? '移動照片至首位' : '移動照片至末位');
+                this.recordHistory('移動已選照片至首尾');
             }
 
             handleCardDragStart(index, event) {
@@ -1887,7 +2016,6 @@
                     return;
                 }
 
-                const before = this.beginHistory();
 
                 const targetItem = this.photos[targetIndex];
                 if (!targetItem) {
@@ -1919,7 +2047,7 @@
 
                 this.handleCardDragEnd();
                 this.render();
-                this.pushHistory(before, '拖曳排序照片');
+                this.recordHistory('拖曳排序照片');
             }
 
             handleCardDragEnd() {
@@ -1948,6 +2076,7 @@
                 }
                 this.currentIndex = index;
                 this.render();
+                this.recordHistory('變更照片選取');
             }
 
             togglePhotoSelect(index, event) {
@@ -1956,12 +2085,14 @@
                 if (this.photos[index].selected) this.currentIndex = index;
                 this.lastSelectedIndex = index;
                 this.render();
+                this.recordHistory('變更照片選取');
             }
 
             toggleSelectAll(forceState) {
                 const targetState = forceState !== undefined ? forceState : !this.photos.every(p => p.selected);
                 this.photos.forEach(p => p.selected = targetState);
                 this.render();
+                this.recordHistory('變更照片選取');
             }
 
             navigatePhoto(delta) {
@@ -1971,11 +2102,13 @@
                 if (nextIdx >= this.photos.length) nextIdx = this.photos.length - 1;
                 this.currentIndex = nextIdx;
                 this.render();
+                this.recordHistory('切換目前照片');
             }
 
             updateCurrentPhoto(field, value) {
                 if (!this.photos[this.currentIndex]) return;
                 this.photos[this.currentIndex][field] = value;
+                this.scheduleHistory('修改照片欄位');
                 const thumbLabel = document.getElementById(`desc_preview_${this.photos[this.currentIndex].uid}`);
                 if (thumbLabel && field === 'desc') {
                     thumbLabel.textContent = value || '（無說明）';
@@ -2017,17 +2150,14 @@
                     this.emptyState.classList.remove('hidden');
                     this.workspaceContainer.classList.add('hidden');
                     this.gridContainer.classList.add('hidden');
+                    this.previewContainer.classList.add('hidden');
                     return;
                 }
 
                 this.emptyState.classList.add('hidden');
-                if (this.currentView === 'workspace') {
-                    this.workspaceContainer.classList.remove('hidden');
-                    this.gridContainer.classList.add('hidden');
-                } else {
-                    this.workspaceContainer.classList.add('hidden');
-                    this.gridContainer.classList.remove('hidden');
-                }
+                this.workspaceContainer.classList.toggle('hidden', this.currentView !== 'workspace');
+                this.gridContainer.classList.toggle('hidden', this.currentView !== 'grid');
+                this.previewContainer.classList.toggle('hidden', this.currentView !== 'preview');
 
                 if (this.currentIndex >= totalPhotos) this.currentIndex = totalPhotos - 1;
                 if (this.currentIndex < 0) this.currentIndex = 0;
@@ -2132,11 +2262,55 @@
                         </td>
                     </tr>
                 `).join('');
+                this.renderPagePreview();
+            }
+
+            renderPagePreview() {
+                const perPage = this.getPhotosPerPage();
+                const layout = this.layoutSelect.value;
+                const gridClass = layout === 'up_down_2' ? 'grid-cols-1 max-w-[420px]' :
+                    layout === 'left_right_2' ? 'grid-cols-2' : 'grid-cols-3';
+                const pages = [];
+                for (let start = 0; start < this.photos.length; start += perPage) {
+                    const pagePhotos = this.photos.slice(start, start + perPage);
+                    const cells = pagePhotos.map((photo, offset) => {
+                        const index = start + offset;
+                        return `
+                            <button type="button" onclick="window.app.selectPreviewPhoto(${index})" class="text-left min-w-0 border border-[#6B8BB0]/25 rounded-lg p-1.5 bg-white hover:border-[#526F94] transition ${index === this.currentIndex ? 'ring-2 ring-[#526F94]/50' : ''}">
+                                <div class="aspect-[4/3] bg-[#EDF2F5] rounded flex items-center justify-center overflow-hidden">
+                                    <img src="${photo.thumbnailSrc}" alt="${escapeHtml(photo.name)}" style="transform: rotate(${photo.rotation}deg);" class="w-full h-full object-contain">
+                                </div>
+                                <div class="mt-1 text-[10px] font-bold text-[#2B364B] truncate">#${escapeHtml(photo.seq)} ${escapeHtml(photo.location || '未填地點')}</div>
+                                <div class="text-[10px] text-[#667080] truncate">${escapeHtml(photo.desc || '（無說明）')}</div>
+                            </button>`;
+                    }).join('');
+                    pages.push(`
+                        <section class="bg-white border-2 border-[#6B8BB0]/25 rounded-xl shadow-sm p-3">
+                            <div class="flex items-center justify-between mb-2 text-[11px] text-[#667080]">
+                                <span class="font-bold text-[#2B364B]">第 ${pages.length + 1} 頁</span>
+                                <span>${layout === 'up_down_2' ? '直式上下兩張' : layout === 'left_right_2' ? '直式左右兩張' : '橫式三張'}</span>
+                            </div>
+                            <div class="grid ${gridClass} gap-2 mx-auto">${cells}</div>
+                        </section>`);
+                }
+                this.previewContainer.innerHTML = `
+                    <div class="mb-3 text-xs text-[#667080] flex items-center gap-1.5"><i class="fa-solid fa-circle-info text-[#526F94]"></i> 分頁預覽僅供確認照片順序與分組；實際表格以 Word 匯出為準。</div>
+                    <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">${pages.join('')}</div>`;
+            }
+
+            selectPreviewPhoto(index) {
+                if (!this.photos[index]) return;
+                this.photos.forEach((photo, photoIndex) => photo.selected = photoIndex === index);
+                this.currentIndex = index;
+                this.lastSelectedIndex = index;
+                this.render();
+                this.recordHistory('從分頁預覽選取照片');
             }
 
             updatePhotoField(index, field, value) {
                 if (!this.photos[index]) return;
                 this.photos[index][field] = value;
+                this.scheduleHistory('修改照片欄位');
             }
 
             openLightbox(src, caption) {
@@ -2300,11 +2474,11 @@
                                     height: { value: 420, rule: HeightRule.ATLEAST },
                                     children: [
                                         new TableCell({ width: { size: 1107, type: WidthType.DXA }, columnSpan: 2, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "案由", bold: true, font: "標楷體", size: 24 })] })] }),
-                                        new TableCell({ width: { size: 2290, type: WidthType.DXA }, columnSpan: 2, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: caseTitle, font: "標楷體", size: 22 })] })] }),
+                                        new TableCell({ width: { size: 2290, type: WidthType.DXA }, columnSpan: 2, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: caseTitle, font: "標楷體", size: 22 })] })] }),
                                         new TableCell({ width: { size: 709, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "日期", bold: true, font: "標楷體", size: 24 })] })] }),
-                                        new TableCell({ width: { size: 1843, type: WidthType.DXA }, columnSpan: 2, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: p.item.date || caseDate, font: "標楷體", size: 20 })] })] }),
+                                        new TableCell({ width: { size: 1843, type: WidthType.DXA }, columnSpan: 2, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: p.item.date || caseDate, font: "標楷體", size: 20 })] })] }),
                                         new TableCell({ width: { size: 709, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "時間", bold: true, font: "標楷體", size: 24 })] })] }),
-                                        new TableCell({ width: { size: 1644, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: p.item.time, font: "標楷體", size: 20 })] })] }),
+                                        new TableCell({ width: { size: 1644, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: p.item.time, font: "標楷體", size: 20 })] })] }),
                                     ]
                                 }),
                                 // Row 2: 照片主圖 (全寬 8302 dxa，高度 5726 dxa，精確置中)
@@ -2351,10 +2525,10 @@
                                             width: { size: 7195, type: WidthType.DXA },
                                             columnSpan: 7,
                                             borders: bordersAllSingle,
-                                            verticalAlign: VerticalAlign.TOP,
+                                            verticalAlign: VerticalAlign.CENTER,
                                             children: [
                                                 new Paragraph({
-                                                    alignment: AlignmentType.LEFT,
+                                                    alignment: AlignmentType.CENTER,
                                                     children: [new TextRun({ text: p.item.desc || "現場照片紀錄。", font: "標楷體", size: 20 })]
                                                 })
                                             ]
@@ -2472,8 +2646,8 @@
                                             borders: bordersAllSingle,
                                             verticalAlign: VerticalAlign.CENTER,
                                             children: [
-                                                new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "蒐證時間：", bold: true, font: "標楷體", size: 22 }), new TextRun({ text: `${p1.item.date || caseDate} ${p1.item.time}`, font: "標楷體", size: 20 })] }),
-                                                new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "蒐證地點：", bold: true, font: "標楷體", size: 22 }), new TextRun({ text: p1.item.location, font: "標楷體", size: 20 })] })
+                                                new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: "蒐證時間：", bold: true, font: "標楷體", size: 22 }), new TextRun({ text: `${p1.item.date || caseDate} ${p1.item.time}`, font: "標楷體", size: 20 })] }),
+                                                new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: "蒐證地點：", bold: true, font: "標楷體", size: 22 }), new TextRun({ text: p1.item.location, font: "標楷體", size: 20 })] })
                                             ]
                                         }),
                                         new TableCell({
@@ -2482,7 +2656,7 @@
                                             borders: bordersAllSingle,
                                             verticalAlign: VerticalAlign.CENTER,
                                             children: [
-                                                new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "蒐證單位：", bold: true, font: "標楷體", size: 22 }), new TextRun({ text: globalOfficer, font: "標楷體", size: 20 })] })
+                                                new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: "蒐證單位：", bold: true, font: "標楷體", size: 22 }), new TextRun({ text: globalOfficer, font: "標楷體", size: 20 })] })
                                             ]
                                         })
                                     ]
@@ -2525,9 +2699,9 @@
                                     height: { value: 1200, rule: HeightRule.ATLEAST },
                                     children: [
                                         new TableCell({ width: { size: 1000, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "說明", bold: true, font: "標楷體", size: 22 })] })] }),
-                                        new TableCell({ width: { size: 3932, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.TOP, children: [new Paragraph({ alignment: AlignmentType.LEFT, children: [new TextRun({ text: p1.item.desc || "無說明", font: "標楷體", size: 20 })] })] }),
+                                        new TableCell({ width: { size: 3932, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ children: [new TextRun({ text: p1.item.desc || "無說明", font: "標楷體", size: 20 })] })] }),
                                         new TableCell({ width: { size: 1000, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "說明", bold: true, font: "標楷體", size: 22 })] })] }),
-                                        new TableCell({ width: { size: 3932, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.TOP, children: [new Paragraph({ alignment: AlignmentType.LEFT, children: [new TextRun({ text: p2 ? (p2.item.desc || "無說明") : "", font: "標楷體", size: 20 })] })] }),
+                                        new TableCell({ width: { size: 3932, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ children: [new TextRun({ text: p2 ? (p2.item.desc || "無說明") : "", font: "標楷體", size: 20 })] })] }),
                                     ]
                                 })
                             ]
@@ -2612,11 +2786,11 @@
                                 new TableRow({
                                     height: { value: 420, rule: HeightRule.ATLEAST },
                                     children: [
-                                        new TableCell({ width: { size: 1266, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.TOP, children: [new Paragraph({ alignment: AlignmentType.LEFT, children: [new TextRun({ text: "蒐證時間", bold: true, font: "標楷體", size: 24 })] })] }),
-                                        new TableCell({ width: { size: 3950, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.TOP, children: [new Paragraph({ alignment: AlignmentType.LEFT, children: [new TextRun({ text: `${p1.item.date || caseDate} ${p1.item.time}`, font: "標楷體", size: 24 })] })] }),
-                                        new TableCell({ width: { size: 1295, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.TOP, children: [new Paragraph({ alignment: AlignmentType.LEFT, children: [new TextRun({ text: "蒐證地點", bold: true, font: "標楷體", size: 24 })] })] }),
-                                        new TableCell({ width: { size: 3921, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.TOP, children: [new Paragraph({ alignment: AlignmentType.LEFT, children: [new TextRun({ text: p1.item.location, font: "標楷體", size: 24 })] })] }),
-                                        new TableCell({ width: { size: 1182, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.TOP, children: [new Paragraph({ alignment: AlignmentType.LEFT, children: [new TextRun({ text: "製作人", bold: true, font: "標楷體", size: 24 })] })] }),
+                                        new TableCell({ width: { size: 1266, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: "蒐證時間", bold: true, font: "標楷體", size: 24 })] })] }),
+                                        new TableCell({ width: { size: 3950, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: `${p1.item.date || caseDate} ${p1.item.time}`, font: "標楷體", size: 24 })] })] }),
+                                        new TableCell({ width: { size: 1295, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: "蒐證地點", bold: true, font: "標楷體", size: 24 })] })] }),
+                                        new TableCell({ width: { size: 3921, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: p1.item.location, font: "標楷體", size: 24 })] })] }),
+                                        new TableCell({ width: { size: 1182, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: "製作人", bold: true, font: "標楷體", size: 24 })] })] }),
                                         new TableCell({ width: { size: 4034, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.TOP, children: [new Paragraph({ alignment: AlignmentType.LEFT, children: [new TextRun({ text: globalOfficer, font: "標楷體", size: 24 })] })] }),
                                     ]
                                 }),
@@ -2624,11 +2798,11 @@
                                 new TableRow({
                                     height: { value: 380, rule: HeightRule.ATLEAST },
                                     children: [
-                                        new TableCell({ width: { size: 1266, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "照片編號", bold: true, font: "標楷體", size: 24 })] })] }),
+                                        new TableCell({ width: { size: 1266, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: "照片編號", bold: true, font: "標楷體", size: 24 })] })] }),
                                         new TableCell({ width: { size: 3950, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: p1.item.seq, font: "標楷體", size: 24 })] })] }),
-                                        new TableCell({ width: { size: 1295, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "照片編號", bold: true, font: "標楷體", size: 24 })] })] }),
+                                        new TableCell({ width: { size: 1295, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: "照片編號", bold: true, font: "標楷體", size: 24 })] })] }),
                                         new TableCell({ width: { size: 3921, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: p2 ? p2.item.seq : "", font: "標楷體", size: 24 })] })] }),
-                                        new TableCell({ width: { size: 1182, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "照片編號", bold: true, font: "標楷體", size: 24 })] })] }),
+                                        new TableCell({ width: { size: 1182, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: "照片編號", bold: true, font: "標楷體", size: 24 })] })] }),
                                         new TableCell({ width: { size: 4034, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: p3 ? p3.item.seq : "", font: "標楷體", size: 24 })] })] }),
                                     ]
                                 }),
@@ -2646,11 +2820,11 @@
                                     height: { value: 962, rule: HeightRule.ATLEAST },
                                     children: [
                                         new TableCell({ width: { size: 1266, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "照片說明", bold: true, font: "標楷體", size: 24 })] })] }),
-                                        new TableCell({ width: { size: 3950, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.TOP, children: [new Paragraph({ alignment: AlignmentType.LEFT, children: [new TextRun({ text: p1.item.desc || "無", font: "標楷體", size: 20 })] })] }),
+                                        new TableCell({ width: { size: 3950, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: p1.item.desc || "無", font: "標楷體", size: 20 })] })] }),
                                         new TableCell({ width: { size: 1295, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "照片說明", bold: true, font: "標楷體", size: 24 })] })] }),
-                                        new TableCell({ width: { size: 3921, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.TOP, children: [new Paragraph({ alignment: AlignmentType.LEFT, children: [new TextRun({ text: p2 ? (p2.item.desc || "無") : "", font: "標楷體", size: 20 })] })] }),
+                                        new TableCell({ width: { size: 3921, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: p2 ? (p2.item.desc || "無") : "", font: "標楷體", size: 20 })] })] }),
                                         new TableCell({ width: { size: 1182, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "照片說明", bold: true, font: "標楷體", size: 24 })] })] }),
-                                        new TableCell({ width: { size: 4034, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.TOP, children: [new Paragraph({ alignment: AlignmentType.LEFT, children: [new TextRun({ text: p3 ? (p3.item.desc || "無") : "", font: "標楷體", size: 20 })] })] }),
+                                        new TableCell({ width: { size: 4034, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: p3 ? (p3.item.desc || "無") : "", font: "標楷體", size: 20 })] })] }),
                                     ]
                                 })
                             ]
