@@ -372,6 +372,15 @@
                     <button type="button" id="btnBatchRotate" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1" title="選取或全部照片旋轉 90°">
                         <i class="fa-solid fa-rotate-right text-[#526F94]"></i> 旋轉 90°
                     </button>
+                    <button type="button" id="btnMoveSelectedBackward" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1" title="將已選照片向前移動一格">
+                        <i class="fa-solid fa-arrow-left text-[#526F94]"></i> 前移
+                    </button>
+                    <button type="button" id="btnMoveSelectedForward" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1" title="將已選照片向後移動一格">
+                        後移 <i class="fa-solid fa-arrow-right text-[#526F94]"></i>
+                    </button>
+                    <button type="button" id="btnRemoveSelected" class="px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 text-red-600 hover:bg-red-50 border border-red-200" title="刪除已選照片">
+                        <i class="fa-regular fa-trash-can"></i> 移除選取
+                    </button>
 
                 </div>
 
@@ -391,7 +400,8 @@
 
                     <div id="workspaceLayoutControls" class="bg-white px-2 py-1 rounded-lg border border-[#6B8BB0]/30 flex items-center gap-1.5" aria-label="縮圖尺寸設定">
                         <i class="fa-solid fa-magnifying-glass text-[#526F94] text-xs"></i>
-                        <span id="thumbnailSizeLabel" class="text-xs font-bold text-[#526F94] whitespace-nowrap">縮圖 220px</span>
+                        <input type="range" id="thumbnailSizeRange" min="90" max="400" step="5" value="220" class="w-24 accent-[#526F94]" aria-label="縮圖尺寸，90 至 400 像素">
+                        <span id="thumbnailSizeLabel" class="text-xs font-bold text-[#526F94] whitespace-nowrap">220px</span>
                         <button type="button" id="btnResetThumbnailSize" class="text-[10px] text-[#667080] hover:text-[#526F94] hover:underline" title="重設為 220px">重設</button>
                     </div>
                     <button type="button" id="btnToggleEditor" class="btn-secondary px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1" title="收合或展開右側編輯器">
@@ -413,7 +423,7 @@
                     <span id="selectedCountBadge" class="hidden font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">已選取 0 張</span>
                 </div>
                 <div class="text-[#526F94] flex items-center gap-2">
-                    <span>💡 方向鍵切換照片；Ctrl＋方向鍵移動已選照片；Ctrl＋滾輪調整縮圖；畫布空白處可框選</span>
+                    <span>💡 方向鍵切換；Ctrl＋方向鍵或上方工具列排序；Ctrl＋滾輪／滑桿調整縮圖；空白處可框選</span>
                 </div>
             </div>
             <div class="flex flex-wrap items-center gap-2 px-1 text-xs">
@@ -446,7 +456,7 @@
                 <!-- 左側：照片縮圖畫布排版區 (佔 8 欄，照片一覽無遺不拖長) -->
                 <div id="photoPanel" class="lg:col-span-8 flex flex-col gap-2">
                     <div class="flex items-center justify-between text-xs font-bold text-[#667080] px-1">
-                        <span>📸 照片排版畫布（點擊選取／編輯，拖曳調換順序）</span>
+                        <span>📸 照片排版畫布（精簡縮圖：點擊選取／拖曳調換順序）</span>
                         <span class="text-[11px] text-[#6B8BB0]">Ctrl 點選多選・Shift 點選連續選取・空白處框選</span>
                     </div>
 
@@ -797,6 +807,7 @@
                 this.editorPanel = document.getElementById('editorPanel');
                 this.workspaceLayoutControls = document.getElementById('workspaceLayoutControls');
                 this.thumbnailSizeLabel = document.getElementById('thumbnailSizeLabel');
+                this.thumbnailSizeRange = document.getElementById('thumbnailSizeRange');
                 this.selectionMarquee = document.getElementById('selectionMarquee');
                 this.btnToggleEditor = document.getElementById('btnToggleEditor');
                 this.gridContainer = document.getElementById('gridContainer');
@@ -873,6 +884,7 @@
                 document.getElementById('btnViewGrid').addEventListener('click', () => this.switchView('grid'));
                 document.getElementById('btnViewPreview').addEventListener('click', () => this.switchView('preview'));
                 document.getElementById('btnResetThumbnailSize').addEventListener('click', () => this.setThumbnailSize(220));
+                this.thumbnailSizeRange.addEventListener('input', (event) => this.setThumbnailSize(event.target.value));
                 this.thumbGrid.addEventListener('wheel', (event) => this.handleThumbnailWheel(event), { passive: false });
                 this.thumbGrid.addEventListener('pointerdown', (event) => this.beginMarqueeSelection(event));
                 this.thumbGrid.addEventListener('pointermove', (event) => this.updateMarqueeSelection(event));
@@ -881,6 +893,9 @@
                 this.btnToggleEditor.addEventListener('click', () => this.toggleEditor());
                 document.getElementById('btnClearAll').addEventListener('click', () => this.clearAll());
                 document.getElementById('btnBatchRotate').addEventListener('click', () => this.batchRotate(90));
+                document.getElementById('btnMoveSelectedBackward').addEventListener('click', () => this.moveSelectedBy(-1));
+                document.getElementById('btnMoveSelectedForward').addEventListener('click', () => this.moveSelectedBy(1));
+                document.getElementById('btnRemoveSelected').addEventListener('click', () => this.removeSelectedPhotos());
                 document.getElementById('btnFillAllDefaults').addEventListener('click', () => this.fillAllDefaults());
                 document.getElementById('btnOpenSequenceModal').addEventListener('click', () => this.openModal('sequenceModal'));
                 document.getElementById('btnApplySequence').addEventListener('click', () => this.applySequence());
@@ -910,15 +925,10 @@
                 // 右側編輯器即時輸入事件
                 this.editSeq.addEventListener('input', (e) => this.updateCurrentPhoto('seq', e.target.value));
                 this.editTime.addEventListener('input', (e) => {
-                    const rawValue = e.target.value;
-                    const cursorPosition = e.target.selectionStart ?? rawValue.length;
-                    const masked = this.formatTimeMask(rawValue);
-                    if (masked !== rawValue) {
-                        const insertedMaskChars = Math.max(0, masked.length - rawValue.length);
-                        e.target.value = masked;
-                        // 游標跟著數字走（跳過自動插入的冒號）
-                        e.target.selectionStart = e.target.selectionEnd = Math.min(cursorPosition + insertedMaskChars, masked.length);
-                    }
+                    const masked = this.formatTimeMask(e.target.value);
+                    // 每次都將游標移到遮罩結尾，避免重新渲染後游標落在冒號前而重複輸入數字。
+                    e.target.value = masked;
+                    e.target.selectionStart = e.target.selectionEnd = masked.length;
                     this.updateCurrentPhoto('time', masked);
                 });
                 this.editTime.addEventListener('blur', (e) => {
@@ -1435,11 +1445,9 @@
 
             // ── 時間遮罩 ────────────────────────────────────────
             // 純數字 → 自動插入冒號：4碼=HH:MM，6碼=HH:MM:SS
-            // finalise=true 時才做截斷，輸入中允許超過位數以免卡住
+            // 輸入時即限制六位數，避免游標位移造成分鐘、秒數重複。
             formatTimeMask(raw, finalise = false) {
-                // 過濾出所有數字和已輸入的冒號（保留冒號讓手動輸入相容）
-                let digits = raw.replace(/[^0-9]/g, '');
-                if (finalise) digits = digits.slice(0, 6);
+                let digits = raw.replace(/[^0-9]/g, '').slice(0, 6);
 
                 let result = '';
                 if (digits.length <= 4) {
@@ -1734,8 +1742,9 @@
 
             applyWorkspaceLayout() {
                 this.thumbGrid.style.gridTemplateColumns = `repeat(auto-fill, minmax(min(100%, ${this.thumbnailSize}px), 1fr))`;
-                this.thumbGrid.style.setProperty('--thumbnail-preview-height', `${Math.round(this.thumbnailSize * 0.72)}px`);
-                this.thumbnailSizeLabel.textContent = `縮圖 ${this.thumbnailSize}px`;
+                this.thumbGrid.style.setProperty('--thumbnail-preview-height', `${this.thumbnailSize}px`);
+                this.thumbnailSizeRange.value = String(this.thumbnailSize);
+                this.thumbnailSizeLabel.textContent = `${this.thumbnailSize}px`;
 
                 this.workspaceContainer.classList.toggle('lg:grid-cols-12', !this.editorCollapsed);
                 this.workspaceContainer.classList.toggle('lg:grid-cols-1', this.editorCollapsed);
@@ -1758,6 +1767,19 @@
                 }
                 this.render();
                 this.recordHistory('刪除照片');
+            }
+
+            removeSelectedPhotos() {
+                const selectedIndices = this.getSelectedIndicesOrCurrent();
+                if (!selectedIndices.length) return;
+                const noun = selectedIndices.length === 1 ? '這張照片' : `已選取的 ${selectedIndices.length} 張照片`;
+                if (!confirm(`確定要移除${noun}嗎？可用 Ctrl＋Z 復原。`)) return;
+                const selectedSet = new Set(selectedIndices);
+                this.photos = this.photos.filter((_, index) => !selectedSet.has(index));
+                this.currentIndex = Math.max(0, Math.min(this.currentIndex, this.photos.length - 1));
+                this.lastSelectedIndex = this.photos.length ? this.currentIndex : null;
+                this.render();
+                this.recordHistory('移除選取照片');
             }
 
             rotatePhoto(index) {
@@ -2183,9 +2205,11 @@
                 this.thumbGrid.innerHTML = '<div id="selectionMarquee" class="selection-marquee hidden" aria-hidden="true"></div>' + visibleEntries.map(({ photo: p, index: idx }) => {
                     const isSelected = p.selected ? 'selected' : '';
                     const isCurrent = idx === this.currentIndex ? 'active-editing' : '';
+                    const missingFields = [!String(p.location || '').trim() ? '地點' : '', !String(p.desc || '').trim() ? '說明' : ''].filter(Boolean);
+                    const statusText = missingFields.length ? `待補：${missingFields.join('、')}` : '資料完整';
 
                     return `
-                        <div class="photo-thumb-card morandi-card p-2 flex flex-col gap-1.5 bg-white border border-[#6B8BB0]/25 rounded-xl ${isSelected} ${isCurrent}"
+                        <div class="photo-thumb-card morandi-card p-1.5 flex flex-col gap-1.5 bg-white border border-[#6B8BB0]/25 rounded-xl ${isSelected} ${isCurrent}"
                              id="thumb_${p.uid}"
                              draggable="true"
                              onclick="window.app.handleCardClick(${idx}, event)"
@@ -2195,19 +2219,14 @@
                              ondrop="window.app.handleCardDrop(${idx}, event)"
                              ondragend="window.app.handleCardDragEnd(event)">
 
-                            <div class="flex items-center justify-between">
+                            <div class="flex items-center justify-between min-h-5">
                                 <div class="flex items-center gap-1.5">
                                     <input type="checkbox" ${p.selected ? 'checked' : ''} onclick="window.app.togglePhotoSelect(${idx}, event)" class="rounded text-[#526F94] cursor-pointer" title="勾選">
                                     <span class="px-1.5 py-0.2 rounded bg-[#526F94] text-white text-[10px] font-bold">#${escapeHtml(p.seq)}</span>
                                 </div>
-                                <div class="flex items-center gap-1">
-                                    <button type="button" onclick="event.stopPropagation(); window.app.rotatePhoto(${idx})" title="旋轉 90°" class="text-[#6B8BB0] hover:text-[#526F94] text-[11px] p-0.5">
-                                        <i class="fa-solid fa-rotate-right"></i>
-                                    </button>
-                                    <button type="button" onclick="event.stopPropagation(); window.app.removePhoto(${idx})" title="刪除" class="text-red-400 hover:text-red-600 text-[11px] p-0.5">
-                                        <i class="fa-regular fa-trash-can"></i>
-                                    </button>
-                                </div>
+                                <span class="text-[10px] ${missingFields.length ? 'text-amber-600' : 'text-emerald-600'}" title="${escapeHtml(statusText)}">
+                                    <i class="fa-solid ${missingFields.length ? 'fa-circle-exclamation' : 'fa-circle-check'}"></i>
+                                </span>
                             </div>
 
                             <div class="w-full bg-[#EDF2F5] rounded-lg overflow-hidden flex items-center justify-center relative group cursor-pointer" style="height: var(--thumbnail-preview-height)" onclick="event.stopPropagation(); window.app.openLightboxByIndex(${idx})">
@@ -2217,12 +2236,11 @@
                                 </div>
                             </div>
 
-                            <div class="text-[10px] text-[#667080] truncate flex items-center gap-1">
+                            <div class="text-[10px] text-[#667080] truncate flex items-center gap-1 px-0.5" title="${escapeHtml(p.name)}">
                                 <i class="fa-regular fa-clock text-[#526F94]"></i>
-                                <span>${p.date ? escapeHtml(p.date + ' ') : ''}${escapeHtml(p.time || '未填時間')}</span>
-                            </div>
-                            <div id="desc_preview_${p.uid}" class="text-[10px] text-[#2B364B] bg-[#EDF2F5]/80 p-1 rounded truncate" title="${escapeHtml(p.desc || '無說明')}">
-                                ${p.desc ? escapeHtml(p.desc) : '<span class="text-[#A0AEC0]">（無說明）</span>'}
+                                <span>${escapeHtml(p.time || '未填時間')}</span>
+                                <span class="text-[#A0AEC0]">·</span>
+                                <span class="truncate">${escapeHtml(p.name)}</span>
                             </div>
                         </div>
                     `;
@@ -2922,8 +2940,7 @@
                 const caseTitle = document.getElementById('caseTitle').value.trim() || '現場照片';
                 const caseDate = document.getElementById('caseDate').value.trim() || '';
                 const globalOfficer = document.getElementById('officerName').value.trim() || '';
-                const unit = document.getElementById('unitName').value.trim() || '';
-                const margin = 10;
+                const deptName = document.getElementById('deptName').value.trim() || '臺南市政府警察局新化分局';
 
                 const drawText = (text, x, y, width, size = 9, align = 'left') => {
                     // jsPDF 內建字型沒有中文；以 Canvas 使用 Windows 系統中文字型繪製後嵌入 PDF。
@@ -2968,6 +2985,8 @@
                     const height = properties.height * ratio;
                     pdf.addImage(dataUrl, 'JPEG', x + (maxWidth - width) / 2, y + (maxHeight - height) / 2, width, height, undefined, 'FAST');
                 };
+                const unit = deptName;
+                const margin = 10;
 
                 this.setProgress('正在壓縮照片並建立 PDF 清冊…', 0, this.photos.length);
                 for (let index = 0; index < this.photos.length; index++) {
