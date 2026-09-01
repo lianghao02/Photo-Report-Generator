@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="mobile-web-app-capable" content="yes">
-    <title>現場照片清冊生成工具 v2.2.0</title>
+    <title>現場照片清冊生成工具 v2.2.1</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📷</text></svg>">
 
     <link rel="stylesheet" href="vendor/tailwind.css">
@@ -17,20 +17,20 @@
 
     <style>
         :root {
-            --bg: #F3F5F8;
+            --bg: #F7F7F5;
             --surface: #FFFFFF;
             --surface-card: rgba(255, 255, 255, 0.95);
-            --border: rgba(107, 139, 176, 0.22);
-            --text: #2B364B;
-            --text-muted: #667080;
-            --accent: #526F94;
-            --accent-hover: #415875;
-            --accent-light: rgba(107, 139, 176, 0.12);
-            --success: #52745F;
-            --warning: #B45309;
+            --border: rgba(226, 229, 234, 0.96);
+            --text: #20242B;
+            --text-muted: #6B7280;
+            --accent: #5B5CE2;
+            --accent-hover: #494AC7;
+            --accent-light: #FFFFFF;
+            --success: #16A34A;
+            --warning: #D97706;
             --danger: #DC2626;
             --radius-card: 0.85rem;
-            --shadow: 0 4px 20px rgba(160, 175, 195, 0.14);
+            --shadow: 0 4px 20px rgba(32, 36, 43, 0.08);
             --font: "Microsoft JhengHei", "Segoe UI", system-ui, sans-serif;
         }
 
@@ -61,12 +61,13 @@
 
         .btn-secondary {
             background-color: var(--accent-light);
-            color: var(--accent);
+            color: #374151;
             border: 1px solid var(--border);
             transition: all 0.2s ease;
         }
         .btn-secondary:hover {
-            background-color: rgba(107, 139, 176, 0.2);
+            background-color: #F4F3FF;
+            border-color: #C7C8F3;
             color: var(--accent-hover);
         }
 
@@ -77,8 +78,32 @@
         }
         .drop-zone.drag-over {
             border-color: var(--accent);
-            background-color: rgba(107, 139, 176, 0.08);
+            background-color: rgba(91, 92, 226, 0.08);
             transform: scale(1.01);
+        }
+
+        .file-drop-target {
+            transition: border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        .file-drop-target.external-file-drag-over {
+            border-color: #6366F1 !important;
+            background-color: rgba(99, 102, 241, 0.1) !important;
+            box-shadow: inset 0 0 0 2px rgba(99, 102, 241, 0.2);
+        }
+        #thumbGrid.external-file-drag-over::after {
+            content: '放開以加入照片';
+            position: absolute;
+            inset: 0.5rem;
+            z-index: 60;
+            display: grid;
+            place-items: center;
+            border: 2px dashed #6366F1;
+            border-radius: 0.75rem;
+            background: rgba(244, 243, 255, 0.94);
+            color: #4F46E5;
+            font-size: 0.875rem;
+            font-weight: 700;
+            pointer-events: none;
         }
 
         .input-field {
@@ -92,43 +117,196 @@
         .input-field:focus {
             outline: none;
             border-color: var(--accent);
-            box-shadow: 0 0 0 2px rgba(82, 111, 148, 0.2);
+            box-shadow: 0 0 0 2px rgba(91, 92, 226, 0.18);
+        }
+
+        /* 工作台工具列：依工作目的分群，窄螢幕時整組換行。 */
+        .toolbar-group {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.375rem;
+            padding: 0.25rem;
+            border: 1px solid rgba(226, 229, 234, 0.98);
+            border-radius: 0.7rem;
+            background: rgba(255, 255, 255, 0.62);
+        }
+        .toolbar-group--danger {
+            border-color: rgba(220, 38, 38, 0.28);
+            background: rgba(254, 242, 242, 0.68);
+        }
+        .btn-single-edit {
+            background: #6366F1;
+            color: #FFFFFF;
+            border: 1px solid #4F46E5;
+            box-shadow: 0 2px 7px rgba(91, 92, 226, 0.28);
+            transition: background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .btn-single-edit:hover {
+            background: #4F46E5;
+            box-shadow: 0 4px 10px rgba(91, 92, 226, 0.36);
+            transform: translateY(-1px);
+        }
+        @media (max-width: 640px) {
+            .toolbar-group {
+                flex-wrap: wrap;
+                width: 100%;
+            }
+            .toolbar-group--danger {
+                margin-left: 0 !important;
+            }
         }
 
         /* PaperSwitch 風格之卡片拖曳與排序視覺 */
         .photo-thumb-card {
             position: relative;
+            align-self: start;
             transition: transform 0.18s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.18s ease, border-color 0.18s;
             cursor: grab;
             user-select: none;
+        }
+        .thumbnail-stage {
+            aspect-ratio: var(--thumbnail-aspect, 1);
+        }
+        /* 小縮圖是排序模式：保留編號、勾選與資料狀態，將時間移至卡片提示，避免拖曳時誤碰擁擠的文字。 */
+        #thumbGrid.thumbnail-density-compact {
+            gap: 0.5rem;
+            padding: 0.5rem;
+        }
+        #thumbGrid.thumbnail-density-compact .photo-thumb-card {
+            padding: 0.25rem !important;
+            gap: 0.25rem !important;
+            border-radius: 0.6rem;
+        }
+        #thumbGrid.thumbnail-density-compact .thumbnail-meta-row {
+            min-height: 1rem;
+        }
+        #thumbGrid.thumbnail-density-compact .thumbnail-card-time {
+            display: none;
         }
         .photo-thumb-card:active {
             cursor: grabbing;
         }
         .photo-thumb-card.selected {
             border-color: var(--accent) !important;
-            box-shadow: 0 0 0 2px var(--accent), 0 8px 24px rgba(82, 111, 148, 0.25) !important;
-            background-color: #F0F5FA !important;
+            box-shadow: 0 0 0 2px var(--accent), 0 8px 24px rgba(91, 92, 226, 0.22) !important;
+            background-color: #EEF0FF !important;
         }
         .photo-thumb-card.active-editing {
-            border-color: #2563EB !important;
-            box-shadow: 0 0 0 2px #2563EB, 0 8px 20px rgba(37, 99, 235, 0.2) !important;
+            border-color: #6366F1 !important;
+            box-shadow: 0 0 0 2px #6366F1, 0 8px 20px rgba(99, 102, 241, 0.2) !important;
         }
         .photo-thumb-card.dragging-stacked {
-            opacity: 0.35 !important;
-            transform: scale(0.96) !important;
-            border: 2px dashed var(--accent) !important;
+            /* 原生 HTML 拖曳進行中不能把來源卡片 display:none，否則 Chrome 會直接取消拖曳。 */
+            opacity: 0.28 !important;
+            border-style: dashed !important;
+            transform: scale(0.98);
         }
         .photo-thumb-card.drag-lead {
-            opacity: 0.5 !important;
+            outline: 2px dashed #818CF8;
+            outline-offset: 2px;
+        }
+        .photo-thumb-card.pointer-dragging {
+            cursor: grabbing !important;
+            opacity: 0.62;
+            z-index: 5;
+            transition: none !important;
+        }
+        .photo-thumb-card.pointer-dragging:not(.pointer-drag-lead) {
+            transform: translateY(-10px);
+        }
+        .photo-thumb-card.pointer-drag-lead {
+            pointer-events: none;
+        }
+        .photo-thumb-card.pointer-drop-before {
+            box-shadow: inset 3px 0 0 #6366F1, 0 8px 20px rgba(99, 102, 241, 0.14) !important;
+        }
+        .photo-thumb-card.pointer-drop-after {
+            box-shadow: inset -3px 0 0 #6366F1, 0 8px 20px rgba(99, 102, 241, 0.14) !important;
+        }
+        #dragInsertOverlay {
+            position: fixed;
+            width: 34px;
+            height: 42px;
+            display: grid;
+            place-items: center;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 100001;
+            border: 2px solid #D97706;
+            border-radius: 10px;
+            background: #FFF7ED;
+            color: #B45309;
+            font-weight: 900;
+            box-shadow: 0 6px 16px rgba(180, 83, 9, 0.2);
+        }
+        #dragInsertOverlay.hidden {
+            display: none;
+        }
+        /* 桌面版左右工作欄可調整寬度；窄螢幕維持上下排列。 */
+        #appMainLayout {
+            --side-panel-width: 380px;
+        }
+        #mainPanelSplitter {
+            display: none;
+        }
+        @media (min-width: 1024px) {
+            #appMainLayout {
+                display: grid;
+                grid-template-columns: minmax(320px, var(--side-panel-width)) 12px minmax(0, 1fr);
+                gap: 0;
+            }
+            #sidePanel { grid-column: 1; }
+            #stagePanel { grid-column: 3; }
+            #mainPanelSplitter {
+                display: flex;
+                grid-column: 2;
+                align-items: stretch;
+                justify-content: center;
+                cursor: col-resize;
+                touch-action: none;
+                user-select: none;
+            }
+            #mainPanelSplitter::before {
+                content: '';
+                width: 2px;
+                margin: 8px 5px;
+                border-radius: 999px;
+                background: #D7DBE3;
+                transition: background 120ms ease, box-shadow 120ms ease;
+            }
+            #mainPanelSplitter:hover::before,
+            body.is-resizing-panels #mainPanelSplitter::before {
+                background: #818CF8;
+                box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.16);
+            }
+        }
+        /* 拖曳期間暫時佔用目標格位；放開後才真正改變照片排序。 */
+        .drag-insert-placeholder {
+            min-width: 0;
+            height: var(--drag-placeholder-height, 120px);
+            border: 2px dashed #818CF8;
+            border-radius: 0.75rem;
+            background: rgba(238, 240, 255, 0.72);
+            color: #4F46E5;
+            display: grid;
+            place-items: center;
+            align-self: start;
+            font-size: 0.72rem;
+            font-weight: 700;
+            pointer-events: none;
+            animation: placeholder-pulse 0.8s ease-in-out infinite alternate;
+        }
+        @keyframes placeholder-pulse {
+            from { border-color: #A5B4FC; background: rgba(238, 240, 255, 0.52); }
+            to { border-color: #6366F1; background: rgba(224, 231, 255, 0.88); }
         }
 
         .selection-marquee {
             position: absolute;
             z-index: 20;
             pointer-events: none;
-            border: 1px solid #2563EB;
-            background: rgba(37, 99, 235, 0.12);
+            border: 1px solid #6366F1;
+            background: rgba(99, 102, 241, 0.12);
             border-radius: 4px;
         }
 
@@ -140,9 +318,9 @@
             bottom: -4px;
             left: -6px;
             width: 5px;
-            background: #3B82F6;
+            background: #818CF8;
             border-radius: 9999px;
-            box-shadow: 0 0 10px rgba(59, 130, 246, 0.8);
+            box-shadow: 0 0 10px rgba(129, 140, 248, 0.8);
             z-index: 40;
             pointer-events: none;
             animation: pulse-line 0.8s infinite alternate;
@@ -154,9 +332,9 @@
             bottom: -4px;
             right: -6px;
             width: 5px;
-            background: #3B82F6;
+            background: #818CF8;
             border-radius: 9999px;
-            box-shadow: 0 0 10px rgba(59, 130, 246, 0.8);
+            box-shadow: 0 0 10px rgba(129, 140, 248, 0.8);
             z-index: 40;
             pointer-events: none;
             animation: pulse-line 0.8s infinite alternate;
@@ -168,7 +346,7 @@
         }
 
         .modal-backdrop {
-            background-color: rgba(43, 54, 75, 0.45);
+            background-color: rgba(32, 36, 43, 0.48);
             backdrop-filter: blur(4px);
         }
 
@@ -178,50 +356,51 @@
             height: 6px;
         }
         ::-webkit-scrollbar-track {
-            background: #EDF2F5;
+            background: #EEF0F3;
             border-radius: 4px;
         }
         ::-webkit-scrollbar-thumb {
-            background: #A0B2C6;
+            background: #C7CBD3;
             border-radius: 4px;
         }
         ::-webkit-scrollbar-thumb:hover {
-            background: #7B92B2;
+            background: #8B8CF7;
         }
     </style>
 </head>
 <body class="p-3 md:p-6 flex flex-col items-center">
 
     <!-- 拖曳中的 Ghost 浮動徽章 (PaperSwitch 風格) -->
-    <div id="dragGhostBadge" style="position: fixed; top: -9999px; left: -9999px; pointer-events: none; background: #FFFFFF; border: 2px solid #526F94; color: #2B364B; padding: 6px 14px; border-radius: 12px; font-weight: 800; font-size: 0.85rem; box-shadow: 0 10px 25px rgba(82, 111, 148, 0.3); display: flex; align-items: center; gap: 8px; z-index: 100000;">
-        <i class="fa-solid fa-layer-group text-[#526F94]"></i>
+    <div id="dragGhostBadge" style="position: fixed; top: -9999px; left: -9999px; pointer-events: none; background: #FFFFFF; border: 2px solid #5B5CE2; color: #20242B; padding: 6px 14px; border-radius: 12px; font-weight: 800; font-size: 0.85rem; box-shadow: 0 10px 25px rgba(91, 92, 226, 0.3); display: flex; align-items: center; gap: 8px; z-index: 100000;">
+        <i class="fa-solid fa-layer-group text-[#5B5CE2]"></i>
         <span id="dragGhostText">移動中...</span>
     </div>
+    <div id="dragInsertOverlay" class="hidden" aria-hidden="true"><i class="fa-solid fa-plus"></i></div>
 
     <!-- 頂部導覽列 -->
     <header class="w-full max-w-7xl mb-4 flex flex-wrap items-center justify-between gap-3">
         <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-[#526F94] to-[#7B92B2] flex items-center justify-center text-white text-lg shadow-md">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-[#5B5CE2] to-[#8B8CF7] flex items-center justify-center text-white text-lg shadow-md">
                 <i class="fa-solid fa-camera-retro"></i>
             </div>
             <div>
                 <div class="flex items-center gap-2">
-                    <h1 class="text-xl font-black tracking-tight text-[#2B364B]">現場照片清冊生成工具</h1>
-                    <span class="text-xs font-bold px-2 py-0.5 rounded-full bg-[#526F94]/15 text-[#526F94] border border-[#526F94]/30">專業工作台</span>
+                    <h1 class="text-xl font-black tracking-tight text-[#20242B]">現場照片清冊生成工具</h1>
+                    <span class="text-xs font-bold px-2 py-0.5 rounded-full bg-[#5B5CE2]/15 text-[#5B5CE2] border border-[#5B5CE2]/30">專業工作台</span>
                 </div>
-                <p class="text-xs text-[#667080]">瀏覽器即開即用．純正標楷體．頁首頁尾．100% 精準對齊公務 Word 範本</p>
+                <p class="text-xs text-[#6B7280]">瀏覽器即開即用．純正標楷體．頁首頁尾．100% 精準對齊公務 Word 範本</p>
             </div>
         </div>
 
         <div class="flex items-center gap-2">
-            <!-- version.txt 版本徽章 -->
-            <span id="appVersionBadge" class="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-[#526F94]/15 text-[#526F94] border border-[#526F94]/30 flex items-center gap-1.5 shadow-sm select-none" title="目前版本 (version.txt)">
+            <!-- 內嵌版本徽章：version.txt 於建置時一致性檢核，避免 file:// 執行期 CORS 限制 -->
+            <span id="appVersionBadge" class="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-[#5B5CE2]/15 text-[#5B5CE2] border border-[#5B5CE2]/30 flex items-center gap-1.5 shadow-sm select-none" title="目前版本（離線可用）">
                 <i class="fa-solid fa-tag text-[11px]"></i>
-                <span id="appVersionText">v2.2.0</span>
+                <span id="appVersionText">v2.2.1</span>
             </span>
 
             <!-- 檢查更新按鈕 -->
-            <button type="button" id="btnCheckUpdate" class="px-3 py-1.5 rounded-lg text-xs font-semibold btn-secondary flex items-center gap-1.5 hover:border-[#526F94] transition" title="檢查 GitHub 最新發行版本">
+            <button type="button" id="btnCheckUpdate" class="px-3 py-1.5 rounded-lg text-xs font-semibold btn-secondary flex items-center gap-1.5 hover:border-[#5B5CE2] transition" title="檢查 GitHub 最新發行版本">
                 <i class="fa-solid fa-rotate" id="checkUpdateIcon"></i>
                 <span id="checkUpdateText">檢查更新</span>
             </button>
@@ -233,19 +412,22 @@
     </header>
 
     <!-- 主要工作區域 -->
-    <main class="w-full max-w-7xl grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
+    <main id="appMainLayout" class="w-full max-w-7xl grid grid-cols-1 gap-4 items-start">
 
         <!-- 左側固定操作欄：不受右側照片高度影響 -->
-        <aside class="lg:col-span-1 flex flex-col gap-4 lg:sticky lg:top-4 self-start">
+        <aside id="sidePanel" class="flex flex-col gap-4 lg:sticky lg:top-4 self-start">
         <!-- 1. 全域案件表頭資訊 -->
         <section class="morandi-card p-4 md:p-5">
-            <div class="flex flex-wrap items-center justify-between border-b border-[#6B8BB0]/20 pb-2.5 mb-3 gap-2">
-                <h2 class="text-sm font-bold text-[#2B364B] flex items-center gap-2">
-                    <i class="fa-solid fa-clipboard-list text-[#526F94]"></i> 案件基本資料與版型設定
-                </h2>
+            <div class="flex flex-wrap items-center justify-between border-b border-[#C7CBD3]/20 pb-2.5 mb-3 gap-2">
+                <div>
+                    <h2 class="text-sm font-bold text-[#20242B] flex items-center gap-2">
+                        <i class="fa-solid fa-clipboard-list text-[#5B5CE2]"></i> 案件資料、清冊預設與版型
+                    </h2>
+                    <p class="text-[10px] text-[#6B7280] mt-1">清冊預設會用於尚未設定本張覆寫資料的照片。</p>
+                </div>
                 <div class="flex items-center gap-2">
-                    <span class="text-xs font-semibold text-[#667080]">Word 版型：</span>
-                    <select id="layoutSelect" class="input-field text-xs font-bold text-[#526F94] bg-[#EDF2F5] py-1 px-2.5">
+                    <span class="text-xs font-semibold text-[#6B7280]">Word 版型：</span>
+                    <select id="layoutSelect" class="input-field text-xs font-bold text-[#5B5CE2] bg-[#EEF0F3] py-1 px-2.5">
                         <option value="up_down_2">上下兩張 (A4 直式．預設經典範本)</option>
                         <option value="left_right_2">左右兩張 (A4 直式雙欄．對照範本)</option>
                         <option value="landscape_3">橫式三張 (A4 橫式三欄．廣角範本)</option>
@@ -255,53 +437,53 @@
 
             <div class="grid grid-cols-1 gap-3">
                 <div>
-                    <label class="block text-xs font-bold text-[#667080] mb-1">案由 / 案件名稱</label>
+                    <label class="block text-xs font-bold text-[#6B7280] mb-1">案由 / 案件名稱</label>
                     <input type="text" id="caseTitle" class="input-field w-full text-xs font-semibold" placeholder="例如：詐欺案、現場勘查案" value="詐欺案">
                 </div>
                 <div>
-                    <label class="block text-xs font-bold text-[#667080] mb-1">採證日期 (民國年)</label>
+                    <label class="block text-xs font-bold text-[#6B7280] mb-1">清冊預設採證日期 (民國年)</label>
                     <div class="flex gap-1">
-                        <input type="text" id="caseDate" class="input-field w-full text-xs" placeholder="例如：115年8月24日">
+                        <input type="text" id="caseDate" class="input-field w-full text-xs font-mono" placeholder="輸入 7 碼：1150901">
                         <button type="button" id="btnTodayDate" title="填入今天民國日期" class="btn-secondary px-2 py-1 rounded text-xs whitespace-nowrap">今日</button>
                     </div>
                 </div>
                 <div>
-                    <label class="block text-xs font-bold text-[#667080] mb-1">預設採證地點</label>
+                    <label class="block text-xs font-bold text-[#6B7280] mb-1">清冊預設採證地點</label>
                     <div class="flex gap-1">
                         <input type="text" id="defaultLocation" class="input-field min-w-0 flex-1 text-xs" placeholder="例如：現場、新化分局" value="現場">
-                        <button type="button" id="btnFillAllDefaults" class="btn-secondary px-2 py-1 rounded text-xs font-bold whitespace-nowrap" title="以預設採證地點填入所有照片">
-                            <i class="fa-solid fa-location-dot"></i> 套用
+                        <button type="button" id="btnApplyDefaultsToSelected" class="btn-secondary px-2 py-1 rounded text-xs font-bold whitespace-nowrap" title="將清冊預設日期與地點複製為已選照片的個別覆寫資料">
+                            <i class="fa-solid fa-check-double"></i> 套用至選取
                         </button>
                     </div>
                 </div>
                 <div>
-                    <label class="block text-xs font-bold text-[#667080] mb-1">製作單位 (頁首抬頭)</label>
+                    <label class="block text-xs font-bold text-[#6B7280] mb-1">製作單位 (頁首抬頭)</label>
                     <input type="text" id="deptName" class="input-field w-full text-xs font-semibold" placeholder="例如：臺南市政府警察局新化分局" value="臺南市政府警察局新化分局">
                 </div>
                 <div>
-                    <label class="block text-xs font-bold text-[#667080] mb-1">製作人 (全冊通用)</label>
-                    <input type="text" id="officerName" class="input-field w-full text-xs font-semibold text-[#526F94]" placeholder="例如：巡官梁家豪" value="巡官梁家豪">
+                    <label class="block text-xs font-bold text-[#6B7280] mb-1">製作人 (全冊通用)</label>
+                    <input type="text" id="officerName" class="input-field w-full text-xs font-semibold text-[#5B5CE2]" placeholder="例如：巡官梁家豪" value="巡官梁家豪">
                 </div>
             </div>
         </section>
 
         <!-- 3. 正式輸出與操作列 -->
-        <section class="morandi-card p-4 md:p-5 shadow-xl bg-white/95 border-2 border-[#526F94]/30">
+        <section class="morandi-card p-4 md:p-5 shadow-xl bg-white/95 border-2 border-[#5B5CE2]/30">
             <div class="flex flex-col gap-3">
                 <div>
-                    <div class="text-sm font-bold text-[#2B364B] flex items-center gap-2">
-                        <i class="fa-solid fa-file-word text-[#526F94] text-base"></i>
+                    <div class="text-sm font-bold text-[#20242B] flex items-center gap-2">
+                        <i class="fa-solid fa-file-word text-[#5B5CE2] text-base"></i>
                         準備產出正式現場照片清冊
                     </div>
-                    <p class="text-[11px] text-[#667080]">純正標楷體．頁首頁尾（第X頁/共Y頁）．標準尺寸．100% 零巨集標準 OpenXML</p>
+                    <p class="text-[11px] text-[#6B7280]">純正標楷體．頁首頁尾（第X頁/共Y頁）．標準尺寸．100% 零巨集標準 OpenXML</p>
                 </div>
 
                 <div class="flex flex-col gap-2">
                     <button type="button" id="btnSaveProject" class="btn-secondary w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-start gap-1.5" title="將照片與編輯資料儲存成單一專案檔">
-                        <i class="fa-solid fa-floppy-disk text-[#526F94] text-sm"></i> 儲存專案
+                        <i class="fa-solid fa-floppy-disk text-[#5B5CE2] text-sm"></i> 儲存專案
                     </button>
                     <label class="btn-secondary w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer" title="開啟先前儲存的專案檔">
-                        <i class="fa-solid fa-folder-open text-[#526F94] text-sm"></i> 開啟專案
+                        <i class="fa-solid fa-folder-open text-[#5B5CE2] text-sm"></i> 開啟專案
                         <input type="file" id="importProjectInput" accept=".photo-report,application/zip" class="hidden">
                     </label>
                     <button type="button" id="btnExportExcel" class="btn-secondary w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-start gap-1.5">
@@ -325,90 +507,96 @@
         </section>
         </aside>
 
+        <div id="mainPanelSplitter" role="separator" aria-orientation="vertical" aria-label="調整基本資料欄與照片工作區寬度" title="左右拖曳調整欄位寬度"></div>
+
         <!-- 2. 照片批次載入與智慧工具列 -->
-        <section class="morandi-card p-4 md:p-5 flex flex-col gap-3 lg:col-span-2">
+        <section id="stagePanel" class="morandi-card p-4 md:p-5 flex flex-col gap-3">
 
-            <!-- 上傳拖曳區 (緊湊版) -->
-            <div id="dropZone" class="drop-zone rounded-xl p-4 text-center cursor-pointer flex flex-wrap items-center justify-center gap-3">
-                <input type="file" id="fileInput" multiple accept="image/*" class="hidden">
-                <input type="file" id="folderInput" webkitdirectory directory multiple class="hidden">
-
-                <div class="w-9 h-9 rounded-full bg-[#526F94]/10 text-[#526F94] flex items-center justify-center text-base">
-                    <i class="fa-solid fa-cloud-arrow-up"></i>
+            <!-- 精簡匯入列：已有照片時可直接拖入舞台 -->
+            <div class="flex flex-wrap items-center justify-between gap-2 px-1">
+                <div class="flex items-center gap-2 text-xs text-[#6B7280]">
+                    <i class="fa-solid fa-images text-[#5B5CE2]"></i>
+                    <span>照片匯入</span>
+                    <span class="text-[10px] text-[#C7CBD3]">也可直接拖曳到照片舞台</span>
                 </div>
-                <div class="text-xs text-[#2B364B]">
-                    <span class="font-bold">拖曳照片至此處</span>，或
-                    <button type="button" onclick="document.getElementById('fileInput').click()" class="text-[#526F94] font-bold underline hover:text-[#415875] mx-1">選擇檔案</button>
-                    /
-                    <button type="button" onclick="document.getElementById('folderInput').click()" class="text-[#526F94] font-bold underline hover:text-[#415875] mx-1">選擇整個資料夾</button>
+                <div class="flex items-center gap-2">
+                    <button type="button" id="btnAddPhotos" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1">
+                        <i class="fa-solid fa-plus"></i> 加入照片
+                    </button>
+                    <button type="button" id="btnAddFolder" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1">
+                        <i class="fa-solid fa-folder-plus"></i> 加入資料夾
+                    </button>
                 </div>
             </div>
+            <input type="file" id="fileInput" multiple accept="image/*" class="hidden">
+            <input type="file" id="folderInput" webkitdirectory directory multiple class="hidden">
 
-            <!-- 智慧批次操作工具列 -->
-            <div class="flex flex-wrap items-center justify-between gap-2.5 bg-[#EDF2F5]/80 p-2.5 rounded-xl border border-[#6B8BB0]/20">
-                <div class="flex flex-wrap items-center gap-2">
-                    <!-- 全選/全不選 -->
+            <!-- 工作台操作工具列：依工作目的分群，按鈕 ID 與既有事件維持不變 -->
+            <div class="flex flex-wrap items-center gap-2 bg-[#EEF0F3]/80 p-2.5 rounded-xl border border-[#C7CBD3]/20" aria-label="照片工作台操作工具列">
+                <div class="toolbar-group" role="group" aria-label="選取與整理">
                     <button type="button" id="btnToggleSelectAll" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1">
                         <i class="fa-regular fa-square-check"></i> <span id="selectAllText">全選</span>
                     </button>
-                    <!-- 智慧流水號 -->
                     <button type="button" id="btnOpenSequenceModal" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1">
-                        <i class="fa-solid fa-arrow-down-1-9 text-[#526F94]"></i> 重排流水號
+                        <i class="fa-solid fa-arrow-down-1-9 text-[#5B5CE2]"></i> 重排流水號
                     </button>
-
-                    <!-- 從檔名解析時間 -->
                     <button type="button" id="btnParseFilenameTime" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1" title="自動從檔名提取日期與時間（如 YYYYMMDD_HHMMSS、Screenshot）">
-                        <i class="fa-solid fa-wand-magic-sparkles text-[#526F94]"></i> 解析檔名時間
+                        <i class="fa-solid fa-wand-magic-sparkles text-[#5B5CE2]"></i> 解析檔名時間
                     </button>
-
-                    <button type="button" id="btnUndo" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed" title="復原（Ctrl+Z）" disabled>
-                        <i class="fa-solid fa-rotate-left text-[#526F94]"></i> 復原
-                    </button>
-                    <button type="button" id="btnRedo" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed" title="重做（Ctrl+Y 或 Ctrl+Shift+Z）" disabled>
-                        <i class="fa-solid fa-rotate-right text-[#526F94]"></i> 重做
-                    </button>
-
-                    <!-- 全選旋轉 90° -->
-                    <button type="button" id="btnBatchRotate" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1" title="選取或全部照片旋轉 90°">
-                        <i class="fa-solid fa-rotate-right text-[#526F94]"></i> 旋轉 90°
-                    </button>
-                    <button type="button" id="btnMoveSelectedBackward" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1" title="將已選照片向前移動一格">
-                        <i class="fa-solid fa-arrow-left text-[#526F94]"></i> 前移
-                    </button>
-                    <button type="button" id="btnMoveSelectedForward" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1" title="將已選照片向後移動一格">
-                        後移 <i class="fa-solid fa-arrow-right text-[#526F94]"></i>
-                    </button>
-                    <button type="button" id="btnRemoveSelected" class="px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 text-red-600 hover:bg-red-50 border border-red-200" title="刪除已選照片">
-                        <i class="fa-regular fa-trash-can"></i> 移除選取
-                    </button>
-
                 </div>
 
-                <div class="flex items-center gap-2">
-                    <!-- 視圖切換 -->
-                    <div class="bg-white p-0.5 rounded-lg border border-[#6B8BB0]/30 flex items-center">
-                        <button type="button" id="btnViewWorkspace" class="px-2.5 py-1 rounded text-xs font-bold bg-[#526F94] text-white flex items-center gap-1">
+                <div class="toolbar-group" role="group" aria-label="復原與重做">
+                    <button type="button" id="btnUndo" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed" title="復原（Ctrl+Z）" disabled>
+                        <i class="fa-solid fa-rotate-left text-[#5B5CE2]"></i> 復原
+                    </button>
+                    <button type="button" id="btnRedo" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed" title="重做（Ctrl+Y 或 Ctrl+Shift+Z）" disabled>
+                        <i class="fa-solid fa-rotate-right text-[#5B5CE2]"></i> 重做
+                    </button>
+                </div>
+
+                <div class="toolbar-group" role="group" aria-label="照片操作">
+                    <button type="button" id="btnBatchRotate" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1" title="選取或全部照片旋轉 90°">
+                        <i class="fa-solid fa-rotate-right text-[#5B5CE2]"></i> 旋轉 90°
+                    </button>
+                    <button type="button" id="btnMoveSelectedBackward" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1" title="將已選照片向前移動一格">
+                        <i class="fa-solid fa-arrow-left text-[#5B5CE2]"></i> 前移
+                    </button>
+                    <button type="button" id="btnMoveSelectedForward" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1" title="將已選照片向後移動一格">
+                        後移 <i class="fa-solid fa-arrow-right text-[#5B5CE2]"></i>
+                    </button>
+                </div>
+
+                <div class="toolbar-group" role="group" aria-label="檢視與照片詳情">
+                    <div class="bg-white p-0.5 rounded-lg border border-[#C7CBD3]/30 flex items-center">
+                        <button type="button" id="btnViewWorkspace" class="px-2.5 py-1 rounded text-xs font-bold bg-[#5B5CE2] text-white flex items-center gap-1">
                             <i class="fa-solid fa-table-columns"></i> 工作台視圖
                         </button>
-                        <button type="button" id="btnViewGrid" class="px-2.5 py-1 rounded text-xs font-bold text-[#667080] flex items-center gap-1">
+                        <button type="button" id="btnViewGrid" class="px-2.5 py-1 rounded text-xs font-bold text-[#6B7280] flex items-center gap-1">
                             <i class="fa-solid fa-table"></i> 試算表視圖
                         </button>
-                        <button type="button" id="btnViewPreview" class="px-2.5 py-1 rounded text-xs font-bold text-[#667080] flex items-center gap-1">
+                        <button type="button" id="btnViewPreview" class="px-2.5 py-1 rounded text-xs font-bold text-[#6B7280] flex items-center gap-1">
                             <i class="fa-solid fa-table-cells-large"></i> 分頁預覽
                         </button>
                     </div>
 
-                    <div id="workspaceLayoutControls" class="bg-white px-2 py-1 rounded-lg border border-[#6B8BB0]/30 flex items-center gap-1.5" aria-label="縮圖尺寸設定">
-                        <i class="fa-solid fa-magnifying-glass text-[#526F94] text-xs"></i>
-                        <input type="range" id="thumbnailSizeRange" min="90" max="400" step="5" value="220" class="w-24 accent-[#526F94]" aria-label="縮圖尺寸，90 至 400 像素">
-                        <span id="thumbnailSizeLabel" class="text-xs font-bold text-[#526F94] whitespace-nowrap">220px</span>
-                        <button type="button" id="btnResetThumbnailSize" class="text-[10px] text-[#667080] hover:text-[#526F94] hover:underline" title="重設為 220px">重設</button>
+                    <div id="workspaceLayoutControls" class="bg-white px-2 py-1 rounded-lg border border-[#C7CBD3]/30 flex items-center gap-1.5" aria-label="縮圖尺寸設定">
+                        <i class="fa-solid fa-magnifying-glass text-[#5B5CE2] text-xs"></i>
+                        <input type="range" id="thumbnailSizeRange" min="90" max="480" step="5" value="135" class="w-24 accent-[#5B5CE2]" aria-label="縮圖尺寸，90 至 480 像素">
+                        <span id="thumbnailSizeLabel" class="text-xs font-bold text-[#5B5CE2] whitespace-nowrap">135px</span>
+                        <button type="button" id="btnResetThumbnailSize" class="text-[10px] text-[#6B7280] hover:text-[#5B5CE2] hover:underline" title="重設為 135px">重設</button>
                     </div>
-                    <button type="button" id="btnToggleEditor" class="btn-secondary px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1" title="收合或展開右側編輯器">
-                        <i class="fa-solid fa-panel-right"></i> <span>收合編輯</span>
+                    <button type="button" id="btnAutoArrangeStage" class="btn-secondary px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1" title="依檔名重新排序全部照片；會覆蓋手動拖曳順序">
+                        <i class="fa-solid fa-arrow-down-a-z"></i> 依檔名排序
                     </button>
+                    <button type="button" id="btnToggleEditor" class="btn-single-edit px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1" title="顯示或收合右側單張照片編輯面板" aria-controls="editorPanel">
+                        <i class="fa-solid fa-pen-to-square"></i> <span>收合單張編輯</span>
+                    </button>
+                </div>
 
-                    <!-- 清空清冊 -->
+                <div class="toolbar-group toolbar-group--danger ml-auto" role="group" aria-label="危險操作">
+                    <button type="button" id="btnRemoveSelected" class="px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 text-red-600 hover:bg-red-50 border border-red-200" title="刪除已選照片">
+                        <i class="fa-regular fa-trash-can"></i> 移除選取
+                    </button>
                     <button type="button" id="btnClearAll" class="px-2 py-1 rounded-lg text-xs font-bold text-red-600 hover:bg-red-50 transition border border-red-200">
                         <i class="fa-regular fa-trash-can"></i> 清空
                     </button>
@@ -416,38 +604,35 @@
             </div>
 
             <!-- 照片數量統計與批次選取狀態列 -->
-            <div class="flex flex-wrap items-center justify-between text-xs text-[#667080] px-1 gap-2">
+            <div class="flex flex-wrap items-center justify-between text-xs text-[#6B7280] px-1 gap-2">
                 <div class="flex items-center gap-2">
-                    <span>已載入 <b id="photoCount" class="text-[#526F94]">0</b> 張照片</span>
-                    <span id="pageEstimate" class="font-medium text-[#667080]">（約 0 頁 Word 報表）</span>
+                    <span>已載入 <b id="photoCount" class="text-[#5B5CE2]">0</b> 張照片</span>
+                    <span id="pageEstimate" class="font-medium text-[#6B7280]">（約 0 頁 Word 報表）</span>
                     <span id="selectedCountBadge" class="hidden font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">已選取 0 張</span>
                 </div>
-                <div class="text-[#526F94] flex items-center gap-2">
+                <div class="text-[#5B5CE2] flex items-center gap-2">
                     <span>💡 方向鍵切換；Ctrl＋方向鍵或上方工具列排序；Ctrl＋滾輪／滑桿調整縮圖；空白處可框選</span>
                 </div>
             </div>
-            <div class="flex flex-wrap items-center gap-2 px-1 text-xs">
-                <label class="flex items-center gap-1 text-[#667080]">搜尋 <input type="search" id="photoSearch" class="input-field w-40 text-xs py-1" placeholder="編號、檔名、地點、說明"></label>
-                <label class="flex items-center gap-1 text-[#667080]">篩選 <select id="photoFilter" class="input-field text-xs py-1"><option value="all">全部照片</option><option value="missing-desc">未填說明</option><option value="missing-location">未填地點</option><option value="selected">已選取</option></select></label>
-                <label class="flex items-center gap-1 text-[#667080]">跳至 <input type="number" id="photoJump" min="1" class="input-field w-16 text-xs py-1" placeholder="#"></label>
-                <button type="button" id="btnJumpPhoto" class="btn-secondary px-2 py-1 rounded text-xs font-bold">定位</button>
-                <span id="visiblePhotoCount" class="text-[#526F94] font-semibold"></span>
-            </div>
-            <div id="processingStatus" class="hidden px-1 text-xs text-[#526F94]" role="status" aria-live="polite">
+            <div id="processingStatus" class="hidden px-1 text-xs text-[#5B5CE2]" role="status" aria-live="polite">
                 <div class="flex items-center justify-between gap-2 mb-1">
                     <span id="processingMessage" class="font-semibold">準備處理照片…</span>
                     <div class="flex items-center gap-2"><span id="processingCount">0 / 0</span><button type="button" id="btnCancelProcessing" class="hidden text-red-600 font-bold hover:underline">取消</button></div>
                 </div>
-                <div class="h-1.5 rounded-full bg-[#6B8BB0]/20 overflow-hidden">
-                    <div id="processingBar" class="h-full bg-[#526F94] transition-all duration-150" style="width: 0%"></div>
+                <div class="h-1.5 rounded-full bg-[#C7CBD3]/20 overflow-hidden">
+                    <div id="processingBar" class="h-full bg-[#5B5CE2] transition-all duration-150" style="width: 0%"></div>
                 </div>
             </div>
 
             <!-- 空狀態提示 -->
-            <div id="emptyState" class="py-12 text-center text-[#667080] flex flex-col items-center gap-2">
-                <div class="text-4xl text-[#6B8BB0]/40"><i class="fa-regular fa-images"></i></div>
+            <div id="emptyState" class="file-drop-target relative py-12 text-center text-[#6B7280] flex flex-col items-center gap-3 rounded-xl border-2 border-dashed border-[#C7CBD3]/25 bg-white/45">
+                <div class="text-4xl text-[#C7CBD3]/40"><i class="fa-regular fa-images"></i></div>
                 <div class="text-sm font-semibold">尚未載入任何照片</div>
-                <div class="text-xs">請點選上方選擇檔案，或直接將照片拖曳進來</div>
+                <div class="text-xs">拖曳照片至此處，或使用下方按鈕加入</div>
+                <div class="flex flex-wrap justify-center gap-2">
+                    <button type="button" class="btn-secondary px-3 py-1.5 rounded-lg text-xs font-bold" onclick="document.getElementById('fileInput').click()"><i class="fa-solid fa-plus"></i> 加入照片</button>
+                    <button type="button" class="btn-secondary px-3 py-1.5 rounded-lg text-xs font-bold" onclick="document.getElementById('folderInput').click()"><i class="fa-solid fa-folder-plus"></i> 加入資料夾</button>
+                </div>
             </div>
 
             <!-- 3. 工作台核心主視圖（左側緊湊畫布 + 右側快捷/批次編輯器） -->
@@ -455,54 +640,54 @@
 
                 <!-- 左側：照片縮圖畫布排版區 (佔 8 欄，照片一覽無遺不拖長) -->
                 <div id="photoPanel" class="lg:col-span-8 flex flex-col gap-2">
-                    <div class="flex items-center justify-between text-xs font-bold text-[#667080] px-1">
-                        <span>📸 照片排版畫布（精簡縮圖：點擊選取／拖曳調換順序）</span>
-                        <span class="text-[11px] text-[#6B8BB0]">Ctrl 點選多選・Shift 點選連續選取・空白處框選</span>
+                    <div class="flex items-center justify-between text-xs font-bold text-[#6B7280] px-1">
+                        <span>📸 照片排版清單（精簡縮圖：拖曳調整順序）</span>
+                        <span class="text-[11px] text-[#C7CBD3]">Ctrl 點選多選・Shift 連續選取・空白處框選・拖曳插入換序</span>
                     </div>
 
-                    <div id="thumbGrid" class="grid relative gap-2.5 max-h-[600px] overflow-y-auto p-2 bg-[#EDF2F5]/50 rounded-xl border border-[#6B8BB0]/20">
+                    <div id="thumbGrid" class="file-drop-target grid relative gap-2.5 max-h-[600px] overflow-y-auto p-2 bg-[#EEF0F3]/50 rounded-xl border border-[#C7CBD3]/20">
                         <div id="selectionMarquee" class="selection-marquee hidden" aria-hidden="true"></div>
                         <!-- 動態注入縮圖卡片 -->
                     </div>
                 </div>
 
-                <!-- 右側：智慧單張/批次編輯器 (佔 4 欄，固定顯示，支援多選批次套用) -->
+                <!-- 右側：獨立照片詳情面板（單張覆寫與批次套用） -->
                 <div id="editorPanel" class="lg:col-span-4 flex flex-col gap-3">
-                    <div class="morandi-card p-4 sticky top-4 flex flex-col gap-3 bg-white border-2 border-[#6B8BB0]/30 shadow-md">
+                    <div class="morandi-card p-4 sticky top-4 flex flex-col gap-3 bg-white border-2 border-[#C7CBD3]/30 shadow-md">
 
                         <!-- 編輯器標題狀態 -->
-                        <div class="flex items-center justify-between border-b border-[#6B8BB0]/20 pb-2">
-                            <h3 id="editorTitle" class="text-xs font-bold text-[#2B364B] flex items-center gap-1.5">
-                                <i class="fa-solid fa-pen-to-square text-[#526F94]"></i>
-                                <span>編輯照片 #1</span>
+                        <div class="flex items-center justify-between border-b border-[#C7CBD3]/20 pb-2">
+                            <h3 id="editorTitle" class="text-xs font-bold text-[#20242B] flex items-center gap-1.5">
+                                <i class="fa-solid fa-pen-to-square text-[#5B5CE2]"></i>
+                                <span>照片詳情</span>
                             </h3>
-                            <span id="editorModeBadge" class="text-[10px] font-bold px-2 py-0.5 rounded bg-[#526F94]/10 text-[#526F94]">
-                                單張編輯
+                            <span id="editorModeBadge" class="text-[10px] font-bold px-2 py-0.5 rounded bg-[#5B5CE2]/10 text-[#5B5CE2]">
+                                單張覆寫
                             </span>
                         </div>
 
                         <!-- 編輯器欄位 -->
                         <div class="space-y-2.5 text-xs">
                             <div>
-                                <label class="block font-bold text-[#667080] mb-0.5">照片編號</label>
-                                <input type="text" id="editSeq" class="input-field w-full text-xs font-bold text-[#526F94]">
+                                <label class="block font-bold text-[#6B7280] mb-0.5">照片編號</label>
+                                <input type="text" id="editSeq" class="input-field w-full text-xs font-bold text-[#5B5CE2]">
                             </div>
 
                             <div>
                                 <div class="flex items-center justify-between mb-0.5">
-                                    <label class="font-bold text-[#667080]">採證日期（個別，民國年）</label>
-                                    <button type="button" id="btnFillDownDate" title="將此日期向下填滿" class="text-[10px] text-[#526F94] hover:underline flex items-center gap-0.5">
+                                    <label class="font-bold text-[#6B7280]">本張採證日期（覆寫，民國年）</label>
+                                    <button type="button" id="btnFillDownDate" title="將此日期向下填滿" class="text-[10px] text-[#5B5CE2] hover:underline flex items-center gap-0.5">
                                         <i class="fa-solid fa-arrow-down"></i> 向下填滿
                                     </button>
                                 </div>
-                                <input type="text" id="editDate" class="input-field w-full text-xs font-mono tracking-widest" placeholder="留空=用全域日期　輸入7碼：1130826">
-                                <p class="text-[10px] text-[#A0AEC0] mt-0.5">格式 YYY/MM/DD，空白時使用左側全域日期</p>
+                                <input type="text" id="editDate" class="input-field w-full text-xs font-mono tracking-widest" placeholder="留空＝使用清冊預設　輸入 7 碼：1150901">
+                                <p id="editDateInheritedHint" class="text-[10px] text-[#9CA3AF] mt-0.5">格式 YYY/MM/DD；留空時使用清冊預設。</p>
                             </div>
 
                             <div>
                                 <div class="flex items-center justify-between mb-0.5">
-                                    <label class="font-bold text-[#667080]">採證 / 監視器時間</label>
-                                    <button type="button" id="btnFillDownTime" title="將此時間向下填滿" class="text-[10px] text-[#526F94] hover:underline flex items-center gap-0.5">
+                                    <label class="font-bold text-[#6B7280]">採證 / 監視器時間</label>
+                                    <button type="button" id="btnFillDownTime" title="將此時間向下填滿" class="text-[10px] text-[#5B5CE2] hover:underline flex items-center gap-0.5">
                                         <i class="fa-solid fa-arrow-down"></i> 向下填滿
                                     </button>
                                 </div>
@@ -511,18 +696,19 @@
 
                             <div>
                                 <div class="flex items-center justify-between mb-0.5">
-                                    <label class="font-bold text-[#667080]">採證地點</label>
-                                    <button type="button" id="btnFillDownLocation" title="將此地點向下填滿" class="text-[10px] text-[#526F94] hover:underline flex items-center gap-0.5">
+                                    <label class="font-bold text-[#6B7280]">本張採證地點（覆寫）</label>
+                                    <button type="button" id="btnFillDownLocation" title="將此地點向下填滿" class="text-[10px] text-[#5B5CE2] hover:underline flex items-center gap-0.5">
                                         <i class="fa-solid fa-arrow-down"></i> 向下填滿
                                     </button>
                                 </div>
-                                <input type="text" id="editLocation" class="input-field w-full text-xs" placeholder="例如：現場客廳">
+                                <input type="text" id="editLocation" class="input-field w-full text-xs" placeholder="留空＝使用清冊預設，例如：現場客廳">
+                                <p id="editLocationInheritedHint" class="text-[10px] text-[#9CA3AF] mt-0.5">留空時使用清冊預設地點。</p>
                             </div>
 
                             <div>
                                 <div class="flex items-center justify-between mb-0.5">
-                                    <label class="font-bold text-[#667080]">現場跡證說明</label>
-                                    <button type="button" id="btnFillDownDescAll" title="向下填滿至所有照片" class="text-[10px] text-[#526F94] font-semibold hover:underline flex items-center gap-0.5">
+                                    <label class="font-bold text-[#6B7280]">現場跡證說明</label>
+                                    <button type="button" id="btnFillDownDescAll" title="向下填滿至所有照片" class="text-[10px] text-[#5B5CE2] font-semibold hover:underline flex items-center gap-0.5">
                                         <i class="fa-solid fa-arrows-down-to-line"></i> 向下填滿
                                     </button>
                                 </div>
@@ -530,21 +716,21 @@
                             </div>
 
                             <!-- 已選照片的明確批次套用流程 -->
-                            <div id="batchApplyBox" class="pt-2 border-t border-[#6B8BB0]/20 hidden flex flex-col gap-2">
-                                <p class="text-[11px] font-semibold text-[#526F94] text-center">已選取 <span id="batchCountNum">0</span> 張：修改上方欄位後，再明確套用</p>
-                                <label class="flex items-center justify-center gap-1.5 text-[10px] text-[#667080] cursor-pointer">
-                                    <input type="checkbox" id="batchApplyEmptyValues" class="rounded text-[#526F94]">
+                            <div id="batchApplyBox" class="pt-2 border-t border-[#C7CBD3]/20 hidden flex flex-col gap-2">
+                                <p class="text-[11px] font-semibold text-[#5B5CE2] text-center">已選取 <span id="batchCountNum">0</span> 張：修改上方欄位後，再明確套用</p>
+                                <label class="flex items-center justify-center gap-1.5 text-[10px] text-[#6B7280] cursor-pointer">
+                                    <input type="checkbox" id="batchApplyEmptyValues" class="rounded text-[#5B5CE2]">
                                     空白欄位也覆寫（用於清除原有資料）
                                 </label>
                                 <button type="button" id="btnApplyToSelected" class="w-full btn-primary py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 shadow">
                                     <i class="fa-solid fa-check-double"></i> 將已填欄位套用至已選照片
                                 </button>
-                                <p class="text-[10px] text-[#667080] text-center">可同步時間、地點與說明；照片編號不會批次覆寫。</p>
+                                <p class="text-[10px] text-[#6B7280] text-center">可同步時間、地點與說明；照片編號不會批次覆寫。</p>
                             </div>
                         </div>
 
                         <!-- 快速導航與刪除 -->
-                        <div class="flex items-center justify-between pt-2 border-t border-[#6B8BB0]/15 text-xs">
+                        <div class="flex items-center justify-between pt-2 border-t border-[#C7CBD3]/15 text-xs">
                             <div class="flex items-center gap-1">
                                 <button type="button" id="btnPrevPhoto" class="btn-secondary px-2.5 py-1 rounded text-xs" title="上一張 (Alt+Left)"><i class="fa-solid fa-chevron-left"></i> 上一張</button>
                                 <button type="button" id="btnNextPhoto" class="btn-secondary px-2.5 py-1 rounded text-xs" title="下一張 (Alt+Right)">下一張 <i class="fa-solid fa-chevron-right"></i></button>
@@ -560,39 +746,39 @@
             </div>
 
             <!-- Word 分頁拼貼預覽：依所選版型分組，僅供畫面確認，實際格式以 DOCX 匯出為準。 -->
-            <div id="previewContainer" class="hidden max-h-[600px] overflow-y-auto p-3 bg-[#EDF2F5]/50 rounded-xl border border-[#6B8BB0]/20"></div>
+            <div id="previewContainer" class="hidden max-h-[600px] overflow-y-auto p-3 bg-[#EEF0F3]/50 rounded-xl border border-[#C7CBD3]/20"></div>
 
             <!-- 4. 試算表 DataGrid 視圖 (適合鍵盤快速 Key 表格) -->
-            <div id="gridContainer" class="hidden overflow-x-auto border border-[#6B8BB0]/20 rounded-xl bg-white max-h-[600px] overflow-y-auto">
+            <div id="gridContainer" class="hidden overflow-x-auto border border-[#C7CBD3]/20 rounded-xl bg-white max-h-[600px] overflow-y-auto">
                 <table class="w-full text-left text-xs">
-                    <thead class="bg-[#EDF2F5] text-[#2B364B] font-bold border-b border-[#6B8BB0]/20 sticky top-0 z-10">
+                    <thead class="bg-[#EEF0F3] text-[#20242B] font-bold border-b border-[#C7CBD3]/20 sticky top-0 z-10">
                         <tr>
                             <th class="p-2.5 w-10 text-center">
-                                <input type="checkbox" id="gridSelectAll" onclick="window.app.toggleSelectAll(this.checked)" class="rounded text-[#526F94] cursor-pointer">
+                                <input type="checkbox" id="gridSelectAll" onclick="window.app.toggleSelectAll(this.checked)" class="rounded text-[#5B5CE2] cursor-pointer">
                             </th>
                             <th class="p-2.5 w-12 text-center">縮圖</th>
                             <th class="p-2.5 w-20">編號</th>
                             <th class="p-2.5 w-32">
                                 採證日期
-                                <button type="button" onclick="window.app.fillDownFirst('date')" title="向下填滿第一筆日期" class="ml-1 text-[#526F94] hover:underline"><i class="fa-solid fa-arrow-down"></i></button>
+                                <button type="button" onclick="window.app.fillDownFirst('date')" title="向下填滿第一筆日期" class="ml-1 text-[#5B5CE2] hover:underline"><i class="fa-solid fa-arrow-down"></i></button>
                             </th>
                             <th class="p-2.5 w-36">
                                 採證時間
-                                <button type="button" onclick="window.app.fillDownFirst('time')" title="向下填滿第一筆時間" class="ml-1 text-[#526F94] hover:underline"><i class="fa-solid fa-arrow-down"></i></button>
+                                <button type="button" onclick="window.app.fillDownFirst('time')" title="向下填滿第一筆時間" class="ml-1 text-[#5B5CE2] hover:underline"><i class="fa-solid fa-arrow-down"></i></button>
                             </th>
                             <th class="p-2.5 w-32">
                                 採證地點
-                                <button type="button" onclick="window.app.fillDownFirst('location')" title="向下填滿第一筆地點" class="ml-1 text-[#526F94] hover:underline"><i class="fa-solid fa-arrow-down"></i></button>
+                                <button type="button" onclick="window.app.fillDownFirst('location')" title="向下填滿第一筆地點" class="ml-1 text-[#5B5CE2] hover:underline"><i class="fa-solid fa-arrow-down"></i></button>
                             </th>
                             <th class="p-2.5 whitespace-nowrap" style="min-width: 16rem;">
                                 說明
-                                <button type="button" onclick="window.app.fillDownFirst('desc')" title="向下填滿第一筆說明" class="ml-1 text-[#526F94] hover:underline"><i class="fa-solid fa-arrow-down"></i> 填滿全部</button>
+                                <button type="button" onclick="window.app.fillDownFirst('desc')" title="向下填滿第一筆說明" class="ml-1 text-[#5B5CE2] hover:underline"><i class="fa-solid fa-arrow-down"></i> 填滿全部</button>
                             </th>
                             <th class="p-2.5 w-28">原始檔名</th>
                             <th class="p-2.5 w-20 text-center">操作</th>
                         </tr>
                     </thead>
-                    <tbody id="gridTbody" class="divide-y divide-[#6B8BB0]/10">
+                    <tbody id="gridTbody" class="divide-y divide-[#C7CBD3]/10">
                         <!-- 動態注入試算表列 -->
                     </tbody>
                 </table>
@@ -603,29 +789,29 @@
     </main>
 
     <!-- 頁尾版權宣告 -->
-    <footer class="w-full max-w-7xl mt-6 text-center text-xs text-[#667080] pb-6">
+    <footer class="w-full max-w-7xl mt-6 text-center text-xs text-[#6B7280] pb-6">
         <p>© <span id="year"></span> LiangHao (梁巡官) | 現況照片清冊生成工具 v2.0</p>
         <p class="mt-0.5 opacity-75">全域開發憲法 v8.1 規範標準 | 100% 瀏覽器離線安全運作</p>
     </footer>
 
     <!-- 彈窗 1：智慧流水號設定 Modal -->
     <div id="sequenceModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop hidden">
-        <div class="bg-white rounded-2xl p-5 max-w-sm w-full shadow-2xl border border-[#6B8BB0]/30">
-            <h3 class="text-sm font-bold text-[#2B364B] mb-3 flex items-center gap-2">
-                <i class="fa-solid fa-arrow-down-1-9 text-[#526F94]"></i> 重排照片流水編號
+        <div class="bg-white rounded-2xl p-5 max-w-sm w-full shadow-2xl border border-[#C7CBD3]/30">
+            <h3 class="text-sm font-bold text-[#20242B] mb-3 flex items-center gap-2">
+                <i class="fa-solid fa-arrow-down-1-9 text-[#5B5CE2]"></i> 重排照片流水編號
             </h3>
             <div class="space-y-2.5 text-xs">
                 <div>
-                    <label class="block font-bold text-[#667080] mb-1">編號前綴文字 (可留空)</label>
+                    <label class="block font-bold text-[#6B7280] mb-1">編號前綴文字 (可留空)</label>
                     <input type="text" id="seqPrefix" class="input-field w-full text-xs" placeholder="例如：照片-、證物、圖" value="">
                 </div>
                 <div class="grid grid-cols-2 gap-2">
                     <div>
-                        <label class="block font-bold text-[#667080] mb-1">起始編號</label>
+                        <label class="block font-bold text-[#6B7280] mb-1">起始編號</label>
                         <input type="number" id="seqStart" class="input-field w-full text-xs" value="1" min="1">
                     </div>
                     <div>
-                        <label class="block font-bold text-[#667080] mb-1">位數補零</label>
+                        <label class="block font-bold text-[#6B7280] mb-1">位數補零</label>
                         <select id="seqDigits" class="input-field w-full text-xs">
                             <option value="1">不補零 (1, 2, 3)</option>
                             <option value="2">2 位數 (01, 02, 03)</option>
@@ -642,64 +828,69 @@
     </div>
 
     <!-- 圖片點擊放大燈箱 Modal -->
-    <div id="imageLightboxModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop hidden" onclick="window.app.closeModal('imageLightboxModal')">
-        <div class="max-w-4xl max-h-[90vh] bg-white rounded-2xl overflow-hidden shadow-2xl p-2 flex flex-col items-center" onclick="event.stopPropagation()">
-            <img id="lightboxImg" src="" alt="放大預覽" class="max-h-[80vh] w-auto object-contain rounded-lg">
-            <div class="flex justify-between items-center w-full px-4 py-2 text-xs text-[#667080]">
-                <span id="lightboxCaption" class="font-bold text-[#2B364B]"></span>
-                <button type="button" onclick="window.app.closeModal('imageLightboxModal')" class="btn-secondary px-3 py-1 rounded text-xs font-bold">關閉 (ESC)</button>
+    <div id="imageLightboxModal" class="fixed inset-0 z-50 flex items-center justify-center p-2 md:p-4 modal-backdrop hidden" onclick="window.app.closeModal('imageLightboxModal')">
+        <div class="w-[96vw] max-w-6xl max-h-[92vh] bg-white rounded-2xl overflow-hidden shadow-2xl p-2 flex flex-col" onclick="event.stopPropagation()">
+            <div class="flex items-center justify-between gap-2 px-2 pb-1 text-xs">
+                <span id="lightboxCaption" class="font-bold text-[#20242B] truncate"></span>
+                <span id="lightboxPosition" class="text-[#6B7280] whitespace-nowrap"></span>
+                <button type="button" onclick="window.app.closeModal('imageLightboxModal')" class="btn-secondary px-3 py-1 rounded text-xs font-bold whitespace-nowrap">關閉 (ESC)</button>
+            </div>
+            <div class="relative min-h-0 flex-1 flex items-center justify-center bg-[#EEF0F3] rounded-xl overflow-hidden">
+                <button type="button" id="btnLightboxPrev" onclick="window.app.navigateLightbox(-1)" class="absolute left-2 z-10 w-9 h-9 rounded-full bg-white/90 border border-[#C7CBD3]/30 text-[#5B5CE2] shadow hover:bg-white disabled:opacity-40" title="上一張（←）"><i class="fa-solid fa-chevron-left"></i></button>
+                <img id="lightboxImg" src="" alt="放大預覽" class="max-w-full max-h-[calc(90vh-5rem)] w-auto h-auto object-contain">
+                <button type="button" id="btnLightboxNext" onclick="window.app.navigateLightbox(1)" class="absolute right-2 z-10 w-9 h-9 rounded-full bg-white/90 border border-[#C7CBD3]/30 text-[#5B5CE2] shadow hover:bg-white disabled:opacity-40" title="下一張（→）"><i class="fa-solid fa-chevron-right"></i></button>
             </div>
         </div>
     </div>
 
     <!-- 發現新版本對話框 Modal -->
     <div id="updateModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop hidden" onclick="window.app.closeModal('updateModal')">
-        <div class="morandi-card w-full max-w-lg p-5 bg-white border-2 border-[#526F94]/30 shadow-2xl flex flex-col gap-3.5 rounded-2xl" onclick="event.stopPropagation()">
-            <div class="flex items-center justify-between border-b border-[#6B8BB0]/20 pb-2.5">
+        <div class="morandi-card w-full max-w-lg p-5 bg-white border-2 border-[#5B5CE2]/30 shadow-2xl flex flex-col gap-3.5 rounded-2xl" onclick="event.stopPropagation()">
+            <div class="flex items-center justify-between border-b border-[#C7CBD3]/20 pb-2.5">
                 <div class="flex items-center gap-2.5">
-                    <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-[#526F94] to-[#7B92B2] flex items-center justify-center text-white text-sm shadow">
+                    <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-[#5B5CE2] to-[#8B8CF7] flex items-center justify-center text-white text-sm shadow">
                         <i class="fa-solid fa-gift"></i>
                     </div>
                     <div>
-                        <h3 class="text-sm font-bold text-[#2B364B]">發現新版本釋出！</h3>
-                        <p class="text-[11px] text-[#667080]">建議更新至最新版本以獲得最佳公務體驗與功能優化</p>
+                        <h3 class="text-sm font-bold text-[#20242B]">發現新版本釋出！</h3>
+                        <p class="text-[11px] text-[#6B7280]">建議更新至最新版本以獲得最佳公務體驗與功能優化</p>
                     </div>
                 </div>
-                <button type="button" onclick="window.app.closeModal('updateModal')" class="text-[#667080] hover:text-[#2B364B] p-1 transition" title="關閉">
+                <button type="button" onclick="window.app.closeModal('updateModal')" class="text-[#6B7280] hover:text-[#20242B] p-1 transition" title="關閉">
                     <i class="fa-solid fa-xmark text-base"></i>
                 </button>
             </div>
 
             <!-- 版本比對資訊條 -->
-            <div class="grid grid-cols-3 gap-2 bg-[#F0F5FA] p-3 rounded-xl border border-[#6B8BB0]/20 text-xs">
+            <div class="grid grid-cols-3 gap-2 bg-[#EEF0FF] p-3 rounded-xl border border-[#C7CBD3]/20 text-xs">
                 <div class="flex flex-col">
-                    <span class="text-[#667080] text-[10px] font-bold">目前使用版本</span>
-                    <span id="updateCurrentVer" class="font-bold text-[#2B364B] mt-0.5">v2.2.0</span>
+                    <span class="text-[#6B7280] text-[10px] font-bold">目前使用版本</span>
+                    <span id="updateCurrentVer" class="font-bold text-[#20242B] mt-0.5">v2.2.1</span>
                 </div>
-                <div class="flex flex-col items-center justify-center border-x border-[#6B8BB0]/20">
+                <div class="flex flex-col items-center justify-center border-x border-[#C7CBD3]/20">
                     <span class="text-emerald-600 text-[10px] font-bold">GitHub 最新版本</span>
                     <span id="updateLatestVer" class="font-black text-emerald-700 text-sm mt-0.5">v2.1.3</span>
                 </div>
                 <div class="flex flex-col text-right">
-                    <span class="text-[#667080] text-[10px] font-bold">釋出日期</span>
-                    <span id="updateReleaseDate" class="text-[#667080] mt-0.5">--</span>
+                    <span class="text-[#6B7280] text-[10px] font-bold">釋出日期</span>
+                    <span id="updateReleaseDate" class="text-[#6B7280] mt-0.5">--</span>
                 </div>
             </div>
 
             <!-- 更新日誌內容 -->
             <div class="flex flex-col gap-1">
-                <label class="text-xs font-bold text-[#667080]">更新說明 (Release Notes)：</label>
-                <div id="updateReleaseBody" class="max-h-44 overflow-y-auto bg-[#F8FAFC] border border-[#6B8BB0]/20 rounded-xl p-3 text-xs leading-relaxed text-[#2B364B] whitespace-pre-wrap font-sans">
+                <label class="text-xs font-bold text-[#6B7280]">更新說明 (Release Notes)：</label>
+                <div id="updateReleaseBody" class="max-h-44 overflow-y-auto bg-[#F8F8F7] border border-[#C7CBD3]/20 rounded-xl p-3 text-xs leading-relaxed text-[#20242B] whitespace-pre-wrap font-sans">
                 </div>
             </div>
 
             <!-- 下載連結與按鈕 -->
             <div id="updateAssetsContainer" class="flex flex-col gap-1.5 hidden">
-                <span class="text-xs font-bold text-[#667080]">安裝檔案直接下載：</span>
+                <span class="text-xs font-bold text-[#6B7280]">安裝檔案直接下載：</span>
                 <div id="updateAssetsList" class="flex flex-wrap gap-2"></div>
             </div>
 
-            <div class="flex items-center justify-end gap-2 pt-2 border-t border-[#6B8BB0]/20 mt-1">
+            <div class="flex items-center justify-end gap-2 pt-2 border-t border-[#C7CBD3]/20 mt-1">
                 <button type="button" onclick="window.app.closeModal('updateModal')" class="btn-secondary px-3.5 py-2 rounded-lg text-xs font-bold">
                     稍後再說
                 </button>
@@ -712,14 +903,14 @@
 
     <!-- 已是最新版對話框 Modal -->
     <div id="upToDateModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop hidden" onclick="window.app.closeModal('upToDateModal')">
-        <div class="morandi-card w-full max-w-sm p-6 bg-white border border-[#6B8BB0]/30 shadow-2xl flex flex-col items-center text-center gap-3 rounded-2xl" onclick="event.stopPropagation()">
+        <div class="morandi-card w-full max-w-sm p-6 bg-white border border-[#C7CBD3]/30 shadow-2xl flex flex-col items-center text-center gap-3 rounded-2xl" onclick="event.stopPropagation()">
             <div class="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center text-2xl border border-emerald-200 shadow-sm">
                 <i class="fa-solid fa-circle-check"></i>
             </div>
             <div>
-                <h3 class="text-sm font-black text-[#2B364B]">目前已是最新版本！</h3>
-                <p class="text-xs text-[#667080] mt-1.5 leading-relaxed">
-                    您目前使用的版本為 <span id="upToDateVer" class="font-bold text-[#526F94]">v2.2.0</span>，各項功能皆為最新，無需進行更新。
+                <h3 class="text-sm font-black text-[#20242B]">目前已是最新版本！</h3>
+                <p class="text-xs text-[#6B7280] mt-1.5 leading-relaxed">
+                    您目前使用的版本為 <span id="upToDateVer" class="font-bold text-[#5B5CE2]">v2.2.1</span>，各項功能皆為最新，無需進行更新。
                 </p>
             </div>
             <button type="button" onclick="window.app.closeModal('upToDateModal')" class="btn-primary w-full py-2 rounded-lg text-xs font-bold mt-2 shadow">
@@ -730,13 +921,13 @@
 
     <!-- 檢查更新失敗對話框 Modal -->
     <div id="updateErrorModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop hidden" onclick="window.app.closeModal('updateErrorModal')">
-        <div class="morandi-card w-full max-w-sm p-5 bg-white border border-[#6B8BB0]/30 shadow-2xl flex flex-col items-center text-center gap-3 rounded-2xl" onclick="event.stopPropagation()">
+        <div class="morandi-card w-full max-w-sm p-5 bg-white border border-[#C7CBD3]/30 shadow-2xl flex flex-col items-center text-center gap-3 rounded-2xl" onclick="event.stopPropagation()">
             <div class="w-12 h-12 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center text-xl border border-amber-200">
                 <i class="fa-solid fa-triangle-exclamation"></i>
             </div>
             <div>
-                <h3 class="text-sm font-black text-[#2B364B]">無法檢查更新</h3>
-                <p id="updateErrorDetail" class="text-xs text-[#667080] mt-1.5 leading-relaxed">
+                <h3 class="text-sm font-black text-[#20242B]">無法檢查更新</h3>
+                <p id="updateErrorDetail" class="text-xs text-[#6B7280] mt-1.5 leading-relaxed">
                     請確認您的網路連線是否正常，或直接前往 GitHub 發行頁面查看最新版本。
                 </p>
             </div>
@@ -774,11 +965,16 @@
                 this.currentView = 'workspace';
                 this.currentIndex = 0;
                 this.draggedIndices = [];
+                this.stageDrag = null;
+                this.pointerCardDrag = null;
+                this.suppressCardClickUntil = 0;
                 this.lastSelectedIndex = null;
                 this.maxRecommendedPhotos = 500;
                 this.maxRecommendedBytes = 2 * 1024 * 1024 * 1024;
-                this.thumbnailSize = Math.max(90, Math.min(400, this.loadWorkspacePreference('thumbnailSize', 220)));
+                this.thumbnailSize = Math.max(90, Math.min(480, this.loadWorkspacePreference('thumbnailSize', 135)));
                 this.editorCollapsed = this.loadWorkspacePreference('editorCollapsed', true);
+                this.sidePanelWidth = Math.max(320, Math.min(560, this.loadWorkspacePreference('sidePanelWidth', 380)));
+                this.panelResizeState = null;
                 this.marqueeState = null;
                 this.history = [];
                 this.historyIndex = -1;
@@ -787,21 +983,23 @@
                 this.isRestoringHistory = false;
                 this.managedUrls = new Set();
                 this.processingCancelled = false;
-                this.photoSearchTerm = '';
-                this.photoFilterMode = 'all';
+                this.lightboxIndex = null;
+                this.savedProjectSignature = '';
                 this.initElements();
                 this.initEvents();
                 this.applyWorkspaceLayout();
                 this.setDefaultTodayDate();
                 this.loadAppVersion();
                 this.recordHistory('初始狀態');
+                this.markProjectSaved();
             }
 
             initElements() {
-                this.dropZone = document.getElementById('dropZone');
                 this.fileInput = document.getElementById('fileInput');
                 this.folderInput = document.getElementById('folderInput');
                 this.workspaceContainer = document.getElementById('workspaceContainer');
+                this.appMainLayout = document.getElementById('appMainLayout');
+                this.mainPanelSplitter = document.getElementById('mainPanelSplitter');
                 this.thumbGrid = document.getElementById('thumbGrid');
                 this.photoPanel = document.getElementById('photoPanel');
                 this.editorPanel = document.getElementById('editorPanel');
@@ -825,11 +1023,8 @@
                 this.btnUndo = document.getElementById('btnUndo');
                 this.btnRedo = document.getElementById('btnRedo');
                 this.btnCancelProcessing = document.getElementById('btnCancelProcessing');
-                this.photoSearch = document.getElementById('photoSearch');
-                this.photoFilter = document.getElementById('photoFilter');
-                this.photoJump = document.getElementById('photoJump');
-                this.visiblePhotoCount = document.getElementById('visiblePhotoCount');
                 this.appVersionText = document.getElementById('appVersionText');
+                this.appVersionBadge = document.getElementById('appVersionBadge');
                 this.btnCheckUpdate = document.getElementById('btnCheckUpdate');
                 this.checkUpdateIcon = document.getElementById('checkUpdateIcon');
                 this.checkUpdateText = document.getElementById('checkUpdateText');
@@ -842,29 +1037,17 @@
                 this.editTime = document.getElementById('editTime');
                 this.editLocation = document.getElementById('editLocation');
                 this.editDesc = document.getElementById('editDesc');
+                this.editDateInheritedHint = document.getElementById('editDateInheritedHint');
+                this.editLocationInheritedHint = document.getElementById('editLocationInheritedHint');
                 this.batchApplyBox = document.getElementById('batchApplyBox');
                 this.batchCountNum = document.getElementById('batchCountNum');
                 this.batchApplyEmptyValues = document.getElementById('batchApplyEmptyValues');
             }
 
             initEvents() {
-                // 上傳拖曳
-                ['dragenter', 'dragover'].forEach(name => {
-                    this.dropZone.addEventListener(name, (e) => {
-                        e.preventDefault();
-                        this.dropZone.classList.add('drag-over');
-                    });
-                });
-                ['dragleave', 'drop'].forEach(name => {
-                    this.dropZone.addEventListener(name, (e) => {
-                        e.preventDefault();
-                        this.dropZone.classList.remove('drag-over');
-                    });
-                });
-                this.dropZone.addEventListener('drop', (e) => {
-                    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
-                    if (files.length) this.handleFiles(files).catch(error => this.handleProcessingError(error));
-                });
+                // 外部檔案拖入空白狀態或照片舞台；既有卡片拖曳排序不含 Files，不會被攔截。
+                this.bindExternalFileDropTarget(this.emptyState);
+                this.bindExternalFileDropTarget(this.thumbGrid);
 
                 this.fileInput.addEventListener('change', (e) => {
                     const files = Array.from(e.target.files).filter(f => f.type.startsWith('image/'));
@@ -876,6 +1059,8 @@
                     if (files.length) this.handleFiles(files).catch(error => this.handleProcessingError(error));
                     this.folderInput.value = '';
                 });
+                document.getElementById('btnAddPhotos').addEventListener('click', () => this.fileInput.click());
+                document.getElementById('btnAddFolder').addEventListener('click', () => this.folderInput.click());
 
                 // 按鈕事件
                 document.getElementById('btnTodayDate').addEventListener('click', () => this.setDefaultTodayDate());
@@ -883,20 +1068,45 @@
                 document.getElementById('btnViewWorkspace').addEventListener('click', () => this.switchView('workspace'));
                 document.getElementById('btnViewGrid').addEventListener('click', () => this.switchView('grid'));
                 document.getElementById('btnViewPreview').addEventListener('click', () => this.switchView('preview'));
-                document.getElementById('btnResetThumbnailSize').addEventListener('click', () => this.setThumbnailSize(220));
+                document.getElementById('btnResetThumbnailSize').addEventListener('click', () => this.setThumbnailSize(135));
                 this.thumbnailSizeRange.addEventListener('input', (event) => this.setThumbnailSize(event.target.value));
+                this.mainPanelSplitter.addEventListener('pointerdown', (event) => this.beginMainPanelResize(event));
+                document.addEventListener('pointermove', (event) => this.updateMainPanelResize(event));
+                document.addEventListener('pointerup', (event) => this.endMainPanelResize(event));
+                document.addEventListener('pointercancel', (event) => this.endMainPanelResize(event, true));
+                // 卡片可能在舞台邊界外放開；全域監聽可確實清除「移動中」提示與浮動狀態。
+                document.addEventListener('pointermove', (event) => this.updateCardPointerDrag(event));
+                document.addEventListener('pointerup', (event) => this.endCardPointerDrag(event));
+                document.addEventListener('pointercancel', (event) => this.endCardPointerDrag(event, true));
+                window.addEventListener('blur', () => this.cancelCardPointerDrag());
                 this.thumbGrid.addEventListener('wheel', (event) => this.handleThumbnailWheel(event), { passive: false });
+                // Ctrl＋滾輪離開舞台時不交給瀏覽器縮放整頁；舞台內仍由上方監聽器調整縮圖。
+                document.addEventListener('wheel', (event) => {
+                    if (event.ctrlKey && !this.thumbGrid.contains(event.target)) event.preventDefault();
+                }, { passive: false, capture: true });
                 this.thumbGrid.addEventListener('pointerdown', (event) => this.beginMarqueeSelection(event));
-                this.thumbGrid.addEventListener('pointermove', (event) => this.updateMarqueeSelection(event));
-                this.thumbGrid.addEventListener('pointerup', (event) => this.endMarqueeSelection(event));
-                this.thumbGrid.addEventListener('pointercancel', (event) => this.endMarqueeSelection(event));
+                this.thumbGrid.addEventListener('pointermove', (event) => {
+                    this.updateStageDrag(event);
+                    this.updateMarqueeSelection(event);
+                });
+                this.thumbGrid.addEventListener('pointerup', (event) => {
+                    this.endStageDrag(event);
+                    this.endMarqueeSelection(event);
+                });
+                this.thumbGrid.addEventListener('pointercancel', (event) => {
+                    this.endStageDrag(event, true);
+                    this.endMarqueeSelection(event);
+                });
+                this.thumbGrid.addEventListener('dragover', (event) => this.handleStageGridDragOver(event));
+                this.thumbGrid.addEventListener('drop', (event) => this.handleStageGridDrop(event));
+                document.getElementById('btnAutoArrangeStage').addEventListener('click', () => this.sortPhotosByNaturalFilename({ confirmBeforeSort: true }));
                 this.btnToggleEditor.addEventListener('click', () => this.toggleEditor());
                 document.getElementById('btnClearAll').addEventListener('click', () => this.clearAll());
                 document.getElementById('btnBatchRotate').addEventListener('click', () => this.batchRotate(90));
                 document.getElementById('btnMoveSelectedBackward').addEventListener('click', () => this.moveSelectedBy(-1));
                 document.getElementById('btnMoveSelectedForward').addEventListener('click', () => this.moveSelectedBy(1));
                 document.getElementById('btnRemoveSelected').addEventListener('click', () => this.removeSelectedPhotos());
-                document.getElementById('btnFillAllDefaults').addEventListener('click', () => this.fillAllDefaults());
+                document.getElementById('btnApplyDefaultsToSelected').addEventListener('click', () => this.applyDefaultsToSelected());
                 document.getElementById('btnOpenSequenceModal').addEventListener('click', () => this.openModal('sequenceModal'));
                 document.getElementById('btnApplySequence').addEventListener('click', () => this.applySequence());
                 document.getElementById('btnParseFilenameTime').addEventListener('click', () => this.parseFilenameTime());
@@ -915,29 +1125,52 @@
                 });
                 this.btnCheckUpdate.addEventListener('click', () => this.checkForUpdates());
                 this.btnCancelProcessing.addEventListener('click', () => { this.processingCancelled = true; });
-                this.photoSearch.addEventListener('input', (event) => { this.photoSearchTerm = event.target.value.trim().toLowerCase(); this.render(); });
-                this.photoFilter.addEventListener('change', (event) => { this.photoFilterMode = event.target.value; this.render(); });
-                document.getElementById('btnJumpPhoto').addEventListener('click', () => this.jumpToPhoto());
-                ['caseTitle', 'defaultLocation', 'deptName', 'officerName'].forEach(id => {
+                window.addEventListener('beforeunload', (event) => {
+                    if (!this.hasUnsavedProjectChanges()) return;
+                    // 現代瀏覽器／WebView2 僅顯示其內建離開確認訊息，禁止自訂文案。
+                    event.preventDefault();
+                    event.returnValue = '';
+                });
+                ['caseTitle', 'caseDate', 'defaultLocation', 'deptName', 'officerName'].forEach(id => {
                     document.getElementById(id).addEventListener('input', () => this.scheduleHistory('修改案件基本資料'));
                 });
 
-                // 左側全域案件日期（支援純數字 7 碼 YYYMMDD 自動遮罩為 YYY/MM/DD）
                 const caseDateInput = document.getElementById('caseDate');
-                this.attachMaskControl(caseDateInput, 'date', (val) => {
-                    this.scheduleHistory('修改案件基本資料');
-                    const defaultDate = val.trim();
-                    if (this.editDateInheritedHint) {
-                        this.editDateInheritedHint.textContent = defaultDate
-                            ? `格式 YYY/MM/DD；留空時使用清冊預設：${defaultDate}。`
-                            : '格式 YYY/MM/DD；尚未設定清冊預設日期。';
-                    }
+                caseDateInput.addEventListener('pointerdown', (e) => this.handleMaskedPointerDown(e, caseDateInput));
+                caseDateInput.addEventListener('focus', () => this.beginMaskedEntry(caseDateInput));
+                caseDateInput.addEventListener('input', (e) => {
+                    // 輸入途中不可改寫成含 / 的字串；Windows 觸控鍵盤會把下一鍵插回舊格式位置。
+                    this.sanitizeMaskedEntry(e.target, 7);
+                    this.markMaskedEntryChanged(e.target);
                 });
+                caseDateInput.addEventListener('blur', (e) => { e.target.value = this.finishMaskedEntry(e.target, this.formatDateMask); });
 
                 // 右側編輯器即時輸入事件
                 this.editSeq.addEventListener('input', (e) => this.updateCurrentPhoto('seq', e.target.value));
-                this.attachMaskControl(this.editTime, 'time', (val) => this.updateCurrentPhoto('time', val));
-                this.attachMaskControl(this.editDate, 'date', (val) => this.updateCurrentPhoto('date', val));
+                this.editTime.addEventListener('pointerdown', (e) => this.handleMaskedPointerDown(e, this.editTime));
+                this.editTime.addEventListener('focus', () => this.beginMaskedEntry(this.editTime));
+                this.editTime.addEventListener('input', (e) => {
+                    const digits = this.sanitizeMaskedEntry(e.target, 6);
+                    this.markMaskedEntryChanged(e.target);
+                    this.updateCurrentPhoto('time', digits);
+                });
+                this.editTime.addEventListener('blur', (e) => {
+                    const masked = this.finishMaskedEntry(e.target, this.formatTimeMask);
+                    e.target.value = masked;
+                    this.updateCurrentPhoto('time', masked);
+                });
+                this.editDate.addEventListener('input', (e) => {
+                    const digits = this.sanitizeMaskedEntry(e.target, 7);
+                    this.markMaskedEntryChanged(e.target);
+                    this.updateCurrentPhoto('date', digits);
+                });
+                this.editDate.addEventListener('pointerdown', (e) => this.handleMaskedPointerDown(e, this.editDate));
+                this.editDate.addEventListener('focus', () => this.beginMaskedEntry(this.editDate));
+                this.editDate.addEventListener('blur', (e) => {
+                    const masked = this.finishMaskedEntry(e.target, this.formatDateMask);
+                    e.target.value = masked;
+                    this.updateCurrentPhoto('date', masked);
+                });
                 this.editLocation.addEventListener('input', (e) => this.updateCurrentPhoto('location', e.target.value));
                 this.editDesc.addEventListener('input', (e) => this.updateCurrentPhoto('desc', e.target.value));
 
@@ -956,6 +1189,15 @@
                 // 鍵盤快速鍵：方向鍵切換單張選取；Ctrl＋方向鍵與 Ctrl＋Home／End 重排已選照片。
                 window.addEventListener('keydown', (e) => {
                     if (this.isTypingTarget(e.target)) return;
+                    const lightboxOpen = !document.getElementById('imageLightboxModal').classList.contains('hidden');
+                    if (lightboxOpen) {
+                        if (e.key === 'Escape') this.closeModal('imageLightboxModal');
+                        else if (e.key === 'ArrowLeft') this.navigateLightbox(-1);
+                        else if (e.key === 'ArrowRight') this.navigateLightbox(1);
+                        else return;
+                        e.preventDefault();
+                        return;
+                    }
                     if (e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'z') {
                         e.preventDefault();
                         if (e.shiftKey) this.redo(); else this.undo();
@@ -1021,52 +1263,41 @@
             setDefaultTodayDate() {
                 const now = new Date();
                 const mYear = now.getFullYear() - 1911;
-                const mMonth = String(now.getMonth() + 1).padStart(2, '0');
-                const mDay = String(now.getDate()).padStart(2, '0');
-                const dateStr = `${mYear}/${mMonth}/${mDay}`;
-                document.getElementById('caseDate').value = dateStr;
-                if (this.editDateInheritedHint) {
-                    this.editDateInheritedHint.textContent = `格式 YYY/MM/DD；留空時使用清冊預設：${dateStr}。`;
-                }
+                const mMonth = now.getMonth() + 1;
+                const mDay = now.getDate();
+                document.getElementById('caseDate').value = `${mYear}${String(mMonth).padStart(2, '0')}${String(mDay).padStart(2, '0')}`;
+                document.getElementById('caseDate').value = this.formatDateMask(document.getElementById('caseDate').value, true);
                 this.scheduleHistory('填入今天日期');
             }
 
-            jumpToPhoto() {
-                const target = Number.parseInt(this.photoJump.value, 10);
-                if (!Number.isInteger(target) || target < 1 || target > this.photos.length) return alert(`請輸入 1 至 ${this.photos.length} 的照片位置。`);
-                this.currentIndex = target - 1;
-                this.photos.forEach((photo, index) => photo.selected = index === this.currentIndex);
-                this.lastSelectedIndex = this.currentIndex;
-                this.render();
-                document.getElementById(`thumb_${this.photos[this.currentIndex].uid}`)?.scrollIntoView({ block: 'center', inline: 'nearest' });
-            }
-
             getVisiblePhotoIndices() {
-                return this.photos.map((photo, index) => ({ photo, index })).filter(({ photo }) => {
-                    const haystack = [photo.seq, photo.name, photo.date, photo.time, photo.location, photo.desc]
-                        .map(value => String(value || ''))
-                        .join(' ')
-                        .toLowerCase();
-                    const matchesSearch = !this.photoSearchTerm || haystack.includes(this.photoSearchTerm);
-                    const matchesFilter = this.photoFilterMode === 'all' ||
-                        (this.photoFilterMode === 'missing-desc' && !String(photo.desc || '').trim()) ||
-                        (this.photoFilterMode === 'missing-location' && !String(photo.location || '').trim()) ||
-                        (this.photoFilterMode === 'selected' && photo.selected);
-                    return matchesSearch && matchesFilter;
-                });
+                return this.photos.map((photo, index) => ({ photo, index }));
             }
 
             async loadAppVersion() {
+                const embeddedVersion = this.getCurrentVersion();
+                if (this.isLocalFileMode()) {
+                    this.appVersionBadge.title = `目前版本 ${embeddedVersion}（直接開啟本機檔案，使用內嵌版本）`;
+                    this.checkUpdateText.textContent = '開啟更新頁';
+                    this.btnCheckUpdate.title = '直接開啟 GitHub Releases 查看最新版本';
+                    return;
+                }
+
                 try {
                     const response = await fetch('version.txt', { cache: 'no-store' });
                     if (!response.ok) throw new Error(`version.txt 讀取失敗（${response.status}）`);
                     const version = (await response.text()).trim();
                     if (!version) throw new Error('version.txt 未提供版本號。');
                     this.appVersionText.textContent = version.startsWith('v') ? version : `v${version}`;
+                    this.appVersionBadge.title = `目前版本 ${this.getCurrentVersion()}（version.txt）`;
                 } catch (error) {
-                    // 直接以 file:// 開啟時通常無法 fetch；保留 HTML 內建版本，仍可檢查 Release。
-                    console.warn('無法讀取 version.txt，使用內建版本號。', error);
+                    // 網路暫時不可用時維持內嵌版本，不在主控台製造無法處理的執行期警告。
+                    this.appVersionBadge.title = `目前版本 ${embeddedVersion}（使用內嵌版本）`;
                 }
+            }
+
+            isLocalFileMode() {
+                return window.location.protocol === 'file:';
             }
 
             getCurrentVersion() {
@@ -1096,10 +1327,15 @@
                 this.btnCheckUpdate.classList.toggle('cursor-wait', isLoading);
                 this.btnCheckUpdate.setAttribute('aria-busy', String(isLoading));
                 this.checkUpdateIcon.classList.toggle('fa-spin', isLoading);
-                this.checkUpdateText.textContent = isLoading ? '檢查中…' : '檢查更新';
+                this.checkUpdateText.textContent = isLoading ? '檢查中…' : (this.isLocalFileMode() ? '開啟更新頁' : '檢查更新');
             }
 
             async checkForUpdates() {
+                if (this.isLocalFileMode()) {
+                    // file:// 無法可靠呼叫跨來源 API；由使用者手勢直接開啟受信任的 Releases 頁面。
+                    window.open('https://github.com/lianghao02/Photo-Report-Generator/releases', '_blank', 'noopener,noreferrer');
+                    return;
+                }
                 this.setUpdateButtonLoading(true);
                 const controller = new AbortController();
                 const timeoutId = window.setTimeout(() => controller.abort(), 12000);
@@ -1172,11 +1408,13 @@
             }
 
             async handleFiles(files) {
+                // Windows 檔案選取／拖放的 FileList 順序不保證一致；每批先依檔名自然排序，
+                // 再附加到目前清單尾端，絕不改動既有或手動調整過的照片順序。
+                const sortedFiles = [...files].sort((a, b) => this.comparePhotoFileOrder(a, b));
                 this.processingCancelled = false;
-                const defaultLoc = document.getElementById('defaultLocation').value.trim() || '現場';
-                const incomingBytes = files.reduce((total, file) => total + file.size, 0);
+                const incomingBytes = sortedFiles.reduce((total, file) => total + file.size, 0);
                 const totalBytes = this.photos.reduce((total, photo) => total + photo.file.size, 0) + incomingBytes;
-                const totalPhotos = this.photos.length + files.length;
+                const totalPhotos = this.photos.length + sortedFiles.length;
 
                 if ((totalPhotos > this.maxRecommendedPhotos || totalBytes > this.maxRecommendedBytes) && !confirm(
                     `即將載入 ${totalPhotos} 張照片（約 ${this.formatBytes(totalBytes)}）。\n` +
@@ -1184,26 +1422,31 @@
                 )) return;
 
                 let failedCount = 0;
-                this.setProgress('正在建立低記憶體縮圖…', 0, files.length);
-                for (let i = 0; i < files.length; i++) {
-                    const file = files[i];
+                this.setProgress('正在建立低記憶體縮圖…', 0, sortedFiles.length);
+                for (let i = 0; i < sortedFiles.length; i++) {
+                    const file = sortedFiles[i];
                     let sourceUrl = '';
                     try {
                         sourceUrl = URL.createObjectURL(file);
+                        const thumbnail = await this.createThumbnailUrl(file, sourceUrl);
                         const photoItem = {
                             uid: 'uid_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9),
                             file: file,
                             name: file.name,
                             src: sourceUrl,
-                            thumbnailSrc: await this.createThumbnailUrl(file, sourceUrl),
+                            thumbnailSrc: thumbnail.src,
+                            thumbnailAspect: thumbnail.aspect,
                             rotation: 0,
                             exifRotation: await this.readJpegExifRotation(file),
                             seq: String(this.photos.length + 1),
                             date: '',
                             time: this.extractTimeFromFilename(file.name) || '12:00',
-                            location: defaultLoc,
+                            // 留空代表繼承清冊預設地點，避免把預設值誤認為本張覆寫資料。
+                            location: '',
                             desc: '',
-                            selected: false
+                            selected: false,
+                            stageX: null,
+                            stageY: null
                         };
                         this.photos.push(photoItem);
                         this.managedUrls.add(sourceUrl);
@@ -1213,7 +1456,7 @@
                         failedCount++;
                         console.warn(`略過無法載入的圖片：${file.name}`, error);
                     }
-                    this.setProgress('正在建立低記憶體縮圖…', i + 1, files.length);
+                    this.setProgress('正在建立低記憶體縮圖…', i + 1, sortedFiles.length);
                     if (this.processingCancelled) {
                         this.render();
                         this.recordHistory('載入照片（已取消）');
@@ -1230,8 +1473,15 @@
                 }
                 this.render();
                 this.clearProgress();
-                this.recordHistory(`載入 ${files.length - failedCount} 張照片`);
-                if (failedCount) alert(`已載入 ${files.length - failedCount} 張照片；${failedCount} 張因無法解碼而略過。`);
+                this.recordHistory(`載入 ${sortedFiles.length - failedCount} 張照片`);
+                if (failedCount) alert(`已載入 ${sortedFiles.length - failedCount} 張照片；${failedCount} 張因無法解碼而略過。`);
+            }
+
+            comparePhotoFileOrder(a, b) {
+                const aKey = a.webkitRelativePath || a.name || '';
+                const bKey = b.webkitRelativePath || b.name || '';
+                return aKey.localeCompare(bKey, 'zh-Hant', { numeric: true, sensitivity: 'base' }) ||
+                    String(a.name || '').localeCompare(String(b.name || ''), 'zh-Hant', { numeric: true, sensitivity: 'base' });
             }
 
             async createThumbnailUrl(file, sourceUrl) {
@@ -1252,7 +1502,10 @@
                         result => result ? resolve(result) : reject(new Error('無法產生縮圖。')),
                         'image/jpeg', 0.8
                     ));
-                    return URL.createObjectURL(blob);
+                    return {
+                        src: URL.createObjectURL(blob),
+                        aspect: canvas.width / canvas.height
+                    };
                 } finally {
                     if (source && typeof source.close === 'function') source.close();
                 }
@@ -1368,15 +1621,18 @@
                 alert(`已成功從檔名解析 ${count} 張照片之時間！`);
             }
 
-            fillAllDefaults() {
-                if (!this.photos.length) return alert('請先載入照片！');
-                const defaultLoc = document.getElementById('defaultLocation').value.trim();
-                this.photos.forEach(p => {
-                    if (defaultLoc) p.location = defaultLoc;
+            applyDefaultsToSelected() {
+                const selectedPhotos = this.photos.filter(photo => photo.selected);
+                if (!selectedPhotos.length) return alert('請先勾選要套用清冊預設的照片。');
+                const defaultDate = document.getElementById('caseDate').value.trim();
+                const defaultLocation = document.getElementById('defaultLocation').value.trim();
+                selectedPhotos.forEach(photo => {
+                    photo.date = defaultDate;
+                    photo.location = defaultLocation;
                 });
                 this.render();
-                this.recordHistory('套用預設地點');
-                alert('已將表頭預設地點套用至所有照片！');
+                this.recordHistory('套用清冊預設至已選照片');
+                alert(`已將清冊預設日期與地點套用至 ${selectedPhotos.length} 張已選照片。`);
             }
 
             batchRotate(degree) {
@@ -1433,191 +1689,74 @@
                 this.fillDownFromIndex(0, field);
             }
 
-            // ── 時間遮罩智慧計算（含游標精準定位）──────────────────────────
-            // 4 碼 = HH:MM，6 碼 = HH:MM:SS
-            formatTimeWithCursor(raw, cursorPos) {
-                const rawStr = String(raw || '');
-                const pos = Math.max(0, Math.min(cursorPos ?? rawStr.length, rawStr.length));
-                const digitsBeforeCursor = (rawStr.slice(0, pos).match(/\d/g) || []).length;
-                const allDigits = (rawStr.match(/\d/g) || []).join('').slice(0, 6);
+            // ── 時間遮罩 ────────────────────────────────────────
+            // 純數字 → 自動插入冒號：4碼=HH:MM，6碼=HH:MM:SS
+            // 輸入時即限制六位數，避免游標位移造成分鐘、秒數重複。
+            beginMaskedEntry(input) {
+                // 同一輪點擊中，pointerdown 與 focus 都可能進來；只能保存一次原值。
+                if (input.dataset.maskEntryPending === 'true') return;
+                input.dataset.maskOriginalValue = input.value;
+                input.dataset.maskEntryPending = 'true';
+                input.value = '';
+            }
 
-                let formatted = '';
-                if (allDigits.length <= 2) {
-                    formatted = allDigits;
-                } else if (allDigits.length <= 4) {
-                    formatted = `${allDigits.slice(0, 2)}:${allDigits.slice(2)}`;
-                } else {
-                    formatted = `${allDigits.slice(0, 2)}:${allDigits.slice(2, 4)}:${allDigits.slice(4)}`;
-                }
+            // 在瀏覽器定位游標前接手滑鼠／觸控點擊，確保既有值一定被完整覆寫。
+            handleMaskedPointerDown(event, input) {
+                if (event.button !== undefined && event.button !== 0) return;
+                event.preventDefault();
+                this.beginMaskedEntry(input);
+                input.focus({ preventScroll: true });
+            }
 
-                let newCursor = 0;
-                if (digitsBeforeCursor === 0) {
-                    newCursor = 0;
-                } else {
-                    let counted = 0;
-                    for (let i = 0; i < formatted.length; i++) {
-                        if (/\d/.test(formatted[i])) {
-                            counted++;
-                        }
-                        if (counted === digitsBeforeCursor) {
-                            newCursor = i + 1;
-                            break;
-                        }
-                    }
-                    if (newCursor === 0) newCursor = formatted.length;
-                }
+            markMaskedEntryChanged(input) {
+                input.dataset.maskEntryPending = 'false';
+            }
 
-                return { formatted, newCursor };
+            // 編輯期間只保存數字，等離開欄位後才寫入日期／時間分隔符號。
+            // 這可避免 Windows 觸控鍵盤的下一個輸入事件落在剛插入的 / 或 : 前後。
+            sanitizeMaskedEntry(input, maxDigits) {
+                const digits = input.value.replace(/[^0-9]/g, '').slice(0, maxDigits);
+                input.value = digits;
+                input.selectionStart = input.selectionEnd = digits.length;
+                return digits;
+            }
+
+            finishMaskedEntry(input, formatter) {
+                const pending = input.dataset.maskEntryPending === 'true';
+                const value = pending && !input.value ? (input.dataset.maskOriginalValue || '') : input.value;
+                delete input.dataset.maskOriginalValue;
+                delete input.dataset.maskEntryPending;
+                return formatter.call(this, value, true);
             }
 
             formatTimeMask(raw, finalise = false) {
-                return this.formatTimeWithCursor(raw, raw ? String(raw).length : 0).formatted;
+                let digits = raw.replace(/[^0-9]/g, '').slice(0, 6);
+
+                let result = '';
+                if (digits.length <= 4) {
+                    // 尚未完整，只插入第一個冒號
+                    result = digits.slice(0, 2);
+                    if (digits.length > 2) result += ':' + digits.slice(2, 4);
+                    else result = digits;
+                } else {
+                    // 6 碼：HH:MM:SS
+                    result = digits.slice(0, 2) + ':' + digits.slice(2, 4) + ':' + digits.slice(4, 6);
+                }
+                return result;
             }
 
-            // ── 日期遮罩智慧計算（含游標精準定位，民國年 7 碼：YYY/MM/DD）──
-            // 1150901 → 115/09/01
-            formatDateWithCursor(raw, cursorPos) {
-                const rawStr = String(raw || '');
-                const pos = Math.max(0, Math.min(cursorPos ?? rawStr.length, rawStr.length));
-                const digitsBeforeCursor = (rawStr.slice(0, pos).match(/\d/g) || []).length;
-                const allDigits = (rawStr.match(/\d/g) || []).join('').slice(0, 7);
-
-                let formatted = '';
-                if (allDigits.length <= 3) {
-                    formatted = allDigits;
-                } else if (allDigits.length <= 5) {
-                    formatted = `${allDigits.slice(0, 3)}/${allDigits.slice(3)}`;
-                } else {
-                    formatted = `${allDigits.slice(0, 3)}/${allDigits.slice(3, 5)}/${allDigits.slice(5)}`;
-                }
-
-                let newCursor = 0;
-                if (digitsBeforeCursor === 0) {
-                    newCursor = 0;
-                } else {
-                    let counted = 0;
-                    for (let i = 0; i < formatted.length; i++) {
-                        if (/\d/.test(formatted[i])) {
-                            counted++;
-                        }
-                        if (counted === digitsBeforeCursor) {
-                            newCursor = i + 1;
-                            break;
-                        }
-                    }
-                    if (newCursor === 0) newCursor = formatted.length;
-                }
-
-                return { formatted, newCursor };
-            }
-
+            // ── 日期遮罩 ────────────────────────────────────────
+            // 民國年 3 碼 + 月 2 碼 + 日 2 碼 = 7 碼數字
+            // 輸入 1130826 → 113/08/26
             formatDateMask(raw, finalise = false) {
-                return this.formatDateWithCursor(raw, raw ? String(raw).length : 0).formatted;
-            }
+                const digits = raw.replace(/[^0-9]/g, '').slice(0, 7);
 
-            // ── 通用遮罩綁定控制器（點擊全選舊值、精準游標跳躍、自然 Backspace）──
-            attachMaskControl(input, type, onUpdate) {
-                if (!input) return;
-
-                input.addEventListener('focus', () => {
-                    setTimeout(() => {
-                        if (document.activeElement === input) {
-                            input.select();
-                        }
-                    }, 0);
-                });
-
-                input.addEventListener('click', () => {
-                    input.select();
-                });
-
-                input.addEventListener('input', () => {
-                    const raw = input.value;
-                    const cursor = input.selectionStart || 0;
-                    const { formatted, newCursor } = (type === 'time')
-                        ? this.formatTimeWithCursor(raw, cursor)
-                        : this.formatDateWithCursor(raw, cursor);
-
-                    input.value = formatted;
-                    input.setSelectionRange(newCursor, newCursor);
-                    onUpdate?.(formatted);
-                });
-
-                input.addEventListener('keydown', (e) => {
-                    if (e.key === 'Backspace' && input.selectionStart === input.selectionEnd) {
-                        const pos = input.selectionStart;
-                        const val = input.value;
-                        if (pos > 0 && (val[pos - 1] === ':' || val[pos - 1] === '/')) {
-                            e.preventDefault();
-                            const before = val.slice(0, Math.max(0, pos - 2));
-                            const after = val.slice(pos);
-                            const nextRaw = before + after;
-                            const { formatted, newCursor } = (type === 'time')
-                                ? this.formatTimeWithCursor(nextRaw, Math.max(0, pos - 2))
-                                : this.formatDateWithCursor(nextRaw, Math.max(0, pos - 2));
-                            input.value = formatted;
-                            input.setSelectionRange(newCursor, newCursor);
-                            onUpdate?.(formatted);
-                        }
-                    }
-                });
-
-                input.addEventListener('blur', () => {
-                    const raw = input.value.trim();
-                    const formatted = (type === 'time')
-                        ? this.formatTimeMask(raw)
-                        : this.formatDateMask(raw);
-                    if (input.value !== formatted) {
-                        input.value = formatted;
-                        onUpdate?.(formatted);
-                    }
-                });
-            }
-
-            // ── DataGrid 試算表專屬遮罩輔助方法 ──────────────────────────
-            handleDataGridInputFocus(input) {
-                input.select();
-            }
-
-            handleDataGridMaskInput(input, type, idx) {
-                const raw = input.value;
-                const cursor = input.selectionStart || 0;
-                const { formatted, newCursor } = (type === 'time')
-                    ? this.formatTimeWithCursor(raw, cursor)
-                    : this.formatDateWithCursor(raw, cursor);
-                input.value = formatted;
-                input.setSelectionRange(newCursor, newCursor);
-                this.updatePhotoField(idx, type, formatted);
-            }
-
-            handleDataGridMaskKeyDown(event, input, type, idx) {
-                if (event.key === 'Backspace' && input.selectionStart === input.selectionEnd) {
-                    const pos = input.selectionStart;
-                    const val = input.value;
-                    if (pos > 0 && (val[pos - 1] === ':' || val[pos - 1] === '/')) {
-                        event.preventDefault();
-                        const before = val.slice(0, pos - 2);
-                        const after = val.slice(pos);
-                        const nextRaw = before + after;
-                        const { formatted, newCursor } = (type === 'time')
-                            ? this.formatTimeWithCursor(nextRaw, pos - 2)
-                            : this.formatDateWithCursor(nextRaw, pos - 2);
-                        input.value = formatted;
-                        input.setSelectionRange(newCursor, newCursor);
-                        this.updatePhotoField(idx, type, formatted);
-                    }
-                }
-            }
-
-            handleDataGridMaskBlur(input, type, idx) {
-                const raw = input.value.trim();
-                const formatted = (type === 'time')
-                    ? this.formatTimeMask(raw)
-                    : this.formatDateMask(raw);
-                if (input.value !== formatted) {
-                    input.value = formatted;
-                    this.updatePhotoField(idx, type, formatted);
-                }
+                let result = '';
+                if (digits.length === 0) return '';
+                result = digits.slice(0, 3);
+                if (digits.length > 3) result += '/' + digits.slice(3, 5);
+                if (digits.length > 5) result += '/' + digits.slice(5, 7);
+                return result;
             }
 
             // ── 計算目前畫布的欄數（用於 Ctrl+↑↓ 整列移動）────
@@ -1663,8 +1802,8 @@
                 this.workspaceContainer.classList.toggle('hidden', view !== 'workspace');
                 this.gridContainer.classList.toggle('hidden', view !== 'grid');
                 this.previewContainer.classList.toggle('hidden', view !== 'preview');
-                const activeClass = "px-2.5 py-1 rounded text-xs font-bold bg-[#526F94] text-white flex items-center gap-1";
-                const idleClass = "px-2.5 py-1 rounded text-xs font-bold text-[#667080] flex items-center gap-1";
+                const activeClass = "px-2.5 py-1 rounded text-xs font-bold bg-[#5B5CE2] text-white flex items-center gap-1";
+                const idleClass = "px-2.5 py-1 rounded text-xs font-bold text-[#6B7280] flex items-center gap-1";
                 document.getElementById('btnViewWorkspace').className = view === 'workspace' ? activeClass : idleClass;
                 document.getElementById('btnViewGrid').className = view === 'grid' ? activeClass : idleClass;
                 document.getElementById('btnViewPreview').className = view === 'preview' ? activeClass : idleClass;
@@ -1715,9 +1854,56 @@
                     caseData: state.caseData,
                     currentIndex: state.currentIndex,
                     lastSelectedIndex: state.lastSelectedIndex,
-                    photos: state.photos.map(({ uid, rotation, seq, date, time, location, desc, selected }) =>
-                        ({ uid, rotation, seq, date, time, location, desc, selected }))
+                    photos: state.photos.map(({ uid, rotation, seq, date, time, location, desc, selected, stageX, stageY }) =>
+                        ({ uid, rotation, seq, date, time, location, desc, selected, stageX, stageY }))
                 });
+            }
+
+            isExternalFileDrag(event) {
+                return Array.from(event.dataTransfer?.types || []).includes('Files');
+            }
+
+            bindExternalFileDropTarget(target) {
+                if (!target) return;
+                target.addEventListener('dragenter', (event) => {
+                    if (!this.isExternalFileDrag(event)) return;
+                    event.preventDefault();
+                    target.classList.add('external-file-drag-over');
+                });
+                target.addEventListener('dragover', (event) => {
+                    if (!this.isExternalFileDrag(event)) return;
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = 'copy';
+                    target.classList.add('external-file-drag-over');
+                });
+                target.addEventListener('dragleave', (event) => {
+                    if (!this.isExternalFileDrag(event) || target.contains(event.relatedTarget)) return;
+                    target.classList.remove('external-file-drag-over');
+                });
+                target.addEventListener('drop', (event) => {
+                    if (!this.isExternalFileDrag(event)) return;
+                    event.preventDefault();
+                    target.classList.remove('external-file-drag-over');
+                    const files = Array.from(event.dataTransfer.files).filter(file => file.type.startsWith('image/'));
+                    if (!files.length) return alert('請拖入支援的圖片檔案。');
+                    this.handleFiles(files).catch(error => this.handleProcessingError(error));
+                });
+            }
+
+            projectSignature() {
+                return JSON.stringify({
+                    caseData: this.getCaseData(),
+                    photos: this.photos.map(({ uid, rotation, seq, date, time, location, desc, stageX, stageY }) =>
+                        ({ uid, rotation, seq, date, time, location, desc, stageX, stageY }))
+                });
+            }
+
+            markProjectSaved() {
+                this.savedProjectSignature = this.projectSignature();
+            }
+
+            hasUnsavedProjectChanges() {
+                return this.projectSignature() !== this.savedProjectSignature;
             }
 
             recordHistory(label = '') {
@@ -1788,7 +1974,9 @@
                     manifestPhotos.push({
                         uid: photo.uid, archiveName, name: photo.name, type: photo.file.type,
                         rotation: photo.rotation, exifRotation: photo.exifRotation || 0, seq: photo.seq, date: photo.date, time: photo.time,
-                        location: photo.location, desc: photo.desc, selected: photo.selected
+                        location: photo.location, desc: photo.desc, selected: photo.selected,
+                        stageX: Number.isFinite(photo.stageX) ? photo.stageX : null,
+                        stageY: Number.isFinite(photo.stageY) ? photo.stageY : null
                     });
                     this.setProgress('正在封裝專案檔…', index + 1, this.photos.length);
                     if ((index + 1) % 10 === 0) await this.yieldToBrowser();
@@ -1801,6 +1989,7 @@
                 const content = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
                 const caseTitle = this.getCaseData().caseTitle || '現場照片清冊';
                 saveAs(content, `${caseTitle}_照片清冊專案.photo-report`);
+                this.markProjectSaved();
                 this.clearProgress();
             }
 
@@ -1827,12 +2016,15 @@
                         const blob = await entry.async('blob');
                         const imageFile = new File([blob], saved.name, { type: saved.type || blob.type || 'image/jpeg' });
                         const src = URL.createObjectURL(imageFile);
+                        const thumbnail = await this.createThumbnailUrl(imageFile, src);
                         restored.push({
                             uid: saved.uid || crypto.randomUUID(), file: imageFile, name: saved.name,
-                            src, thumbnailSrc: await this.createThumbnailUrl(imageFile, src),
+                            src, thumbnailSrc: thumbnail.src, thumbnailAspect: thumbnail.aspect,
                             rotation: Number(saved.rotation) || 0, exifRotation: Number(saved.exifRotation) || 0,
                             seq: String(saved.seq ?? index + 1), date: saved.date || '', time: saved.time || '',
-                            location: saved.location || '', desc: saved.desc || '', selected: Boolean(saved.selected)
+                            location: saved.location || '', desc: saved.desc || '', selected: Boolean(saved.selected),
+                            stageX: Number.isFinite(saved.stageX) ? saved.stageX : null,
+                            stageY: Number.isFinite(saved.stageY) ? saved.stageY : null
                         });
                         this.setProgress('正在還原專案照片…', index + 1, manifest.photos.length);
                         if ((index + 1) % 5 === 0) await this.yieldToBrowser();
@@ -1849,7 +2041,11 @@
                     this.applyCaseData(manifest.caseData);
                     this.currentIndex = Math.max(0, Math.min(Number(manifest.currentIndex) || 0, Math.max(0, restored.length - 1)));
                     this.lastSelectedIndex = manifest.lastSelectedIndex ?? this.currentIndex;
+                    if (restored.some(photo => !Number.isFinite(photo.stageX) || !Number.isFinite(photo.stageY))) {
+                        this.placeUnpositionedPhotos();
+                    }
                     this.recordHistory('開啟專案');
+                    this.markProjectSaved();
                     this.clearProgress();
                     this.render();
                     alert(`已開啟專案，共還原 ${restored.length} 張照片。`);
@@ -1865,9 +2061,11 @@
             }
 
             setThumbnailSize(size) {
-                this.thumbnailSize = Math.max(90, Math.min(400, Math.round(size)));
+                this.thumbnailSize = Math.max(90, Math.min(480, Math.round(size)));
                 this.saveWorkspacePreference('thumbnailSize', this.thumbnailSize);
                 this.applyWorkspaceLayout();
+                // 卡片寬度與換列完全由目前尺寸重算，滑桿拖動不必再點擊畫面。
+                this.render();
             }
 
             handleThumbnailWheel(event) {
@@ -1884,8 +2082,14 @@
             }
 
             applyWorkspaceLayout() {
-                this.thumbGrid.style.gridTemplateColumns = `repeat(auto-fill, minmax(min(100%, ${this.thumbnailSize}px), 1fr))`;
-                this.thumbGrid.style.setProperty('--thumbnail-preview-height', `${this.thumbnailSize}px`);
+                this.applyMainPanelWidth();
+                this.thumbGrid.style.gridTemplateColumns = `repeat(auto-fill, minmax(min(100%, ${this.thumbnailSize}px), ${this.thumbnailSize}px))`;
+                // 清冊編輯以序號閱讀為主：使用標準網格，讓每列由最高卡片決定高度。
+                // 不採瀑布流，避免下一張照片跳到前一列的空白處而打亂閱讀順序。
+                this.thumbGrid.style.gridAutoRows = 'auto';
+                this.thumbGrid.style.gridAutoFlow = 'row';
+                this.thumbGrid.style.justifyContent = 'start';
+                this.thumbGrid.classList.toggle('thumbnail-density-compact', this.thumbnailSize <= 110);
                 this.thumbnailSizeRange.value = String(this.thumbnailSize);
                 this.thumbnailSizeLabel.textContent = `${this.thumbnailSize}px`;
 
@@ -1897,9 +2101,247 @@
 
                 const label = this.btnToggleEditor.querySelector('span');
                 const icon = this.btnToggleEditor.querySelector('i');
-                label.textContent = this.editorCollapsed ? '展開編輯' : '收合編輯';
-                icon.className = this.editorCollapsed ? 'fa-solid fa-panel-right-open' : 'fa-solid fa-panel-right';
+                label.textContent = this.editorCollapsed ? '單張編輯' : '收合單張編輯';
+                icon.className = this.editorCollapsed ? 'fa-solid fa-pen-to-square' : 'fa-solid fa-panel-right';
                 this.btnToggleEditor.setAttribute('aria-pressed', String(this.editorCollapsed));
+            }
+
+            applyMainPanelWidth() {
+                this.appMainLayout?.style.setProperty('--side-panel-width', `${this.sidePanelWidth}px`);
+            }
+
+            beginMainPanelResize(event) {
+                if (event.button !== 0 || window.innerWidth < 1024) return;
+                this.panelResizeState = { pointerId: event.pointerId };
+                this.mainPanelSplitter.setPointerCapture(event.pointerId);
+                document.body.classList.add('is-resizing-panels');
+                event.preventDefault();
+            }
+
+            updateMainPanelResize(event) {
+                if (!this.panelResizeState || this.panelResizeState.pointerId !== event.pointerId) return;
+                const rect = this.appMainLayout.getBoundingClientRect();
+                const maxWidth = Math.min(560, Math.max(320, rect.width - 420));
+                this.sidePanelWidth = Math.max(320, Math.min(maxWidth, Math.round(event.clientX - rect.left)));
+                this.applyMainPanelWidth();
+                event.preventDefault();
+            }
+
+            endMainPanelResize(event, cancelled = false) {
+                if (!this.panelResizeState || this.panelResizeState.pointerId !== event.pointerId) return;
+                if (this.mainPanelSplitter.hasPointerCapture(event.pointerId)) this.mainPanelSplitter.releasePointerCapture(event.pointerId);
+                this.panelResizeState = null;
+                document.body.classList.remove('is-resizing-panels');
+                if (!cancelled) this.saveWorkspacePreference('sidePanelWidth', this.sidePanelWidth);
+            }
+
+            getPhotoDisplayLayout(photo) {
+                const rawAspect = Number(photo.thumbnailAspect);
+                const sourceAspect = Number.isFinite(rawAspect) && rawAspect > 0 ? rawAspect : 1;
+                const quarterTurn = Math.abs(Number(photo.rotation) || 0) % 180 === 90;
+                const displayAspect = quarterTurn ? 1 / sourceAspect : sourceAspect;
+                // 一般直式照片保留自然比例；僅限制超長截圖，避免單張卡片撐高整列並留下大片空白。
+                // 9:16 手機直式照片約為 0.5625，因此 0.55 不會改變一般照片。
+                const safeAspect = Math.max(0.55, Math.min(6, displayAspect));
+                // 圖片以 contain 完整顯示；比例受限時只增加留白，不裁切內容。
+                const imageStyle = quarterTurn
+                    ? `width:${sourceAspect * 100}%;height:${100 / sourceAspect}%;transform:translate(-50%, -50%) rotate(${photo.rotation}deg);`
+                    : `width:100%;height:100%;transform:translate(-50%, -50%) rotate(${photo.rotation}deg);`;
+                return { safeAspect, imageStyle };
+            }
+
+            getStageStep() {
+                return this.thumbnailSize + 12;
+            }
+
+            estimateStageCardHeight(photo) {
+                const { safeAspect } = this.getPhotoDisplayLayout(photo);
+                const metaHeight = this.thumbnailSize <= 110 ? 25 : 34;
+                return Math.ceil((this.thumbnailSize / safeAspect) + metaHeight);
+            }
+
+            getStagePosition(photo, index) {
+                const step = this.getStageStep();
+                if (Number.isFinite(photo.stageX) && Number.isFinite(photo.stageY)) {
+                    return { x: Math.max(0, photo.stageX * step), y: Math.max(0, photo.stageY * step) };
+                }
+                const availableWidth = Math.max(step, this.thumbGrid.clientWidth - 16);
+                const columns = Math.max(1, Math.floor(availableWidth / step));
+                return { x: (index % columns) * step, y: Math.floor(index / columns) * step };
+            }
+
+            getStageCanvasHeight() {
+                const bottom = this.photos.reduce((max, photo, index) => {
+                    const position = this.getStagePosition(photo, index);
+                    return Math.max(max, position.y + this.estimateStageCardHeight(photo));
+                }, 0);
+                return Math.max(280, Math.ceil(bottom + 16));
+            }
+
+            autoArrangeStage({ record = true, render = true } = {}) {
+                if (!this.photos.length) return;
+                const step = this.getStageStep();
+                const gap = 12;
+                const availableWidth = Math.max(this.thumbnailSize, this.thumbGrid.clientWidth - 16, 800);
+                let x = 0;
+                let y = 0;
+                let rowHeight = 0;
+
+                this.photos.forEach(photo => {
+                    if (x > 0 && x + this.thumbnailSize > availableWidth) {
+                        x = 0;
+                        y += rowHeight + gap;
+                        rowHeight = 0;
+                    }
+                    photo.stageX = Math.round((x / step) * 2) / 2;
+                    photo.stageY = Math.round((y / step) * 2) / 2;
+                    x += this.thumbnailSize + gap;
+                    rowHeight = Math.max(rowHeight, this.estimateStageCardHeight(photo));
+                });
+                this.sortPhotosByStageReadingOrder();
+                if (render) this.render();
+                if (record) this.recordHistory('自動排列照片舞台');
+            }
+
+            sortPhotosByNaturalFilename({ confirmBeforeSort = false } = {}) {
+                if (this.photos.length < 2) return;
+                if (confirmBeforeSort && !confirm('將依檔名重新排序全部照片，手動拖曳調整的順序會被覆蓋。確定繼續？')) return;
+                const currentPhoto = this.photos[this.currentIndex];
+                this.photos.sort((a, b) => this.comparePhotoFileOrder(a, b));
+                this.syncPlainNumericSequence();
+                this.currentIndex = Math.max(0, this.photos.indexOf(currentPhoto));
+                this.lastSelectedIndex = this.currentIndex;
+                this.render();
+                this.recordHistory('依檔名整齊排序');
+            }
+
+            placeUnpositionedPhotos() {
+                const pending = this.photos.filter(photo => !Number.isFinite(photo.stageX) || !Number.isFinite(photo.stageY));
+                if (!pending.length) return;
+                if (pending.length === this.photos.length) {
+                    this.autoArrangeStage({ record: false, render: false });
+                    return;
+                }
+                const step = this.getStageStep();
+                const gap = 12;
+                const availableWidth = Math.max(this.thumbnailSize, this.thumbGrid.clientWidth - 16, 800);
+                const existingBottom = this.photos.reduce((max, photo, index) => {
+                    if (!Number.isFinite(photo.stageX) || !Number.isFinite(photo.stageY)) return max;
+                    const position = this.getStagePosition(photo, index);
+                    return Math.max(max, position.y + this.estimateStageCardHeight(photo));
+                }, 0);
+                let x = 0;
+                let y = existingBottom ? existingBottom + gap : 0;
+                let rowHeight = 0;
+                pending.forEach(photo => {
+                    if (x > 0 && x + this.thumbnailSize > availableWidth) {
+                        x = 0;
+                        y += rowHeight + gap;
+                        rowHeight = 0;
+                    }
+                    photo.stageX = Math.round((x / step) * 2) / 2;
+                    photo.stageY = Math.round((y / step) * 2) / 2;
+                    x += this.thumbnailSize + gap;
+                    rowHeight = Math.max(rowHeight, this.estimateStageCardHeight(photo));
+                });
+                this.sortPhotosByStageReadingOrder();
+            }
+
+            sortPhotosByStageReadingOrder() {
+                const currentPhoto = this.photos[this.currentIndex];
+                this.photos.sort((a, b) => (Number(a.stageY) - Number(b.stageY)) || (Number(a.stageX) - Number(b.stageX)));
+                this.syncPlainNumericSequence();
+                this.currentIndex = Math.max(0, this.photos.indexOf(currentPhoto));
+                this.lastSelectedIndex = this.currentIndex;
+            }
+
+            syncPlainNumericSequence() {
+                if (this.photos.every(photo => /^\d+$/.test(String(photo.seq)))) {
+                    const digits = Math.max(1, ...this.photos.map(photo => String(photo.seq).length));
+                    this.photos.forEach((photo, index) => { photo.seq = String(index + 1).padStart(digits, '0'); });
+                }
+            }
+
+            getStageSlotsInReadingOrder() {
+                return [...this.photos]
+                    .sort((a, b) => (Number(a.stageY) - Number(b.stageY)) || (Number(a.stageX) - Number(b.stageX)))
+                    .map(photo => ({ stageX: photo.stageX, stageY: photo.stageY }));
+            }
+
+            applyStageSlotsByPhotoOrder(slots) {
+                this.photos.forEach((photo, index) => {
+                    const slot = slots[index];
+                    if (!slot) return;
+                    photo.stageX = slot.stageX;
+                    photo.stageY = slot.stageY;
+                });
+                this.syncPlainNumericSequence();
+            }
+
+            beginStageDrag(index, event) {
+                if (event.button !== 0 || event.target.closest('input, button, .thumbnail-stage')) return;
+                const photo = this.photos[index];
+                if (!photo) return;
+                if (!photo.selected) {
+                    this.photos.forEach(item => item.selected = false);
+                    photo.selected = true;
+                    this.currentIndex = index;
+                    this.lastSelectedIndex = index;
+                }
+                const selectedIndices = this.getSelectedIndicesOrCurrent();
+                const initialPositions = new Map(selectedIndices.map(selectedIndex => {
+                    const item = this.photos[selectedIndex];
+                    return [item.uid, this.getStagePosition(item, selectedIndex)];
+                }));
+                this.stageDrag = {
+                    pointerId: event.pointerId,
+                    startX: event.clientX,
+                    startY: event.clientY,
+                    initialPositions,
+                    indices: selectedIndices,
+                    moved: false,
+                    card: event.currentTarget
+                };
+                event.currentTarget.setPointerCapture(event.pointerId);
+                event.preventDefault();
+                event.stopPropagation();
+            }
+
+            updateStageDrag(event) {
+                const state = this.stageDrag;
+                if (!state || event.pointerId !== state.pointerId) return;
+                const deltaX = event.clientX - state.startX;
+                const deltaY = event.clientY - state.startY;
+                state.moved = state.moved || Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3;
+                state.indices.forEach(index => {
+                    const card = document.getElementById(`thumb_${this.photos[index]?.uid}`);
+                    if (card) card.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+                });
+                event.preventDefault();
+            }
+
+            endStageDrag(event, cancelled = false) {
+                const state = this.stageDrag;
+                if (!state || event.pointerId !== state.pointerId) return;
+                if (state.card?.hasPointerCapture(event.pointerId)) state.card.releasePointerCapture(event.pointerId);
+                this.stageDrag = null;
+                if (!state.moved || cancelled) {
+                    state.indices.forEach(index => document.getElementById(`thumb_${this.photos[index]?.uid}`)?.style.removeProperty('transform'));
+                    return;
+                }
+                const step = this.getStageStep();
+                const snap = step / 2;
+                const deltaX = event.clientX - state.startX;
+                const deltaY = event.clientY - state.startY;
+                state.indices.forEach(index => {
+                    const photo = this.photos[index];
+                    const initial = state.initialPositions.get(photo.uid);
+                    photo.stageX = Math.max(0, Math.round((initial.x + deltaX) / snap) * snap / step);
+                    photo.stageY = Math.max(0, Math.round((initial.y + deltaY) / snap) * snap / step);
+                });
+                this.sortPhotosByStageReadingOrder();
+                this.render();
+                this.recordHistory('自由拖曳照片舞台');
             }
 
             removePhoto(index) {
@@ -1975,6 +2417,154 @@
             // ============================================================
             // 🎯 PaperSwitch 核心：HTML5 Drag & Drop 拖曳排版系統
             // ============================================================
+            // 不依賴瀏覽器原生 draggable：Windows 的部分觸控板／卡片子元素會讓 dragstart 不穩定。
+            beginCardPointerDrag(index, event) {
+                if (event.button !== 0 || this.isTypingTarget(event.target) || event.target.closest('button, a, label')) return;
+                const card = event.currentTarget;
+                if (!(card instanceof HTMLElement) || !this.photos[index]) return;
+
+                if (!this.photos[index].selected) {
+                    this.photos.forEach(photo => { photo.selected = false; });
+                    this.photos[index].selected = true;
+                    this.currentIndex = index;
+                    this.lastSelectedIndex = index;
+                }
+                this.draggedIndices = this.photos
+                    .map((photo, photoIndex) => photo.selected ? photoIndex : -1)
+                    .filter(photoIndex => photoIndex !== -1);
+                this.pointerCardDrag = {
+                    pointerId: event.pointerId,
+                    sourceCard: card,
+                    startX: event.clientX,
+                    startY: event.clientY,
+                    moved: false,
+                    targetCard: null
+                };
+                card.setPointerCapture(event.pointerId);
+            }
+
+            updateCardPointerDrag(event) {
+                const state = this.pointerCardDrag;
+                if (!state || state.pointerId !== event.pointerId) return;
+
+                const deltaX = event.clientX - state.startX;
+                const deltaY = event.clientY - state.startY;
+                if (!state.moved && Math.hypot(deltaX, deltaY) < 6) return;
+                state.moved = true;
+                this.draggedIndices.forEach(draggedIndex => {
+                    const draggedCard = document.getElementById(`thumb_${this.photos[draggedIndex]?.uid}`);
+                    draggedCard?.classList.add('pointer-dragging');
+                });
+                state.sourceCard.classList.add('pointer-drag-lead');
+                state.sourceCard.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+                this.showDragStatus(event.clientX, event.clientY, this.draggedIndices.length);
+                this.autoScrollStageWhileDragging(event.clientY);
+
+                // 來源卡片已設為 pointer-events:none，因此可確實命中游標下方的目標卡片。
+                const target = document.elementFromPoint(event.clientX, event.clientY)?.closest('.photo-thumb-card');
+                if (!target) {
+                    this.clearPointerDropTarget(state);
+                    return;
+                }
+                const targetIndex = this.photos.findIndex(photo => `thumb_${photo.uid}` === target.id);
+                if (targetIndex < 0 || this.draggedIndices.includes(targetIndex)) {
+                    this.clearPointerDropTarget(state);
+                    return;
+                }
+
+                if (state.targetCard && state.targetCard !== target) {
+                    state.targetCard.classList.remove('pointer-drop-before', 'pointer-drop-after');
+                }
+                const rect = target.getBoundingClientRect();
+                const insertBefore = event.clientX < rect.left + rect.width / 2;
+                target.classList.toggle('pointer-drop-before', insertBefore);
+                target.classList.toggle('pointer-drop-after', !insertBefore);
+                state.targetCard = target;
+                this.dragInsertBeforeUid = insertBefore
+                    ? this.photos[targetIndex].uid
+                    : this.getNextUnmovedPhotoUid(targetIndex);
+                this.showInsertOverlay(target, insertBefore);
+                event.preventDefault();
+            }
+
+            clearPointerDropTarget(state) {
+                state.targetCard?.classList.remove('pointer-drop-before', 'pointer-drop-after');
+                state.targetCard = null;
+                this.dragInsertBeforeUid = null;
+                document.getElementById('dragInsertOverlay')?.classList.add('hidden');
+            }
+
+            endCardPointerDrag(event, cancelled = false) {
+                const state = this.pointerCardDrag;
+                if (!state || state.pointerId !== event.pointerId) return;
+                if (state.sourceCard.hasPointerCapture(event.pointerId)) state.sourceCard.releasePointerCapture(event.pointerId);
+                this.pointerCardDrag = null;
+                this.clearCardPointerDragVisuals();
+
+                if (!state.moved || cancelled || !state.targetCard) {
+                    this.draggedIndices = [];
+                    this.dragInsertBeforeUid = null;
+                    return;
+                }
+                this.suppressCardClickUntil = performance.now() + 220;
+                this.commitDragSort();
+            }
+
+            cancelCardPointerDrag() {
+                const state = this.pointerCardDrag;
+                if (!state) return;
+                if (state.sourceCard.hasPointerCapture(state.pointerId)) state.sourceCard.releasePointerCapture(state.pointerId);
+                this.pointerCardDrag = null;
+                this.draggedIndices = [];
+                this.dragInsertBeforeUid = null;
+                this.clearCardPointerDragVisuals();
+            }
+
+            showDragStatus(clientX, clientY, count) {
+                const badge = document.getElementById('dragGhostBadge');
+                const text = document.getElementById('dragGhostText');
+                if (!badge || !text) return;
+                text.textContent = `📄 正在打包移動 ${count} 張`;
+                badge.style.left = `${clientX + 16}px`;
+                badge.style.top = `${clientY - 44}px`;
+            }
+
+            // 拖到舞台區上下緣時自動捲動，讓使用者可連續拖往較後面的照片。
+            autoScrollStageWhileDragging(clientY) {
+                const rect = this.thumbGrid.getBoundingClientRect();
+                const edge = 52;
+                const maxStep = 22;
+                if (clientY < rect.top + edge) {
+                    const ratio = Math.max(0, (clientY - rect.top) / edge);
+                    this.thumbGrid.scrollTop -= Math.ceil(maxStep * (1 - ratio));
+                } else if (clientY > rect.bottom - edge) {
+                    const ratio = Math.max(0, (rect.bottom - clientY) / edge);
+                    this.thumbGrid.scrollTop += Math.ceil(maxStep * (1 - ratio));
+                }
+            }
+
+            showInsertOverlay(targetCard, insertBefore) {
+                const overlay = document.getElementById('dragInsertOverlay');
+                if (!overlay) return;
+                const rect = targetCard.getBoundingClientRect();
+                overlay.style.left = `${insertBefore ? rect.left : rect.right}px`;
+                overlay.style.top = `${rect.top + rect.height / 2}px`;
+                overlay.classList.remove('hidden');
+            }
+
+            clearCardPointerDragVisuals() {
+                document.querySelectorAll('.photo-thumb-card').forEach(card => {
+                    card.style.removeProperty('transform');
+                    card.classList.remove('pointer-dragging', 'pointer-drag-lead', 'pointer-drop-before', 'pointer-drop-after');
+                });
+                const badge = document.getElementById('dragGhostBadge');
+                if (badge) {
+                    badge.style.left = '-9999px';
+                    badge.style.top = '-9999px';
+                }
+                document.getElementById('dragInsertOverlay')?.classList.add('hidden');
+            }
+
             isTypingTarget(target) {
                 return target instanceof HTMLElement && (
                     ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable
@@ -2068,6 +2658,7 @@
                 const selectedIndices = this.getSelectedIndicesOrCurrent();
                 if (!selectedIndices.length || !delta) return;
                 const currentPhoto = this.photos[this.currentIndex];
+                const stageSlots = this.getStageSlotsInReadingOrder();
 
                 // 整組同步移動策略：
                 // 1. 分離選取組 (moving) 與非選取組 (remaining)
@@ -2088,6 +2679,7 @@
                 const insertAt = Math.max(0, Math.min(anchor + delta, remaining.length));
                 remaining.splice(insertAt, 0, ...moving);
                 this.photos = remaining;
+                this.applyStageSlotsByPhotoOrder(stageSlots);
 
                 this.currentIndex = Math.max(0, this.photos.indexOf(currentPhoto));
                 this.lastSelectedIndex = this.currentIndex;
@@ -2099,10 +2691,12 @@
                 const selectedIndices = this.getSelectedIndicesOrCurrent();
                 if (!selectedIndices.length) return;
                 const currentPhoto = this.photos[this.currentIndex];
+                const stageSlots = this.getStageSlotsInReadingOrder();
                 const selectedSet = new Set(selectedIndices);
                 const moving = this.photos.filter((_, index) => selectedSet.has(index));
                 const remaining = this.photos.filter((_, index) => !selectedSet.has(index));
                 this.photos = boundary === 'start' ? [...moving, ...remaining] : [...remaining, ...moving];
+                this.applyStageSlotsByPhotoOrder(stageSlots);
                 this.currentIndex = Math.max(0, this.photos.indexOf(currentPhoto));
                 this.lastSelectedIndex = this.currentIndex;
                 this.render();
@@ -2115,6 +2709,7 @@
                 } else {
                     this.draggedIndices = [index];
                 }
+                this.dragInsertBeforeUid = this.photos[index]?.uid || null;
 
                 event.dataTransfer.effectAllowed = 'move';
                 event.dataTransfer.setData('text/plain', JSON.stringify(this.draggedIndices));
@@ -2128,6 +2723,7 @@
                     event.dataTransfer.setDragImage(ghost, 30, 20);
                 }
 
+                this.createDragPlaceholder(index);
                 setTimeout(() => {
                     this.draggedIndices.forEach(idx => {
                         const card = document.getElementById(`thumb_${this.photos[idx]?.uid}`);
@@ -2141,6 +2737,7 @@
 
             handleCardDragOver(index, event) {
                 event.preventDefault();
+                event.stopPropagation();
                 event.dataTransfer.dropEffect = 'move';
 
                 if (!this.draggedIndices || this.draggedIndices.length === 0) return;
@@ -2153,9 +2750,13 @@
                     if (event.clientX < midX) {
                         card.classList.add('drag-target-left');
                         card.classList.remove('drag-target-right');
+                        this.moveDragPlaceholder(card, false);
+                        this.dragInsertBeforeUid = this.photos[index].uid;
                     } else {
                         card.classList.add('drag-target-right');
                         card.classList.remove('drag-target-left');
+                        this.moveDragPlaceholder(card, true);
+                        this.dragInsertBeforeUid = this.getNextUnmovedPhotoUid(index);
                     }
                 }
             }
@@ -2181,7 +2782,6 @@
                     return;
                 }
 
-
                 const targetItem = this.photos[targetIndex];
                 if (!targetItem) {
                     this.handleCardDragEnd();
@@ -2196,14 +2796,78 @@
                     if (event.clientX >= midX) isAfter = true;
                     card.classList.remove('drag-target-left', 'drag-target-right');
                 }
+                this.dragInsertBeforeUid = isAfter
+                    ? this.getNextUnmovedPhotoUid(targetIndex)
+                    : targetItem.uid;
+                this.commitDragSort();
+            }
+
+            createDragPlaceholder(index) {
+                this.removeDragPlaceholder();
+                const sourceCard = document.getElementById(`thumb_${this.photos[index]?.uid}`);
+                if (!sourceCard) return;
+
+                const placeholder = document.createElement('div');
+                placeholder.id = 'dragInsertPlaceholder';
+                placeholder.className = 'drag-insert-placeholder';
+                placeholder.setAttribute('aria-hidden', 'true');
+                const count = this.draggedIndices.length;
+                placeholder.textContent = count > 1 ? `插入 ${count} 張照片` : '插入位置';
+                const sourceHeight = Math.max(76, Math.round(sourceCard.getBoundingClientRect().height));
+                placeholder.style.setProperty('--drag-placeholder-height', `${sourceHeight}px`);
+                sourceCard.insertAdjacentElement('beforebegin', placeholder);
+                this.dragPlaceholder = placeholder;
+            }
+
+            moveDragPlaceholder(targetCard, isAfter) {
+                if (!this.dragPlaceholder || !targetCard) return;
+                targetCard.insertAdjacentElement(isAfter ? 'afterend' : 'beforebegin', this.dragPlaceholder);
+            }
+
+            removeDragPlaceholder() {
+                this.dragPlaceholder?.remove();
+                this.dragPlaceholder = null;
+            }
+
+            getNextUnmovedPhotoUid(index) {
+                for (let nextIndex = index + 1; nextIndex < this.photos.length; nextIndex++) {
+                    if (!this.draggedIndices.includes(nextIndex)) return this.photos[nextIndex].uid;
+                }
+                return null;
+            }
+
+            handleStageGridDragOver(event) {
+                if (this.isExternalFileDrag(event) || event.target.closest('.photo-thumb-card') || event.target.closest('.drag-insert-placeholder')) return;
+                if (!this.draggedIndices?.length) return;
+                event.preventDefault();
+                event.dataTransfer.dropEffect = 'move';
+                this.dragInsertBeforeUid = null;
+                const lastUnmovedCard = [...this.thumbGrid.querySelectorAll('.photo-thumb-card')]
+                    .filter(card => !card.classList.contains('dragging-stacked'))
+                    .at(-1);
+                if (lastUnmovedCard) this.moveDragPlaceholder(lastUnmovedCard, true);
+            }
+
+            handleStageGridDrop(event) {
+                if (this.isExternalFileDrag(event) || event.target.closest('.photo-thumb-card') || event.target.closest('.drag-insert-placeholder')) return;
+                if (!this.draggedIndices?.length) return;
+                event.preventDefault();
+                this.dragInsertBeforeUid = null;
+                this.commitDragSort();
+            }
+
+            commitDragSort() {
+                if (!this.draggedIndices?.length) {
+                    this.handleCardDragEnd();
+                    return;
+                }
 
                 const movingItems = this.draggedIndices.map(idx => this.photos[idx]);
                 const remaining = this.photos.filter((_, idx) => !this.draggedIndices.includes(idx));
-
-                let targetPos = remaining.findIndex(p => p.uid === targetItem.uid);
-                if (targetPos === -1) targetPos = remaining.length;
-                let insertPos = isAfter ? targetPos + 1 : targetPos;
-                insertPos = Math.max(0, Math.min(insertPos, remaining.length));
+                let insertPos = this.dragInsertBeforeUid
+                    ? remaining.findIndex(photo => photo.uid === this.dragInsertBeforeUid)
+                    : remaining.length;
+                if (insertPos < 0) insertPos = remaining.length;
 
                 remaining.splice(insertPos, 0, ...movingItems);
                 this.photos = remaining;
@@ -2217,12 +2881,15 @@
 
             handleCardDragEnd() {
                 this.draggedIndices = [];
+                this.dragInsertBeforeUid = null;
+                this.removeDragPlaceholder();
                 document.querySelectorAll('.photo-thumb-card').forEach(c => {
                     c.classList.remove('dragging-stacked', 'drag-lead', 'drag-target-left', 'drag-target-right');
                 });
             }
 
             handleCardClick(index, event) {
+                if (performance.now() < this.suppressCardClickUntil) return;
                 if (['INPUT', 'BUTTON', 'I'].includes(event.target.tagName)) return;
 
                 if (event.ctrlKey || event.metaKey) {
@@ -2261,13 +2928,9 @@
             }
 
             navigatePhoto(delta) {
-                if (!this.photos.length) return;
-                let nextIdx = this.currentIndex + delta;
-                if (nextIdx < 0) nextIdx = 0;
-                if (nextIdx >= this.photos.length) nextIdx = this.photos.length - 1;
-                this.currentIndex = nextIdx;
-                this.render();
-                this.recordHistory('切換目前照片');
+                // 右側上一張／下一張與 Alt＋方向鍵完全沿用舞台方向鍵流程：
+                // 單選目前照片、更新藍框、同步右側欄位並捲動縮圖至可見位置。
+                this.selectPhotoByKeyboard(delta);
             }
 
             updateCurrentPhoto(field, value) {
@@ -2293,7 +2956,7 @@
                     this.selectedCountBadge.classList.add('hidden');
                     this.batchApplyBox.classList.add('hidden');
                     this.editorModeBadge.textContent = '單張編輯';
-                    this.editorModeBadge.className = 'text-[10px] font-bold px-2 py-0.5 rounded bg-[#526F94]/10 text-[#526F94]';
+                    this.editorModeBadge.className = 'text-[10px] font-bold px-2 py-0.5 rounded bg-[#5B5CE2]/10 text-[#5B5CE2]';
                 }
                 return selectedCount;
             }
@@ -2305,9 +2968,7 @@
                 const totalPhotos = this.photos.length;
                 const selectedCount = this.updateSelectionUi();
                 const visibleEntries = this.getVisiblePhotoIndices();
-                this.visiblePhotoCount.textContent = visibleEntries.length === totalPhotos
-                    ? ''
-                    : `顯示 ${visibleEntries.length} / ${totalPhotos} 張`;
+                const defaultLocation = document.getElementById('defaultLocation').value.trim();
 
                 document.getElementById('selectAllText').textContent = (totalPhotos > 0 && selectedCount === totalPhotos) ? '全不選' : '全選';
 
@@ -2333,102 +2994,96 @@
                 if (curPhoto) {
                     this.editorTitle.replaceChildren();
                     const titleIcon = document.createElement('i');
-                    titleIcon.className = 'fa-solid fa-pen-to-square text-[#526F94]';
+                    titleIcon.className = 'fa-solid fa-pen-to-square text-[#5B5CE2]';
                     const titleText = document.createElement('span');
-                    titleText.textContent = `編輯第 ${this.currentIndex + 1} / ${totalPhotos} 張 (#${curPhoto.seq})`;
+                    titleText.textContent = `照片詳情・第 ${this.currentIndex + 1} / ${totalPhotos} 張 (#${curPhoto.seq})`;
                     this.editorTitle.append(titleIcon, document.createTextNode(' '), titleText);
                     this.editSeq.value = curPhoto.seq || '';
                     this.editDate.value = curPhoto.date || '';
                     this.editTime.value = curPhoto.time || '';
                     this.editLocation.value = curPhoto.location || '';
                     this.editDesc.value = curPhoto.desc || '';
+                    const defaultDate = document.getElementById('caseDate').value.trim();
+                    this.editDateInheritedHint.textContent = defaultDate
+                        ? `格式 YYY/MM/DD；留空時使用清冊預設：${defaultDate}。`
+                        : '格式 YYY/MM/DD；尚未設定清冊預設日期。';
+                    this.editLocationInheritedHint.textContent = defaultLocation
+                        ? `留空時使用清冊預設：${defaultLocation}。`
+                        : '尚未設定清冊預設地點。';
                 }
 
                 // 渲染左側縮圖卡片
                 this.thumbGrid.innerHTML = '<div id="selectionMarquee" class="selection-marquee hidden" aria-hidden="true"></div>' + visibleEntries.map(({ photo: p, index: idx }) => {
                     const isSelected = p.selected ? 'selected' : '';
                     const isCurrent = idx === this.currentIndex ? 'active-editing' : '';
-                    const missingFields = [!String(p.location || '').trim() ? '地點' : '', !String(p.desc || '').trim() ? '說明' : ''].filter(Boolean);
+                    const missingFields = [!String(p.location || '').trim() && !defaultLocation ? '地點' : '', !String(p.desc || '').trim() ? '說明' : ''].filter(Boolean);
                     const statusText = missingFields.length ? `待補：${missingFields.join('、')}` : '資料完整';
+                    const displayLayout = this.getPhotoDisplayLayout(p);
+                    const cardTitle = `第 ${p.seq} 張｜採證時間：${p.time || '未填'}｜${statusText}；可拖曳調整順序`;
 
                     return `
-                        <div class="photo-thumb-card morandi-card p-1.5 flex flex-col gap-1.5 bg-white border border-[#6B8BB0]/25 rounded-xl ${isSelected} ${isCurrent}"
+                        <div class="photo-thumb-card morandi-card p-1.5 flex flex-col gap-1 bg-white border border-[#C7CBD3]/25 rounded-xl ${isSelected} ${isCurrent}"
                              id="thumb_${p.uid}"
-                             draggable="true"
+                             style="--thumbnail-aspect:${displayLayout.safeAspect};"
+                             title="${escapeHtml(cardTitle)}"
+                             draggable="false"
                              onclick="window.app.handleCardClick(${idx}, event)"
-                             ondragstart="window.app.handleCardDragStart(${idx}, event)"
-                             ondragover="window.app.handleCardDragOver(${idx}, event)"
-                             ondragleave="window.app.handleCardDragLeave(${idx}, event)"
-                             ondrop="window.app.handleCardDrop(${idx}, event)"
-                             ondragend="window.app.handleCardDragEnd(event)">
+                             onpointerdown="window.app.beginCardPointerDrag(${idx}, event)">
 
-                            <div class="flex items-center justify-between min-h-5">
-                                <div class="flex items-center gap-1.5">
-                                    <input type="checkbox" ${p.selected ? 'checked' : ''} onclick="window.app.togglePhotoSelect(${idx}, event)" class="rounded text-[#526F94] cursor-pointer" title="勾選">
-                                    <span class="px-1.5 py-0.2 rounded bg-[#526F94] text-white text-[10px] font-bold">#${escapeHtml(p.seq)}</span>
+                            <div class="thumbnail-meta-row flex items-center justify-between min-h-5">
+                                <div class="flex min-w-0 items-center gap-1.5">
+                                    <input type="checkbox" ${p.selected ? 'checked' : ''} onclick="window.app.togglePhotoSelect(${idx}, event)" class="rounded text-[#5B5CE2] cursor-pointer" title="勾選">
+                                    <span class="px-1.5 py-0.2 rounded bg-[#5B5CE2] text-white text-[10px] font-bold">#${escapeHtml(p.seq)}</span>
+                                    <span class="thumbnail-card-time text-[10px] text-[#6B7280] whitespace-nowrap flex items-center gap-0.5" title="${escapeHtml(p.time || '未填時間')}">
+                                        <i class="fa-regular fa-clock text-[#5B5CE2]"></i>${escapeHtml(p.time || '未填時間')}
+                                    </span>
                                 </div>
                                 <span class="text-[10px] ${missingFields.length ? 'text-amber-600' : 'text-emerald-600'}" title="${escapeHtml(statusText)}">
                                     <i class="fa-solid ${missingFields.length ? 'fa-circle-exclamation' : 'fa-circle-check'}"></i>
                                 </span>
                             </div>
 
-                            <div class="w-full bg-[#EDF2F5] rounded-lg overflow-hidden flex items-center justify-center relative group cursor-pointer" style="height: var(--thumbnail-preview-height)" onclick="event.stopPropagation(); window.app.openLightboxByIndex(${idx})">
-                                <img src="${p.thumbnailSrc}" alt="${escapeHtml(p.name)}" loading="lazy" decoding="async" style="transform: rotate(${p.rotation}deg);" class="w-full h-full object-contain pointer-events-none">
+                            <div class="thumbnail-stage w-full bg-[#EEF0F3] rounded-lg overflow-hidden relative group cursor-pointer" onclick="event.stopPropagation(); window.app.openLightboxByIndex(${idx})">
+                                <img src="${p.thumbnailSrc}" alt="${escapeHtml(p.name)}" loading="lazy" decoding="async" style="${displayLayout.imageStyle}" class="absolute left-1/2 top-1/2 object-contain pointer-events-none">
                                 <div class="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-[10px] gap-1 transition">
                                     <i class="fa-solid fa-magnifying-glass-plus"></i> 放大
                                 </div>
-                            </div>
-
-                            <div class="text-[10px] text-[#667080] truncate flex items-center gap-1 px-0.5" title="${escapeHtml(p.name)}">
-                                <i class="fa-regular fa-clock text-[#526F94]"></i>
-                                <span>${escapeHtml(p.time || '未填時間')}</span>
-                                <span class="text-[#A0AEC0]">·</span>
-                                <span class="truncate">${escapeHtml(p.name)}</span>
                             </div>
                         </div>
                     `;
                 }).join('');
                 this.selectionMarquee = document.getElementById('selectionMarquee');
+                this.thumbGrid.style.removeProperty('min-height');
 
                 // 渲染試算表視圖 (DataGrid)
                 this.gridTbody.innerHTML = this.photos.map((p, idx) => `
-                    <tr class="hover:bg-[#F3F5F8]/70 ${idx === this.currentIndex ? 'bg-blue-50/50' : ''}">
+                    <tr class="hover:bg-[#F7F7F5]/70 ${idx === this.currentIndex ? 'bg-blue-50/50' : ''}">
                         <td class="p-2 text-center">
-                            <input type="checkbox" ${p.selected ? 'checked' : ''} onclick="window.app.togglePhotoSelect(${idx}, event)" class="rounded text-[#526F94] cursor-pointer">
+                            <input type="checkbox" ${p.selected ? 'checked' : ''} onclick="window.app.togglePhotoSelect(${idx}, event)" class="rounded text-[#5B5CE2] cursor-pointer">
                         </td>
                         <td class="p-2 text-center">
-                            <img src="${p.thumbnailSrc}" style="transform: rotate(${p.rotation}deg);" class="w-10 h-10 object-contain mx-auto rounded border bg-[#EDF2F5] cursor-pointer" onclick="window.app.openLightboxByIndex(${idx})">
+                            <img src="${p.thumbnailSrc}" style="transform: rotate(${p.rotation}deg);" class="w-10 h-10 object-contain mx-auto rounded border bg-[#EEF0F3] cursor-pointer" onclick="window.app.openLightboxByIndex(${idx})">
                         </td>
                         <td class="p-2">
-                            <input type="text" value="${escapeHtml(p.seq)}" oninput="window.app.updatePhotoField(${idx}, 'seq', this.value)" class="input-field w-full text-xs font-bold text-[#526F94]">
+                            <input type="text" value="${escapeHtml(p.seq)}" oninput="window.app.updatePhotoField(${idx}, 'seq', this.value)" class="input-field w-full text-xs font-bold text-[#5B5CE2]">
                         </td>
                         <td class="p-2">
-                            <input type="text" value="${escapeHtml(p.date || '')}"
-                                   onfocus="window.app.handleDataGridInputFocus(this)"
-                                   oninput="window.app.handleDataGridMaskInput(this, 'date', ${idx})"
-                                   onkeydown="window.app.handleDataGridMaskKeyDown(event, this, 'date', ${idx})"
-                                   onblur="window.app.handleDataGridMaskBlur(this, 'date', ${idx})"
-                                   class="input-field w-full text-xs font-mono" placeholder="留空=全域日期">
+                            <input type="text" value="${escapeHtml(p.date || '')}" onpointerdown="window.app.handleMaskedPointerDown(event, this)" onfocus="window.app.beginMaskedEntry(this)" oninput="this.value = window.app.sanitizeMaskedEntry(this, 7); window.app.markMaskedEntryChanged(this); window.app.updatePhotoField(${idx}, 'date', this.value)" onblur="this.value = window.app.finishMaskedEntry(this, window.app.formatDateMask); window.app.updatePhotoField(${idx}, 'date', this.value)" class="input-field w-full text-xs font-mono" placeholder="留空＝清冊預設">
                         </td>
                         <td class="p-2">
-                            <input type="text" value="${escapeHtml(p.time)}"
-                                   onfocus="window.app.handleDataGridInputFocus(this)"
-                                   oninput="window.app.handleDataGridMaskInput(this, 'time', ${idx})"
-                                   onkeydown="window.app.handleDataGridMaskKeyDown(event, this, 'time', ${idx})"
-                                   onblur="window.app.handleDataGridMaskBlur(this, 'time', ${idx})"
-                                   class="input-field w-full text-xs font-mono" placeholder="輸入 4 或 6 碼">
+                            <input type="text" value="${escapeHtml(p.time)}" onpointerdown="window.app.handleMaskedPointerDown(event, this)" onfocus="window.app.beginMaskedEntry(this)" oninput="this.value = window.app.sanitizeMaskedEntry(this, 6); window.app.markMaskedEntryChanged(this); window.app.updatePhotoField(${idx}, 'time', this.value)" onblur="this.value = window.app.finishMaskedEntry(this, window.app.formatTimeMask); window.app.updatePhotoField(${idx}, 'time', this.value)" class="input-field w-full text-xs font-mono" placeholder="輸入 4 或 6 碼">
                         </td>
                         <td class="p-2">
-                            <input type="text" value="${escapeHtml(p.location)}" oninput="window.app.updatePhotoField(${idx}, 'location', this.value)" class="input-field w-full text-xs">
+                            <input type="text" value="${escapeHtml(p.location)}" oninput="window.app.updatePhotoField(${idx}, 'location', this.value)" class="input-field w-full text-xs" placeholder="留空＝清冊預設">
                         </td>
                         <td class="p-2">
                             <input type="text" value="${escapeHtml(p.desc)}" oninput="window.app.updatePhotoField(${idx}, 'desc', this.value)" class="input-field w-full text-xs" placeholder="請填寫現場跡證或狀況說明">
                         </td>
-                        <td class="p-2 text-[#667080] truncate max-w-[110px]" title="${escapeHtml(p.name)}">
+                        <td class="p-2 text-[#6B7280] truncate max-w-[110px]" title="${escapeHtml(p.name)}">
                             ${escapeHtml(p.name)}
                         </td>
                         <td class="p-2 text-center">
-                            <button type="button" onclick="window.app.rotatePhoto(${idx})" title="旋轉" class="p-1 text-[#526F94]"><i class="fa-solid fa-rotate-right"></i></button>
+                            <button type="button" onclick="window.app.rotatePhoto(${idx})" title="旋轉" class="p-1 text-[#5B5CE2]"><i class="fa-solid fa-rotate-right"></i></button>
                             <button type="button" onclick="window.app.removePhoto(${idx})" title="刪除" class="p-1 text-red-500"><i class="fa-regular fa-trash-can"></i></button>
                         </td>
                     </tr>
@@ -2439,6 +3094,7 @@
             renderPagePreview() {
                 const perPage = this.getPhotosPerPage();
                 const layout = this.layoutSelect.value;
+                const defaultLocation = document.getElementById('defaultLocation').value.trim();
                 const gridClass = layout === 'up_down_2' ? 'grid-cols-1 max-w-[420px]' :
                     layout === 'left_right_2' ? 'grid-cols-2' : 'grid-cols-3';
                 const pages = [];
@@ -2447,25 +3103,25 @@
                     const cells = pagePhotos.map((photo, offset) => {
                         const index = start + offset;
                         return `
-                            <button type="button" onclick="window.app.selectPreviewPhoto(${index})" class="text-left min-w-0 border border-[#6B8BB0]/25 rounded-lg p-1.5 bg-white hover:border-[#526F94] transition ${index === this.currentIndex ? 'ring-2 ring-[#526F94]/50' : ''}">
-                                <div class="aspect-[4/3] bg-[#EDF2F5] rounded flex items-center justify-center overflow-hidden">
+                            <button type="button" onclick="window.app.selectPreviewPhoto(${index})" class="text-left min-w-0 border border-[#C7CBD3]/25 rounded-lg p-1.5 bg-white hover:border-[#5B5CE2] transition ${index === this.currentIndex ? 'ring-2 ring-[#5B5CE2]/50' : ''}">
+                                <div class="aspect-[4/3] bg-[#EEF0F3] rounded flex items-center justify-center overflow-hidden">
                                     <img src="${photo.thumbnailSrc}" alt="${escapeHtml(photo.name)}" style="transform: rotate(${photo.rotation}deg);" class="w-full h-full object-contain">
                                 </div>
-                                <div class="mt-1 text-[10px] font-bold text-[#2B364B] truncate">#${escapeHtml(photo.seq)} ${escapeHtml(photo.location || '未填地點')}</div>
-                                <div class="text-[10px] text-[#667080] truncate">${escapeHtml(photo.desc || '（無說明）')}</div>
+                                <div class="mt-1 text-[10px] font-bold text-[#20242B] truncate">#${escapeHtml(photo.seq)} ${escapeHtml(photo.location || defaultLocation || '未填地點')}</div>
+                                <div class="text-[10px] text-[#6B7280] truncate">${escapeHtml(photo.desc || '（無說明）')}</div>
                             </button>`;
                     }).join('');
                     pages.push(`
-                        <section class="bg-white border-2 border-[#6B8BB0]/25 rounded-xl shadow-sm p-3">
-                            <div class="flex items-center justify-between mb-2 text-[11px] text-[#667080]">
-                                <span class="font-bold text-[#2B364B]">第 ${pages.length + 1} 頁</span>
+                        <section class="bg-white border-2 border-[#C7CBD3]/25 rounded-xl shadow-sm p-3">
+                            <div class="flex items-center justify-between mb-2 text-[11px] text-[#6B7280]">
+                                <span class="font-bold text-[#20242B]">第 ${pages.length + 1} 頁</span>
                                 <span>${layout === 'up_down_2' ? '直式上下兩張' : layout === 'left_right_2' ? '直式左右兩張' : '橫式三張'}</span>
                             </div>
                             <div class="grid ${gridClass} gap-2 mx-auto">${cells}</div>
                         </section>`);
                 }
                 this.previewContainer.innerHTML = `
-                    <div class="mb-3 text-xs text-[#667080] flex items-center gap-1.5"><i class="fa-solid fa-circle-info text-[#526F94]"></i> 分頁預覽僅供確認照片順序與分組；實際表格以 Word 匯出為準。</div>
+                    <div class="mb-3 text-xs text-[#6B7280] flex items-center gap-1.5"><i class="fa-solid fa-circle-info text-[#5B5CE2]"></i> 分頁預覽僅供確認照片順序與分組；實際表格以 Word 匯出為準。</div>
                     <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">${pages.join('')}</div>`;
             }
 
@@ -2484,15 +3140,27 @@
                 this.scheduleHistory('修改照片欄位');
             }
 
-            openLightbox(src, caption) {
-                document.getElementById('lightboxImg').src = src;
-                document.getElementById('lightboxCaption').textContent = caption;
+            openLightboxByIndex(index) {
+                if (!this.photos[index]) return;
+                this.lightboxIndex = index;
+                this.updateLightbox();
                 this.openModal('imageLightboxModal');
             }
 
-            openLightboxByIndex(index) {
-                const photo = this.photos[index];
-                if (photo) this.openLightbox(photo.src, photo.name);
+            navigateLightbox(delta) {
+                if (!this.photos.length || this.lightboxIndex === null) return;
+                this.lightboxIndex = Math.max(0, Math.min(this.photos.length - 1, this.lightboxIndex + delta));
+                this.updateLightbox();
+            }
+
+            updateLightbox() {
+                const photo = this.photos[this.lightboxIndex];
+                if (!photo) return;
+                document.getElementById('lightboxImg').src = photo.src;
+                document.getElementById('lightboxCaption').textContent = `#${photo.seq}　${photo.name}`;
+                document.getElementById('lightboxPosition').textContent = `${this.lightboxIndex + 1} / ${this.photos.length}`;
+                document.getElementById('btnLightboxPrev').disabled = this.lightboxIndex === 0;
+                document.getElementById('btnLightboxNext').disabled = this.lightboxIndex === this.photos.length - 1;
             }
 
             openModal(id) {
@@ -2582,6 +3250,7 @@
 
                 const caseTitle = document.getElementById('caseTitle').value.trim() || '現場照片清冊';
                 const caseDate = document.getElementById('caseDate').value.trim() || '';
+                const defaultLocation = document.getElementById('defaultLocation').value.trim() || '';
                 const deptName = document.getElementById('deptName').value.trim() || '臺南市政府警察局新化分局';
                 const globalOfficer = document.getElementById('officerName').value.trim() || '巡官梁家豪';
                 const layout = this.layoutSelect.value;
@@ -2682,7 +3351,7 @@
                                         new TableCell({ width: { size: 553, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "編號", bold: true, font: "標楷體", size: 22 })] })] }),
                                         new TableCell({ width: { size: 554, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: p.item.seq, bold: true, font: "標楷體", size: 22 })] })] }),
                                         new TableCell({ width: { size: 731, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "地點：", bold: true, font: "標楷體", size: 22 })] })] }),
-                                        new TableCell({ width: { size: 3969, type: WidthType.DXA }, columnSpan: 3, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: p.item.location, font: "標楷體", size: 22 })] })] }),
+                                        new TableCell({ width: { size: 3969, type: WidthType.DXA }, columnSpan: 3, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: p.item.location || defaultLocation, font: "標楷體", size: 22 })] })] }),
                                         new TableCell({ width: { size: 851, type: WidthType.DXA }, columnSpan: 2, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "製作人", bold: true, font: "標楷體", size: 22 })] })] }),
                                         new TableCell({ width: { size: 1644, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: globalOfficer, font: "標楷體", size: 22 })] })] }),
                                     ]
@@ -2818,7 +3487,7 @@
                                             verticalAlign: VerticalAlign.CENTER,
                                             children: [
                                                 new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: "蒐證時間：", bold: true, font: "標楷體", size: 22 }), new TextRun({ text: `${p1.item.date || caseDate} ${p1.item.time}`, font: "標楷體", size: 20 })] }),
-                                                new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: "蒐證地點：", bold: true, font: "標楷體", size: 22 }), new TextRun({ text: p1.item.location, font: "標楷體", size: 20 })] })
+                                                new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: "蒐證地點：", bold: true, font: "標楷體", size: 22 }), new TextRun({ text: p1.item.location || defaultLocation, font: "標楷體", size: 20 })] })
                                             ]
                                         }),
                                         new TableCell({
@@ -2960,7 +3629,7 @@
                                         new TableCell({ width: { size: 1266, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: "蒐證時間", bold: true, font: "標楷體", size: 24 })] })] }),
                                         new TableCell({ width: { size: 3950, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: `${p1.item.date || caseDate} ${p1.item.time}`, font: "標楷體", size: 24 })] })] }),
                                         new TableCell({ width: { size: 1295, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: "蒐證地點", bold: true, font: "標楷體", size: 24 })] })] }),
-                                        new TableCell({ width: { size: 3921, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: p1.item.location, font: "標楷體", size: 24 })] })] }),
+                                        new TableCell({ width: { size: 3921, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: p1.item.location || defaultLocation, font: "標楷體", size: 24 })] })] }),
                                         new TableCell({ width: { size: 1182, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: "製作人", bold: true, font: "標楷體", size: 24 })] })] }),
                                         new TableCell({ width: { size: 4034, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.TOP, children: [new Paragraph({ alignment: AlignmentType.LEFT, children: [new TextRun({ text: globalOfficer, font: "標楷體", size: 24 })] })] }),
                                     ]
@@ -3092,6 +3761,7 @@
                 const pageHeight = pdf.internal.pageSize.getHeight();
                 const caseTitle = document.getElementById('caseTitle').value.trim() || '現場照片';
                 const caseDate = document.getElementById('caseDate').value.trim() || '';
+                const defaultLocation = document.getElementById('defaultLocation').value.trim() || '';
                 const globalOfficer = document.getElementById('officerName').value.trim() || '';
                 const deptName = document.getElementById('deptName').value.trim() || '臺南市政府警察局新化分局';
 
@@ -3120,7 +3790,7 @@
                     canvas.width = Math.ceil(maxPixels);
                     canvas.height = linePixels * lines.length + Math.ceil(fontPixels * 0.5);
                     context.font = `${fontPixels}px "Microsoft JhengHei", sans-serif`;
-                    context.fillStyle = '#2B364B';
+                    context.fillStyle = '#20242B';
                     context.textBaseline = 'top';
                     lines.forEach((lineText, lineIndex) => {
                         const measured = context.measureText(lineText).width;
@@ -3159,7 +3829,7 @@
                         const cardHeight = (pageHeight - 22) / 2 - 3;
                         pdf.rect(margin, top, pageWidth - margin * 2, cardHeight);
                         drawText(`案由：${caseTitle}`, margin + 4, top + 7, pageWidth - 28, 9);
-                        drawText(`日期：${photo.date || caseDate}　時間：${photo.time || ''}　地點：${photo.location || ''}`, margin + 4, top + 13, pageWidth - 28, 8);
+                        drawText(`日期：${photo.date || caseDate}　時間：${photo.time || ''}　地點：${photo.location || defaultLocation}`, margin + 4, top + 13, pageWidth - 28, 8);
                         drawPhoto(dataUrl, margin + 5, top + 17, pageWidth - margin * 2 - 10, cardHeight - 42);
                         drawText(`說明：${photo.desc || '（無說明）'}`, margin + 4, top + cardHeight - 19, pageWidth - 28, 8);
                         drawText(`編號：${photo.seq}　製作人：${globalOfficer}`, margin + 4, top + cardHeight - 7, pageWidth - 28, 8);
@@ -3171,7 +3841,7 @@
                         pdf.rect(left, top, cardWidth, cardHeight);
                         drawText(`#${photo.seq}　${caseTitle}`, left + 3, top + 7, cardWidth - 6, 9);
                         drawText(`${photo.date || caseDate} ${photo.time || ''}`, left + 3, top + 13, cardWidth - 6, 8);
-                        drawText(photo.location || '', left + 3, top + 19, cardWidth - 6, 8);
+                        drawText(photo.location || defaultLocation, left + 3, top + 19, cardWidth - 6, 8);
                         drawPhoto(dataUrl, left + 4, top + 23, cardWidth - 8, cardHeight - 65);
                         drawText(`說明：${photo.desc || '（無說明）'}`, left + 3, top + cardHeight - 34, cardWidth - 6, 8);
                         drawText(`製作人：${globalOfficer}`, left + 3, top + cardHeight - 8, cardWidth - 6, 8);
@@ -3183,7 +3853,7 @@
                         pdf.rect(left, top, cardWidth, cardHeight);
                         drawText(`#${photo.seq}　${caseTitle}`, left + 3, top + 7, cardWidth - 6, 8);
                         drawText(`${photo.date || caseDate} ${photo.time || ''}`, left + 3, top + 12, cardWidth - 6, 7);
-                        drawText(photo.location || '', left + 3, top + 17, cardWidth - 6, 7);
+                        drawText(photo.location || defaultLocation, left + 3, top + 17, cardWidth - 6, 7);
                         drawPhoto(dataUrl, left + 3, top + 21, cardWidth - 6, cardHeight - 56);
                         drawText(`說明：${photo.desc || '（無說明）'}`, left + 3, top + cardHeight - 25, cardWidth - 6, 7);
                     }
@@ -3205,6 +3875,7 @@
 
                 const caseTitle = document.getElementById('caseTitle').value.trim() || '詐欺案';
                 const caseDate = document.getElementById('caseDate').value.trim() || '';
+                const defaultLocation = document.getElementById('defaultLocation').value.trim() || '';
                 const globalOfficer = document.getElementById('officerName').value.trim() || '巡官梁家豪';
 
                 const headers = ['編號', '檔名', '案由', '日期', '時間', '地點', '製作人', '說明'];
@@ -3217,7 +3888,7 @@
                         caseTitle,
                         p.date || caseDate,
                         p.time,
-                        p.location,
+                        p.location || defaultLocation,
                         globalOfficer,
                         p.desc
                     ]);

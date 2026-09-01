@@ -1,11 +1,11 @@
-# 📷 現場照片清冊自動套印工具 (Photo Report Generator) v2.2.0
+# 📷 現場照片清冊自動套印工具 (Photo Report Generator) v2.2.1
 
-[![Version](https://img.shields.io/badge/version-v2.2.0-blue.svg)](https://github.com/lianghao02/Photo-Report-Generator)
+[![Version](https://img.shields.io/badge/version-v2.2.1-blue.svg)](https://github.com/lianghao02/Photo-Report-Generator)
 [![Platform](https://img.shields.io/badge/Platform-Pure%20Web%20SPA%20%2F%20Tauri%20Desktop-emerald.svg)](https://lianghao02.github.io/Photo-Report-Generator/)
 [![Security](https://img.shields.io/badge/Security-Zero%20Macro%20Warning-brightgreen.svg)](https://microsoft.com)
 [![License](https://img.shields.io/badge/License-MIT-gray.svg)](LICENSE)
 
-> **版本**：v2.2.0 (可復原工作台．PDF／Word 雙輸出．Tauri v2 桌面版)<br>
+> **版本**：v2.2.1 (可復原工作台．PDF／Word 雙輸出．Tauri v2 桌面版)<br>
 > **線上即用網址**：[https://lianghao02.github.io/Photo-Report-Generator/](https://lianghao02.github.io/Photo-Report-Generator/)<br>
 > **最新釋出版下載**：[GitHub Releases 最新版本](https://github.com/lianghao02/Photo-Report-Generator/releases/latest)<br>
 > **維護者**：LiangHao (梁巡官)
@@ -94,7 +94,7 @@ v2.0/v2.1/v2.2 版本迎來重大架構革新：**徹底淘汰舊有 VBA 巨集�
 ├── CHANGELOG.md             # 版本更新歷程紀錄 (含 v2.3.0 Roadmap)
 ├── README.md                # 專案說明文件
 ├── version.txt              # 核心版本標記檔 (提供建置檢核與非同步檢查更新)
-├── index.html               # 核心應用程式 (v2.2.0 純前端 SPA 工作台)
+├── index.html               # 核心應用程式 (v2.2.1 純前端 SPA 工作台)
 ├── vendor/                  # 100% 離線第三方函式庫 (Tailwind CSS, FontAwesome, docx.js, jsPDF, JSZip 等)
 ├── test_photos/             # 現場照片測試資料集 (提供即時功能與排版驗證)
 ├── src-tauri/               # Tauri v2 輕量桌面應用程式設定與 Rust 核心
