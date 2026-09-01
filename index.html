@@ -918,40 +918,26 @@
                 this.photoSearch.addEventListener('input', (event) => { this.photoSearchTerm = event.target.value.trim().toLowerCase(); this.render(); });
                 this.photoFilter.addEventListener('change', (event) => { this.photoFilterMode = event.target.value; this.render(); });
                 document.getElementById('btnJumpPhoto').addEventListener('click', () => this.jumpToPhoto());
-                ['caseTitle', 'caseDate', 'defaultLocation', 'deptName', 'officerName'].forEach(id => {
+                ['caseTitle', 'defaultLocation', 'deptName', 'officerName'].forEach(id => {
                     document.getElementById(id).addEventListener('input', () => this.scheduleHistory('修改案件基本資料'));
+                });
+
+                // 左側全域案件日期（支援純數字 7 碼 YYYMMDD 自動遮罩為 YYY/MM/DD）
+                const caseDateInput = document.getElementById('caseDate');
+                this.attachMaskControl(caseDateInput, 'date', (val) => {
+                    this.scheduleHistory('修改案件基本資料');
+                    const defaultDate = val.trim();
+                    if (this.editDateInheritedHint) {
+                        this.editDateInheritedHint.textContent = defaultDate
+                            ? `格式 YYY/MM/DD；留空時使用清冊預設：${defaultDate}。`
+                            : '格式 YYY/MM/DD；尚未設定清冊預設日期。';
+                    }
                 });
 
                 // 右側編輯器即時輸入事件
                 this.editSeq.addEventListener('input', (e) => this.updateCurrentPhoto('seq', e.target.value));
-                this.editTime.addEventListener('input', (e) => {
-                    const masked = this.formatTimeMask(e.target.value);
-                    // 每次都將游標移到遮罩結尾，避免重新渲染後游標落在冒號前而重複輸入數字。
-                    e.target.value = masked;
-                    e.target.selectionStart = e.target.selectionEnd = masked.length;
-                    this.updateCurrentPhoto('time', masked);
-                });
-                this.editTime.addEventListener('blur', (e) => {
-                    const masked = this.formatTimeMask(e.target.value, true);
-                    e.target.value = masked;
-                    this.updateCurrentPhoto('time', masked);
-                });
-                this.editDate.addEventListener('input', (e) => {
-                    const rawValue = e.target.value;
-                    const cursorPosition = e.target.selectionStart ?? rawValue.length;
-                    const masked = this.formatDateMask(rawValue);
-                    if (masked !== rawValue) {
-                        const insertedMaskChars = Math.max(0, masked.length - rawValue.length);
-                        e.target.value = masked;
-                        e.target.selectionStart = e.target.selectionEnd = Math.min(cursorPosition + insertedMaskChars, masked.length);
-                    }
-                    this.updateCurrentPhoto('date', masked);
-                });
-                this.editDate.addEventListener('blur', (e) => {
-                    const masked = this.formatDateMask(e.target.value, true);
-                    e.target.value = masked;
-                    this.updateCurrentPhoto('date', masked);
-                });
+                this.attachMaskControl(this.editTime, 'time', (val) => this.updateCurrentPhoto('time', val));
+                this.attachMaskControl(this.editDate, 'date', (val) => this.updateCurrentPhoto('date', val));
                 this.editLocation.addEventListener('input', (e) => this.updateCurrentPhoto('location', e.target.value));
                 this.editDesc.addEventListener('input', (e) => this.updateCurrentPhoto('desc', e.target.value));
 
@@ -1035,9 +1021,13 @@
             setDefaultTodayDate() {
                 const now = new Date();
                 const mYear = now.getFullYear() - 1911;
-                const mMonth = now.getMonth() + 1;
-                const mDay = now.getDate();
-                document.getElementById('caseDate').value = `${mYear}年${mMonth}月${mDay}日`;
+                const mMonth = String(now.getMonth() + 1).padStart(2, '0');
+                const mDay = String(now.getDate()).padStart(2, '0');
+                const dateStr = `${mYear}/${mMonth}/${mDay}`;
+                document.getElementById('caseDate').value = dateStr;
+                if (this.editDateInheritedHint) {
+                    this.editDateInheritedHint.textContent = `格式 YYY/MM/DD；留空時使用清冊預設：${dateStr}。`;
+                }
                 this.scheduleHistory('填入今天日期');
             }
 
@@ -1443,38 +1433,203 @@
                 this.fillDownFromIndex(0, field);
             }
 
-            // ── 時間遮罩 ────────────────────────────────────────
-            // 純數字 → 自動插入冒號：4碼=HH:MM，6碼=HH:MM:SS
-            // 輸入時即限制六位數，避免游標位移造成分鐘、秒數重複。
-            formatTimeMask(raw, finalise = false) {
-                let digits = raw.replace(/[^0-9]/g, '').slice(0, 6);
+            // ── 時間遮罩智慧計算（含游標精準定位）──────────────────────────
+            // 4 碼 = HH:MM，6 碼 = HH:MM:SS
+            formatTimeWithCursor(raw, cursorPos) {
+                const rawStr = String(raw || '');
+                const pos = Math.max(0, Math.min(cursorPos ?? rawStr.length, rawStr.length));
+                const digitsBeforeCursor = (rawStr.slice(0, pos).match(/\d/g) || []).length;
+                const allDigits = (rawStr.match(/\d/g) || []).join('').slice(0, 6);
 
-                let result = '';
-                if (digits.length <= 4) {
-                    // 尚未完整，只插入第一個冒號
-                    result = digits.slice(0, 2);
-                    if (digits.length > 2) result += ':' + digits.slice(2, 4);
-                    else result = digits;
+                let formatted = '';
+                if (allDigits.length <= 2) {
+                    formatted = allDigits;
+                } else if (allDigits.length <= 4) {
+                    formatted = `${allDigits.slice(0, 2)}:${allDigits.slice(2)}`;
                 } else {
-                    // 6 碼：HH:MM:SS
-                    result = digits.slice(0, 2) + ':' + digits.slice(2, 4) + ':' + digits.slice(4, 6);
+                    formatted = `${allDigits.slice(0, 2)}:${allDigits.slice(2, 4)}:${allDigits.slice(4)}`;
                 }
-                return result;
+
+                let newCursor = 0;
+                if (digitsBeforeCursor === 0) {
+                    newCursor = 0;
+                } else {
+                    let counted = 0;
+                    for (let i = 0; i < formatted.length; i++) {
+                        if (/\d/.test(formatted[i])) {
+                            counted++;
+                        }
+                        if (counted === digitsBeforeCursor) {
+                            newCursor = i + 1;
+                            break;
+                        }
+                    }
+                    if (newCursor === 0) newCursor = formatted.length;
+                }
+
+                return { formatted, newCursor };
             }
 
-            // ── 日期遮罩 ────────────────────────────────────────
-            // 民國年 3 碼 + 月 2 碼 + 日 2 碼 = 7 碼數字
-            // 輸入 1130826 → 113/08/26
-            formatDateMask(raw, finalise = false) {
-                let digits = raw.replace(/[^0-9]/g, '');
-                if (finalise) digits = digits.slice(0, 7);
+            formatTimeMask(raw, finalise = false) {
+                return this.formatTimeWithCursor(raw, raw ? String(raw).length : 0).formatted;
+            }
 
-                let result = '';
-                if (digits.length === 0) return '';
-                result = digits.slice(0, 3);
-                if (digits.length > 3) result += '/' + digits.slice(3, 5);
-                if (digits.length > 5) result += '/' + digits.slice(5, 7);
-                return result;
+            // ── 日期遮罩智慧計算（含游標精準定位，民國年 7 碼：YYY/MM/DD）──
+            // 1150901 → 115/09/01
+            formatDateWithCursor(raw, cursorPos) {
+                const rawStr = String(raw || '');
+                const pos = Math.max(0, Math.min(cursorPos ?? rawStr.length, rawStr.length));
+                const digitsBeforeCursor = (rawStr.slice(0, pos).match(/\d/g) || []).length;
+                const allDigits = (rawStr.match(/\d/g) || []).join('').slice(0, 7);
+
+                let formatted = '';
+                if (allDigits.length <= 3) {
+                    formatted = allDigits;
+                } else if (allDigits.length <= 5) {
+                    formatted = `${allDigits.slice(0, 3)}/${allDigits.slice(3)}`;
+                } else {
+                    formatted = `${allDigits.slice(0, 3)}/${allDigits.slice(3, 5)}/${allDigits.slice(5)}`;
+                }
+
+                let newCursor = 0;
+                if (digitsBeforeCursor === 0) {
+                    newCursor = 0;
+                } else {
+                    let counted = 0;
+                    for (let i = 0; i < formatted.length; i++) {
+                        if (/\d/.test(formatted[i])) {
+                            counted++;
+                        }
+                        if (counted === digitsBeforeCursor) {
+                            newCursor = i + 1;
+                            break;
+                        }
+                    }
+                    if (newCursor === 0) newCursor = formatted.length;
+                }
+
+                return { formatted, newCursor };
+            }
+
+            formatDateMask(raw, finalise = false) {
+                return this.formatDateWithCursor(raw, raw ? String(raw).length : 0).formatted;
+            }
+
+            // ── 通用遮罩綁定控制器（點擊全選舊值、精準游標跳躍、自然 Backspace）──
+            attachMaskControl(input, type, onUpdate) {
+                if (!input) return;
+                let isMouseDown = false;
+
+                input.addEventListener('mousedown', () => {
+                    isMouseDown = true;
+                });
+
+                input.addEventListener('focus', () => {
+                    if (!isMouseDown) {
+                        // 透過 Tab 鍵進入時自動全選
+                        input.select();
+                    }
+                });
+
+                input.addEventListener('mouseup', (e) => {
+                    if (isMouseDown) {
+                        isMouseDown = false;
+                        // 點擊已有值的輸入框時，若未拖曳選取，自動全選舊值方便使用者直接覆寫輸入
+                        if (input.selectionStart === input.selectionEnd && input.value) {
+                            input.select();
+                            e.preventDefault();
+                        }
+                    }
+                });
+
+                input.addEventListener('input', () => {
+                    const raw = input.value;
+                    const cursor = input.selectionStart || 0;
+                    const { formatted, newCursor } = (type === 'time')
+                        ? this.formatTimeWithCursor(raw, cursor)
+                        : this.formatDateWithCursor(raw, cursor);
+
+                    input.value = formatted;
+                    input.setSelectionRange(newCursor, newCursor);
+                    onUpdate?.(formatted);
+                });
+
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === 'Backspace' && input.selectionStart === input.selectionEnd) {
+                        const pos = input.selectionStart;
+                        const val = input.value;
+                        if (pos > 0 && (val[pos - 1] === ':' || val[pos - 1] === '/')) {
+                            e.preventDefault();
+                            const before = val.slice(0, pos - 2);
+                            const after = val.slice(pos);
+                            const nextRaw = before + after;
+                            const { formatted, newCursor } = (type === 'time')
+                                ? this.formatTimeWithCursor(nextRaw, pos - 2)
+                                : this.formatDateWithCursor(nextRaw, pos - 2);
+                            input.value = formatted;
+                            input.setSelectionRange(newCursor, newCursor);
+                            onUpdate?.(formatted);
+                        }
+                    }
+                });
+
+                input.addEventListener('blur', () => {
+                    isMouseDown = false;
+                    const raw = input.value.trim();
+                    const formatted = (type === 'time')
+                        ? this.formatTimeMask(raw)
+                        : this.formatDateMask(raw);
+                    if (input.value !== formatted) {
+                        input.value = formatted;
+                        onUpdate?.(formatted);
+                    }
+                });
+            }
+
+            // ── DataGrid 試算表專屬遮罩輔助方法 ──────────────────────────
+            handleDataGridInputFocus(input) {
+                input.select();
+            }
+
+            handleDataGridMaskInput(input, type, idx) {
+                const raw = input.value;
+                const cursor = input.selectionStart || 0;
+                const { formatted, newCursor } = (type === 'time')
+                    ? this.formatTimeWithCursor(raw, cursor)
+                    : this.formatDateWithCursor(raw, cursor);
+                input.value = formatted;
+                input.setSelectionRange(newCursor, newCursor);
+                this.updatePhotoField(idx, type, formatted);
+            }
+
+            handleDataGridMaskKeyDown(event, input, type, idx) {
+                if (event.key === 'Backspace' && input.selectionStart === input.selectionEnd) {
+                    const pos = input.selectionStart;
+                    const val = input.value;
+                    if (pos > 0 && (val[pos - 1] === ':' || val[pos - 1] === '/')) {
+                        event.preventDefault();
+                        const before = val.slice(0, pos - 2);
+                        const after = val.slice(pos);
+                        const nextRaw = before + after;
+                        const { formatted, newCursor } = (type === 'time')
+                            ? this.formatTimeWithCursor(nextRaw, pos - 2)
+                            : this.formatDateWithCursor(nextRaw, pos - 2);
+                        input.value = formatted;
+                        input.setSelectionRange(newCursor, newCursor);
+                        this.updatePhotoField(idx, type, formatted);
+                    }
+                }
+            }
+
+            handleDataGridMaskBlur(input, type, idx) {
+                const raw = input.value.trim();
+                const formatted = (type === 'time')
+                    ? this.formatTimeMask(raw)
+                    : this.formatDateMask(raw);
+                if (input.value !== formatted) {
+                    input.value = formatted;
+                    this.updatePhotoField(idx, type, formatted);
+                }
             }
 
             // ── 計算目前畫布的欄數（用於 Ctrl+↑↓ 整列移動）────
@@ -2260,10 +2415,20 @@
                             <input type="text" value="${escapeHtml(p.seq)}" oninput="window.app.updatePhotoField(${idx}, 'seq', this.value)" class="input-field w-full text-xs font-bold text-[#526F94]">
                         </td>
                         <td class="p-2">
-                            <input type="text" value="${escapeHtml(p.date || '')}" oninput="this.value = window.app.formatDateMask(this.value); window.app.updatePhotoField(${idx}, 'date', this.value)" class="input-field w-full text-xs font-mono" placeholder="留空=全域日期">
+                            <input type="text" value="${escapeHtml(p.date || '')}"
+                                   onfocus="window.app.handleDataGridInputFocus(this)"
+                                   oninput="window.app.handleDataGridMaskInput(this, 'date', ${idx})"
+                                   onkeydown="window.app.handleDataGridMaskKeyDown(event, this, 'date', ${idx})"
+                                   onblur="window.app.handleDataGridMaskBlur(this, 'date', ${idx})"
+                                   class="input-field w-full text-xs font-mono" placeholder="留空=全域日期">
                         </td>
                         <td class="p-2">
-                            <input type="text" value="${escapeHtml(p.time)}" oninput="this.value = window.app.formatTimeMask(this.value); window.app.updatePhotoField(${idx}, 'time', this.value)" class="input-field w-full text-xs font-mono" placeholder="例如：14:32">
+                            <input type="text" value="${escapeHtml(p.time)}"
+                                   onfocus="window.app.handleDataGridInputFocus(this)"
+                                   oninput="window.app.handleDataGridMaskInput(this, 'time', ${idx})"
+                                   onkeydown="window.app.handleDataGridMaskKeyDown(event, this, 'time', ${idx})"
+                                   onblur="window.app.handleDataGridMaskBlur(this, 'time', ${idx})"
+                                   class="input-field w-full text-xs font-mono" placeholder="輸入 4 或 6 碼">
                         </td>
                         <td class="p-2">
                             <input type="text" value="${escapeHtml(p.location)}" oninput="window.app.updatePhotoField(${idx}, 'location', this.value)" class="input-field w-full text-xs">
