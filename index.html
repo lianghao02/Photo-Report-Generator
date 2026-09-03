@@ -366,6 +366,55 @@
         ::-webkit-scrollbar-thumb:hover {
             background: #8B8CF7;
         }
+
+        /* 完整度篩選標籤按鈕樣式 */
+        .audit-filter-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 9px;
+            border-radius: 8px;
+            font-size: 11px;
+            font-weight: 700;
+            line-height: 1.25;
+            transition: all 120ms ease;
+            border: 1px solid rgba(199, 203, 211, 0.45);
+            background: #FFFFFF;
+            color: #4B5563;
+            cursor: pointer;
+            user-select: none;
+        }
+        .audit-filter-btn:hover {
+            background: #F3F4F6;
+            color: #1F2937;
+        }
+        .audit-filter-btn.active {
+            background: #EEF2FF;
+            color: #4F46E5;
+            border-color: #818CF8;
+            box-shadow: 0 1px 3px rgba(99, 102, 241, 0.2);
+        }
+        .audit-filter-badge {
+            display: inline-block;
+            padding: 1px 5px;
+            border-radius: 9999px;
+            font-size: 10px;
+            font-weight: 800;
+            background: #E5E7EB;
+            color: #4B5563;
+        }
+        .audit-filter-btn.active .audit-filter-badge {
+            background: #C7D2FE;
+            color: #3730A3;
+        }
+        .audit-filter-badge.has-warning {
+            background: #FEF3C7;
+            color: #92400E;
+        }
+        .audit-filter-btn.active .audit-filter-badge.has-warning {
+            background: #FDE68A;
+            color: #78350F;
+        }
     </style>
 </head>
 <body class="p-3 md:p-6 flex flex-col items-center">
@@ -612,6 +661,33 @@
                 </div>
                 <div class="text-[#5B5CE2] flex items-center gap-2">
                     <span>💡 方向鍵切換；Ctrl＋方向鍵或上方工具列排序；Ctrl＋滾輪／滑桿調整縮圖；空白處可框選</span>
+                </div>
+            </div>
+
+            <!-- 大量照片資料完整度工作台與問題照片篩選列 -->
+            <div id="auditFilterBar" class="hidden flex flex-wrap items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl bg-slate-50 border border-[#C7CBD3]/30">
+                <div class="flex flex-wrap items-center gap-1.5">
+                    <span class="text-[11px] font-bold text-[#4B5563] flex items-center gap-1 mr-1">
+                        <i class="fa-solid fa-list-check text-[#5B5CE2]"></i> 完整度檢視：
+                    </span>
+                    <button type="button" id="filterBtn_all" class="audit-filter-btn active" onclick="window.app.setActiveFilter('all')">
+                        <span>全部</span> <span id="auditBadge_all" class="audit-filter-badge">0</span>
+                    </button>
+                    <button type="button" id="filterBtn_missingLocation" class="audit-filter-btn" onclick="window.app.setActiveFilter('missingLocation')">
+                        <i class="fa-solid fa-location-dot text-amber-500 text-[10px]"></i> <span>未填地點</span> <span id="auditBadge_missingLocation" class="audit-filter-badge">0</span>
+                    </button>
+                    <button type="button" id="filterBtn_missingDesc" class="audit-filter-btn" onclick="window.app.setActiveFilter('missingDesc')">
+                        <i class="fa-solid fa-align-left text-amber-500 text-[10px]"></i> <span>未填說明</span> <span id="auditBadge_missingDesc" class="audit-filter-badge">0</span>
+                    </button>
+                    <button type="button" id="filterBtn_invalidDateTime" class="audit-filter-btn" onclick="window.app.setActiveFilter('invalidDateTime')">
+                        <i class="fa-regular fa-clock text-amber-500 text-[10px]"></i> <span>日期時間待確認</span> <span id="auditBadge_invalidDateTime" class="audit-filter-badge">0</span>
+                    </button>
+                    <button type="button" id="filterBtn_duplicatePhotos" class="audit-filter-btn" onclick="window.app.setActiveFilter('duplicatePhotos')">
+                        <i class="fa-solid fa-copy text-amber-500 text-[10px]"></i> <span>疑似重複</span> <span id="auditBadge_duplicatePhotos" class="audit-filter-badge">0</span>
+                    </button>
+                </div>
+                <div id="filterNoticeText" class="text-[11px] text-[#6B7280] hidden sm:flex items-center gap-1">
+                    <i class="fa-solid fa-filter text-[#5B5CE2]"></i> <span>顯示全部照片</span>
                 </div>
             </div>
             <div id="processingStatus" class="hidden px-1 text-xs text-[#5B5CE2]" role="status" aria-live="polite">
@@ -942,6 +1018,42 @@
         </div>
     </div>
 
+    <!-- 匯出前資料完整度確認對話框 Modal -->
+    <div id="exportAuditModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop hidden" onclick="window.app.closeModal('exportAuditModal')">
+        <div class="morandi-card w-full max-w-md p-5 bg-white border border-[#C7CBD3]/30 shadow-2xl flex flex-col gap-4 rounded-2xl" onclick="event.stopPropagation()">
+            <div class="flex items-start gap-3">
+                <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-lg border border-amber-200 shrink-0">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <h3 class="text-sm font-black text-[#20242B]" id="exportAuditModalTitle">匯出前資料完整度提示</h3>
+                    <p class="text-xs text-[#6B7280] mt-0.5">系統偵測到部分照片資料尚未填寫完整，建議確認後再行匯出：</p>
+                </div>
+            </div>
+
+            <!-- 缺失項目統計列表 -->
+            <div id="exportAuditList" class="flex flex-col gap-2 p-3 bg-amber-50/40 rounded-xl border border-amber-200/50 text-xs text-[#20242B]">
+                <!-- 動態注入缺失項目 -->
+            </div>
+
+            <p class="text-[11px] text-[#6B7280]">
+                💡 您可以點擊「查看問題照片」由系統自動切換篩選視圖補填，或點擊「仍要匯出」直接產生報表。
+            </p>
+
+            <div class="flex items-center justify-end gap-2 pt-2 border-t border-[#C7CBD3]/20">
+                <button type="button" onclick="window.app.closeModal('exportAuditModal')" class="btn-secondary px-3.5 py-1.5 rounded-lg text-xs font-bold">
+                    取消
+                </button>
+                <button type="button" id="btnAuditViewIssues" class="btn-secondary px-3.5 py-1.5 rounded-lg text-xs font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-300 flex items-center gap-1">
+                    <i class="fa-solid fa-filter"></i> 查看問題照片
+                </button>
+                <button type="button" id="btnAuditProceedExport" class="btn-primary px-4 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 shadow">
+                    <i class="fa-solid fa-check"></i> 仍要匯出
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- 核心應用程式邏輯 -->
     <script>
         document.getElementById('year').textContent = new Date().getFullYear();
@@ -985,6 +1097,8 @@
                 this.processingCancelled = false;
                 this.lightboxIndex = null;
                 this.savedProjectSignature = '';
+                this.activeFilter = 'all';
+                this.pendingExportAction = null;
                 this.initElements();
                 this.initEvents();
                 this.applyWorkspaceLayout();
@@ -1042,6 +1156,21 @@
                 this.batchApplyBox = document.getElementById('batchApplyBox');
                 this.batchCountNum = document.getElementById('batchCountNum');
                 this.batchApplyEmptyValues = document.getElementById('batchApplyEmptyValues');
+
+                // 完整度稽核篩選列
+                this.auditFilterBar = document.getElementById('auditFilterBar');
+                this.auditBadge_all = document.getElementById('auditBadge_all');
+                this.auditBadge_missingLocation = document.getElementById('auditBadge_missingLocation');
+                this.auditBadge_missingDesc = document.getElementById('auditBadge_missingDesc');
+                this.auditBadge_invalidDateTime = document.getElementById('auditBadge_invalidDateTime');
+                this.auditBadge_duplicatePhotos = document.getElementById('auditBadge_duplicatePhotos');
+                this.filterNoticeText = document.getElementById('filterNoticeText');
+
+                // 匯出前非阻斷提醒彈窗
+                this.exportAuditModal = document.getElementById('exportAuditModal');
+                this.exportAuditList = document.getElementById('exportAuditList');
+                this.btnAuditViewIssues = document.getElementById('btnAuditViewIssues');
+                this.btnAuditProceedExport = document.getElementById('btnAuditProceedExport');
             }
 
             initEvents() {
@@ -1110,14 +1239,14 @@
                 document.getElementById('btnOpenSequenceModal').addEventListener('click', () => this.openModal('sequenceModal'));
                 document.getElementById('btnApplySequence').addEventListener('click', () => this.applySequence());
                 document.getElementById('btnParseFilenameTime').addEventListener('click', () => this.parseFilenameTime());
-                document.getElementById('btnExportDocx').addEventListener('click', () => this.exportDocx().catch(error => this.handleExportError(error)));
+                document.getElementById('btnExportDocx').addEventListener('click', () => this.confirmExportWithAudit(() => this.exportDocx().catch(e => this.handleExportError(e)), 'Word 清冊'));
                 document.getElementById('btnSaveProject').addEventListener('click', () => this.saveProject().catch(error => this.handleProjectError(error)));
                 document.getElementById('importProjectInput').addEventListener('change', (e) => this.openProject(e));
                 document.getElementById('btnUndo').addEventListener('click', () => this.undo());
                 document.getElementById('btnRedo').addEventListener('click', () => this.redo());
-                document.getElementById('btnExportExcel').addEventListener('click', () => this.exportExcel());
+                document.getElementById('btnExportExcel').addEventListener('click', () => this.confirmExportWithAudit(() => this.exportExcel(), 'Excel 清冊'));
                 document.getElementById('btnExportZip').addEventListener('click', () => this.exportZip().catch(error => this.handleExportError(error)));
-                document.getElementById('btnExportPdf').addEventListener('click', () => this.exportPdf().catch(error => this.handleExportError(error)));
+                document.getElementById('btnExportPdf').addEventListener('click', () => this.confirmExportWithAudit(() => this.exportPdf().catch(e => this.handleExportError(e)), 'PDF 清冊'));
                 document.getElementById('importExcelInput').addEventListener('change', (e) => this.importExcel(e));
                 this.layoutSelect.addEventListener('change', () => {
                     this.updatePageEstimate();
@@ -1258,6 +1387,29 @@
                         this.moveSelectedToBoundary('end');
                     }
                 });
+
+                // 完整度稽核篩選列按鈕
+                document.getElementById('filterBtn_all').addEventListener('click', () => this.setActiveFilter('all'));
+                document.getElementById('filterBtn_missingLocation').addEventListener('click', () => this.setActiveFilter('missingLocation'));
+                document.getElementById('filterBtn_missingDesc').addEventListener('click', () => this.setActiveFilter('missingDesc'));
+                document.getElementById('filterBtn_invalidDateTime').addEventListener('click', () => this.setActiveFilter('invalidDateTime'));
+                document.getElementById('filterBtn_duplicatePhotos').addEventListener('click', () => this.setActiveFilter('duplicatePhotos'));
+
+                // 匯出前稽核彈窗按鈕
+                this.btnAuditViewIssues.addEventListener('click', () => {
+                    this.exportAuditModal.classList.add('hidden');
+                    const audit = this.auditPhotosCompleteness();
+                    const firstFilter = audit.firstIssueFilter || 'all';
+                    this.setActiveFilter(firstFilter);
+                });
+                this.btnAuditProceedExport.addEventListener('click', () => {
+                    this.exportAuditModal.classList.add('hidden');
+                    if (this.pendingExportAction) {
+                        const action = this.pendingExportAction;
+                        this.pendingExportAction = null;
+                        action();
+                    }
+                });
             }
 
             setDefaultTodayDate() {
@@ -1271,7 +1423,33 @@
             }
 
             getVisiblePhotoIndices() {
-                return this.photos.map((photo, index) => ({ photo, index }));
+                const all = this.photos.map((photo, index) => ({ photo, index }));
+                if (this.activeFilter === 'all') return all;
+
+                const globalLocation = document.getElementById('defaultLocation')?.value?.trim() || '';
+
+                return all.filter(({ photo }) => {
+                    switch (this.activeFilter) {
+                        case 'missingLocation':
+                            return !photo.location?.trim() && !globalLocation;
+                        case 'missingDesc':
+                            return !photo.desc?.trim();
+                        case 'invalidDateTime': {
+                            const d = photo.date?.trim() || '';
+                            const t = photo.time?.trim() || '';
+                            const dateInvalid = d && (d.replace(/\//g, '').length < 6);
+                            const timeInvalid = !t;
+                            return dateInvalid || timeInvalid;
+                        }
+                        case 'duplicatePhotos': {
+                            // 依檔名計算重複組，標記屬於重複組的照片
+                            if (!this._dupSet) this._buildDupSet();
+                            return this._dupSet.has(photo.name);
+                        }
+                        default:
+                            return true;
+                    }
+                });
             }
 
             async loadAppVersion() {
@@ -2645,13 +2823,31 @@
 
             selectPhotoByKeyboard(delta) {
                 if (!this.photos.length || !delta) return;
-                const nextIndex = Math.max(0, Math.min(this.currentIndex + delta, this.photos.length - 1));
-                this.photos.forEach((photo, index) => photo.selected = index === nextIndex);
-                this.currentIndex = nextIndex;
-                this.lastSelectedIndex = nextIndex;
-                this.render();
-                this.recordHistory('切換目前照片');
-                document.getElementById(`thumb_${this.photos[nextIndex].uid}`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+                const visible = this.getVisiblePhotoIndices();
+                if (!visible.length) return;
+
+                if (this.activeFilter !== 'all') {
+                    // 篩選模式：在可見照片清單中前後移動
+                    const currentPos = visible.findIndex(({ index }) => index === this.currentIndex);
+                    const pos = currentPos < 0 ? 0 : currentPos;
+                    const nextPos = Math.max(0, Math.min(pos + delta, visible.length - 1));
+                    const nextIndex = visible[nextPos].index;
+                    this.photos.forEach((photo, index) => photo.selected = index === nextIndex);
+                    this.currentIndex = nextIndex;
+                    this.lastSelectedIndex = nextIndex;
+                    this.render();
+                    this.recordHistory('切換目前照片');
+                    document.getElementById(`thumb_${this.photos[nextIndex].uid}`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+                } else {
+                    // 全部模式：使用全域索引
+                    const nextIndex = Math.max(0, Math.min(this.currentIndex + delta, this.photos.length - 1));
+                    this.photos.forEach((photo, index) => photo.selected = index === nextIndex);
+                    this.currentIndex = nextIndex;
+                    this.lastSelectedIndex = nextIndex;
+                    this.render();
+                    this.recordHistory('切換目前照片');
+                    document.getElementById(`thumb_${this.photos[nextIndex].uid}`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+                }
             }
 
             moveSelectedBy(delta) {
@@ -2943,6 +3139,150 @@
                 }
             }
 
+            // 建立重複檔名 Set（快取於 _dupSet，供 getVisiblePhotoIndices 使用）
+            _buildDupSet() {
+                const nameCount = new Map();
+                this.photos.forEach(p => {
+                    const n = p.name || '';
+                    if (!n) return;
+                    nameCount.set(n, (nameCount.get(n) || 0) + 1);
+                });
+                this._dupSet = new Set([...nameCount.entries()].filter(([, c]) => c > 1).map(([n]) => n));
+            }
+
+            // 完整度稽核：純讀取，不修改 photos，回傳統計物件
+            auditPhotosCompleteness() {
+                const globalLocation = document.getElementById('defaultLocation')?.value?.trim() || '';
+                let missingLocation = 0, missingDesc = 0, invalidDateTime = 0, duplicatePhotos = 0;
+                this._buildDupSet();
+
+                this.photos.forEach(photo => {
+                    if (!photo.location?.trim() && !globalLocation) missingLocation++;
+                    if (!photo.desc?.trim()) missingDesc++;
+                    const d = photo.date?.trim() || '';
+                    const t = photo.time?.trim() || '';
+                    if ((d && d.replace(/\//g, '').length < 6) || !t) invalidDateTime++;
+                    if (this._dupSet.has(photo.name)) duplicatePhotos++;
+                });
+
+                const issuesCount = missingLocation + missingDesc + invalidDateTime + duplicatePhotos;
+                let firstIssueFilter = null;
+                if (missingDesc > 0) firstIssueFilter = 'missingDesc';
+                else if (missingLocation > 0) firstIssueFilter = 'missingLocation';
+                else if (invalidDateTime > 0) firstIssueFilter = 'invalidDateTime';
+                else if (duplicatePhotos > 0) firstIssueFilter = 'duplicatePhotos';
+
+                return {
+                    total: this.photos.length,
+                    missingLocation,
+                    missingDesc,
+                    invalidDateTime,
+                    duplicatePhotos,
+                    issuesCount,
+                    firstIssueFilter,
+                };
+            }
+
+            // 切換篩選器（視圖狀態，不進入 Undo/Redo）
+            setActiveFilter(filterKey) {
+                this.activeFilter = filterKey;
+                this._dupSet = null; // 篩選切換時重建 dupSet
+                this.render();
+            }
+
+            // 更新篩選列徽章數字與 warning 樣式
+            updateAuditBarUi() {
+                if (!this.auditFilterBar) return;
+                const totalPhotos = this.photos.length;
+
+                if (totalPhotos === 0) {
+                    this.auditFilterBar.classList.add('hidden');
+                    return;
+                }
+                this.auditFilterBar.classList.remove('hidden');
+
+                const audit = this.auditPhotosCompleteness();
+
+                // 更新各徽章數字
+                if (this.auditBadge_all) this.auditBadge_all.textContent = totalPhotos;
+                if (this.auditBadge_missingLocation) {
+                    this.auditBadge_missingLocation.textContent = audit.missingLocation;
+                    this.auditBadge_missingLocation.classList.toggle('has-warning', audit.missingLocation > 0);
+                }
+                if (this.auditBadge_missingDesc) {
+                    this.auditBadge_missingDesc.textContent = audit.missingDesc;
+                    this.auditBadge_missingDesc.classList.toggle('has-warning', audit.missingDesc > 0);
+                }
+                if (this.auditBadge_invalidDateTime) {
+                    this.auditBadge_invalidDateTime.textContent = audit.invalidDateTime;
+                    this.auditBadge_invalidDateTime.classList.toggle('has-warning', audit.invalidDateTime > 0);
+                }
+                if (this.auditBadge_duplicatePhotos) {
+                    this.auditBadge_duplicatePhotos.textContent = audit.duplicatePhotos;
+                    this.auditBadge_duplicatePhotos.classList.toggle('has-warning', audit.duplicatePhotos > 0);
+                }
+
+                // 更新按鈕 active 樣式
+                const filterIds = {
+                    'all': 'filterBtn_all',
+                    'missingLocation': 'filterBtn_missingLocation',
+                    'missingDesc': 'filterBtn_missingDesc',
+                    'invalidDateTime': 'filterBtn_invalidDateTime',
+                    'duplicatePhotos': 'filterBtn_duplicatePhotos',
+                };
+                Object.entries(filterIds).forEach(([key, id]) => {
+                    const btn = document.getElementById(id);
+                    if (!btn) return;
+                    btn.classList.toggle('active', this.activeFilter === key);
+                });
+
+                // 篩選提示文字
+                if (this.filterNoticeText) {
+                    if (this.activeFilter === 'all') {
+                        this.filterNoticeText.classList.add('hidden');
+                    } else {
+                        const labels = {
+                            missingLocation: '未填地點',
+                            missingDesc: '未填說明',
+                            invalidDateTime: '時間異常',
+                            duplicatePhotos: '疑似重複',
+                        };
+                        const label = labels[this.activeFilter] || '';
+                        const count = this.getVisiblePhotoIndices().length;
+                        this.filterNoticeText.innerHTML = `<i class="fa-solid fa-filter text-[#5B5CE2]"></i> <span>篩選中：${label}（共 ${count} 張）</span>`;
+                        this.filterNoticeText.classList.remove('hidden');
+                    }
+                }
+            }
+
+            // 匯出前完整度檢查（非阻斷）
+            confirmExportWithAudit(action, title) {
+                if (!this.photos.length) {
+                    action();
+                    return;
+                }
+                const audit = this.auditPhotosCompleteness();
+                if (audit.issuesCount === 0) {
+                    action();
+                    return;
+                }
+
+                // 有問題時顯示提醒彈窗，暫存 action
+                this.pendingExportAction = action;
+                if (this.exportAuditList) {
+                    const items = [];
+                    if (audit.missingDesc > 0) items.push(`未填說明：${audit.missingDesc} 張`);
+                    if (audit.missingLocation > 0) items.push(`未填地點：${audit.missingLocation} 張`);
+                    if (audit.invalidDateTime > 0) items.push(`時間異常：${audit.invalidDateTime} 張`);
+                    if (audit.duplicatePhotos > 0) items.push(`疑似重複：${audit.duplicatePhotos} 張`);
+                    this.exportAuditList.innerHTML = items.map(t => `<li>${t}</li>`).join('');
+                }
+                // 更新彈窗標題（若有 title span）
+                const titleEl = this.exportAuditModal?.querySelector('#exportAuditTitle');
+                if (titleEl) titleEl.textContent = `匯出前確認（${title}）`;
+                this.exportAuditModal?.classList.remove('hidden');
+            }
+
             updateSelectionUi() {
                 const selectedCount = this.photos.filter(photo => photo.selected).length;
                 if (selectedCount > 0) {
@@ -2967,6 +3307,7 @@
 
                 const totalPhotos = this.photos.length;
                 const selectedCount = this.updateSelectionUi();
+                this.updateAuditBarUi();
                 const visibleEntries = this.getVisiblePhotoIndices();
                 const defaultLocation = document.getElementById('defaultLocation').value.trim();
 
