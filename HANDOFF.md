@@ -1,61 +1,48 @@
 # HANDOFF
 
 ## 目前狀態
-可交付
+可交付（規劃完成，Phase 0 尚未開始）
 
 ## 本輪目標
-修正 ec8ef93 後續已確認之 4 個局部缺陷：
-1. 日期／時間完整度驗證邏輯（依專案既有民國日期與時間範圍精確檢驗，非單純長度檢查）
-2. 「疑似重複」與實際同檔名演算法一致，文案改為「同名照片」
-3. 移除 audit filter 按鈕之 HTML inline onclick 雙重事件綁定
-4. 修正 exportAuditTitle / exportAuditModalTitle ID 查詢一致性與標題更新
+建立 Photo-Report-Generator 漸進模組化實作計畫，明確劃分 Phase 0～4 演進路線與停止條件，本輪不開始拆分任何程式碼。
 
 ## 已完成
-1. 在 `index.html` 新增 `isValidMinguoDate(raw)`：精準驗證民國年月日 7 碼、大小月、民國閏年 2 月天數合法性。
-2. 在 `index.html` 新增 `isValidTimeFormat(raw)`：精準驗證 HH:MM 或 HH:MM:SS（含純數字 4/6 碼）之時分秒數值合法範圍（0-23、0-59、0-59）。
-3. 升級 `auditPhotosCompleteness()` 與 `getVisiblePhotoIndices()` 內 `invalidDateTime` 判斷邏輯，改用 `isValidMinguoDate` 與 `isValidTimeFormat`，不合法即視為待確認。
-4. 移除 `auditFilterBar` 內全部 5 個篩選按鈕之 HTML inline `onclick`，統一由 `initEvents()` 中的 `addEventListener` 處理，徹底消除單次點擊雙重觸發。
-5. 將 `duplicatePhotos` 相關之按鈕文字、篩選提示文字與匯出提示列表文案由「疑似重複」統一修正為「同名照片」，精準符合依檔名比對之實際邏輯。
-6. 在 `initElements()` 快取 `this.exportAuditModalTitle = document.getElementById('exportAuditModalTitle')`，並在 `confirmExportWithAudit()` 中正確更新匯出提示彈窗標題。
-7. 執行 `scripts/prepare-web.ps1` 同步更新離線資源與 `web/index.html`。
-8. 執行 `scripts/qa.ps1` 差異與機敏資料檢查通過。
+1. 依現有 `index.html` 實際架構與方法職責，建立 [`MODULARIZATION_PLAN.md`](file:///C:/Development/GitHub/04_Photo-Report-Generator/MODULARIZATION_PLAN.md)。
+2. 明確定義不可破壞邊界（Vanilla JS、零打包、雙模式、100% 離線、三大公務版型精確尺寸、Undo/Redo 邊界）。
+3. 規劃 Phase 0～4 完整路線圖與驗收停止條件：
+   - Phase 0: 建立回歸基準
+   - Phase 1: 低風險純邏輯拆分（`validation.js`、`audit.js`）
+   - Phase 2: 選取與歷史責任拆分（`selection.js`、`history.js`）
+   - Phase 3: UI Controller 漸進拆分（`audit-ui.js`、`modal-ui.js`、`photo-grid-ui.js`）
+   - Phase 4: 匯出模組隔離（`docx-exporter.js`、`pdf-exporter.js`、`excel-exporter.js`）
+4. 在 `00_home/IMPROVEMENTS.md` 建立專案計畫索引與目前狀態記錄。
 
 ## 刻意未修改
-- Word / PDF / Excel 匯出核心邏輯（`exportDocx`、`exportPdf`、`exportExcel`）完全未動
-- Word / PDF / Excel 正式版型與尺寸完全未動
-- Undo / Redo 資料歷史簽名邏輯保持安全
-- Tauri 雙模式架構與設定完全未動
-- 演算法邊界：未引入圖片 Hash，維持依檔名比對
+- **本輪完全未修改任何功能程式碼**（`index.html`、JS、CSS、Tauri 設定、各 Exporter 模組皆保持原樣）。
+- 尚未開始 Phase 0 或 Phase 1 之程式碼抽離。
 
 ## 尚未完成
-- 無（4 項已確認缺陷均已修復）
+- Phase 0：建立／確認拆分前回歸基準（待下一個任務決定啟動時執行）。
 
 ## 驗證結果
 ### 已執行
-1. JavaScript 語法檢查（Node.js `new Function()` 檢驗 6 個 script 區塊）：全部通過（Block 0-5: OK）。
-2. 日期與時間驗證單元測試（Node.js）：
-   - `113/08/26`、`1130826` -> 合法
-   - `113/02/29` (民國113年為西元2024閏年) -> 合法
-   - `114/02/29` (民國114年為西元2025平年) -> 正確判定非法
-   - `113/13/01` (月份非法) -> 正確判定非法
-   - `113/04/31` (小月31日) -> 正確判定非法
-   - `14:30`、`14:30:15`、`1430`、`143015` -> 合法
-   - `24:00`、`12:60`、`12:30:60` -> 正確判定非法
-3. `scripts/prepare-web.ps1`：執行成功（Done in 475ms，Local frontend assets updated）。
-4. `scripts/qa.ps1`：共用 QA 通過（exit code 0）。
-5. `git diff` 審查：確認僅修改 `index.html` 相關之 4 項缺陷，exporter 模組無任何異動。
+1. 文件完整度檢核：`MODULARIZATION_PLAN.md` 包含背景痛點、KPI、鐵律、Phase 0~4 路線圖、`app.js` 定位與停止治理。
+2. 治理衝突檢核：`MODULARIZATION_PLAN.md` 嚴格遵循全域憲法 v8.3 與專案 `AGENTS.md`，無任何架構衝突。
+3. `git diff` 審查：確認本專案僅新增 `MODULARIZATION_PLAN.md` 與更新 `HANDOFF.md`，零代碼異動。
 
 ### 尚未驗證
-- 實際於 WebView2 桌面封裝程式執行點擊（已於純網頁環境完成語法與 QA 檢驗）
+- 無（本輪純文件治理）。
 
 ### 已知風險
-- 無阻斷性風險
+- 無。
 
 ## Git 狀態
-- Commit：`cdee1e8`
-- Push：是
-- Working Tree：Clean
+- Commit：未提交（待提交）
+- Push：否
+- Working Tree：Modified (HANDOFF.md, MODULARIZATION_PLAN.md)
 - Branch：main
 
 ## 下一步
-本輪已完全結束，靜態工作台與匯出前完整度稽核已可正式交付使用。
+下一次若決定開始：
+- Phase 0：建立／確認拆分前回歸基準。
+（不急於立即啟動，依實際維護需要決定是否展開 Phase 0）。
