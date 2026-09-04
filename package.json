@@ -1,6 +1,9 @@
 {
   "name": "photo-report-generator",
   "version": "2.2.1",
+  "scripts": {
+    "test": "node tests/run-all-unit.js"
+  },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.4"
   },
