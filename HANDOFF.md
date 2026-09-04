@@ -1,53 +1,50 @@
 # HANDOFF
 
 ## 目前狀態
-可交付（Phase 0 完成，Phase 1 尚未開始）
+可交付（Phase 0 自動化基準建設進行中，未進 Phase 1）
 
 ## 本輪目標
-執行 Phase 0：建立既有正常版本的回歸檢驗基準與功能矩陣，不開始拆分任何程式碼，確認後即停止。
+將 Phase 0 由傳統人工逐項驗收轉型為「自動化回歸測試基礎建設」，建立純邏輯單元測試、Playwright E2E、匯出結構 Golden Baseline，將人工驗收集中至全案完成後進行單次視覺與手感審查。
 
 ## 已完成
-1. 建立 [`REGRESSION_BASELINE.md`](file:///C:/Development/GitHub/04_Photo-Report-Generator/REGRESSION_BASELINE.md)（Phase 0 回歸基準手冊），完整涵蓋 7 大核心驗收領域：
-   - 自動化檢驗基準（JS 語法檢驗、`prepare-web.ps1` 構建、`qa.ps1` 離線資安檢核）。
-   - 照片載入與 Object URL 記憶體控制（單檔、多檔、資料夾、`revokeObjectURL` 釋放）。
-   - 資料編輯與遮罩行為（民國日期合法性、時間格式與範圍、檔名解析、向下填滿）。
-   - 完整度工作台與篩選列（即時徽章同步、唯讀過濾不改資料、單一事件來源、同名照片比對）。
-   - 畫布互動、多選與排序手感（Ctrl/Shift/Marquee 選取、方向鍵導航、指示線拖曳排序）。
-   - Undo / Redo 資料防護（純資料快照復原、UI 視圖狀態不進歷史）。
-   - 公務清冊匯出（Word 三大公務版型精確尺寸、PDF 等比繪製、Excel 匯出入、ZIP 打包、匯出前非阻斷提醒彈窗）。
-   - 雙模式執行相容性（純 Web 離線模式、Tauri 桌面模式）。
-2. 執行自動化基準檢核驗證通過：
-   - Node.js script 語法檢驗：Block 0~5 全部 OK。
-   - `scripts/prepare-web.ps1`：成功生成 `web/index.html` 與離線資產。
-   - `scripts/qa.ps1`：通過無違規（exit code 0）。
+1. 重構 [`REGRESSION_BASELINE.md`](file:///C:/Development/GitHub/04_Photo-Report-Generator/REGRESSION_BASELINE.md)，確立四層自動化防線：
+   - 第一層：純邏輯 100% 自動化（`tests/unit/`：日期、時間、稽核、歷史簽名）。
+   - 第二層：Web UI 自動化（`tests/e2e/photo-report.spec.js`：Playwright 模擬載入、篩選、Modal、Badge）。
+   - 第三層：匯出結構 Golden Baseline（`tests/baseline/`：DOCX XML、Excel 欄位、PDF 結構比對）。
+   - 第四層：Tauri Smoke Test 與最終全模組化完成後之單次人工視覺驗收。
+2. 同步更新 [`MODULARIZATION_PLAN.md`](file:///C:/Development/GitHub/04_Photo-Report-Generator/MODULARIZATION_PLAN.md) Phase 0 定義為 Phase 0A～0C 漸進自動化測試建設。
+3. 確認全域 Playwright CLI (v1.62.1) 與 Node API 就緒。
 
 ## 刻意未修改
-- **完全未變動任何功能代碼**（`index.html`、JS、CSS、Tauri 設定皆保持原樣）。
-- 尚未開始 Phase 1 之程式碼抽離。
+- **零功能代碼改動**：`index.html`、JS、CSS、Tauri 設定皆保持原樣。
+- 嚴格維持「Phase 0 未全部自動化前，不啟動 Phase 1」之邊界。
 
 ## 尚未完成
-- Phase 1：低風險純邏輯拆分（`validation.js`、`audit.js`），待後續指示啟動。
+- Phase 0A：撰寫 `tests/unit/`（validation、audit、history 單元測試）與 fixture 準備。
+- Phase 0B：撰寫 `tests/e2e/photo-report.spec.js`。
+- Phase 0C：建立 DOCX/PDF/Excel Golden 結構比對基準。
 
 ## 驗證結果
 ### 已執行
 1. JS 語法檢查：Node.js 檢驗 6 個 script 區塊全數通過。
 2. 前端構建腳本：`scripts/prepare-web.ps1` 執行成功（Done in 814ms）。
 3. 離線 QA 檢驗：`scripts/qa.ps1` 執行成功（exit code 0）。
-4. `git diff` 審查：確認僅新增 `REGRESSION_BASELINE.md` 與更新 `HANDOFF.md`，零功能程式碼異動。
+4. 自動化環境探測：Playwright v1.62.1、Node.js v24.19.0 可用。
 
 ### 尚未驗證
-- 無（本輪為基準建立與自動化驗證）。
+- Phase 0A～0C 自動測試腳本執行（待撰寫測試套件）。
 
 ### 已知風險
 - 無阻斷性風險。
 
 ## Git 狀態
-- Commit：`1fa54ba`
-- Push：是
-- Working Tree：Clean
+- Commit：未提交（待提交）
+- Push：否
+- Working Tree：Modified (HANDOFF.md, MODULARIZATION_PLAN.md, REGRESSION_BASELINE.md)
 - Branch：main
 
 ## 下一步
-下一次若決定開始：
-- Phase 1：抽離低風險純邏輯模組（`validation.js`、`audit.js`）。
-（對照 `REGRESSION_BASELINE.md` 執行功能不變之回歸檢驗）。
+依序落實 Phase 0 自動化防線：
+1. **Phase 0A**：建立 `tests/fixtures/` 與 `tests/unit/`（Node.js 純邏輯測試）。
+2. **Phase 0B**：建立 `tests/e2e/`（Playwright UI 測試）。
+3. **Phase 0C**：建立 `tests/baseline/`（匯出結構比對）。

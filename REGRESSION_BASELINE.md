@@ -1,75 +1,113 @@
-# Phase 0 回歸基準手冊 (Regression Baseline Matrix)
+# Phase 0 自動化回歸基準與測試基礎建設 (Automated Regression Baseline)
 
 > **定位與原則**：
-> 本文件記錄 `04_Photo-Report-Generator` 在啟動漸進模組化（Phase 1～4）前的既有正常功能基準與標準驗收操作指引。
-> 任何模組化階段（抽離 `validation.js`、`audit.js`、`selection.js`、`history.js`、UI Controller 或 Exporter）完成後，均須對照本矩陣執行回歸檢驗，確認功能行爲 100% 保持一致。
+> 本文件記錄 `04_Photo-Report-Generator` 在啟動漸進模組化（Phase 1～4）前的**自動化回歸測試基礎建設**與**回歸基準矩陣**。
+> 核心策略：**自動化測試管「資料與結構對不對」，最終人工驗收管「視覺版型與操作手感」**。
+> 各 Phase（抽離 `validation.js`、`audit.js`、`selection.js`、`history.js`、UI Controller、Exporter）完成後，均須執行自動化回歸測試，確認行為零偏差。
 
 ---
 
-## 一、驗證工具與自動化檢測基準
+## 一、回歸測試四層防線架構
 
-| 項目 | 檢驗指令／方式 | 預期基準結果 | 說明 |
-| :--- | :--- | :--- | :--- |
-| **JS 語法檢驗** | `node -e 'const fs = require("fs"); const html = fs.readFileSync("index.html", "utf8"); const scripts = [...html.matchAll(/<script[\s\S]*?>([\s\S]*?)<\/script>/gi)]; scripts.forEach((m, idx) => { new Function(m[1]); console.log("Block " + idx + ": OK"); });'` | 全部區塊輸出 `OK` (Block 0~5) | 確保 ES 語法無任何解析錯誤 |
-| **資源同步構建** | `powershell -ExecutionPolicy Bypass -File scripts\prepare-web.ps1` | `Done in ~500ms.`<br>`Local frontend assets updated.` | 確保 `web/index.html` 與離線 `vendor/` 依賴同步就緒 |
-| **離線安全與資安** | `powershell -ExecutionPolicy Bypass -File scripts\qa.ps1` | `共用 QA 通過；請再依 README 執行本專案專屬測試。` (Exit code 0) | 檢查無機敏值洩漏、無不符格式之 Git 差異 |
+```text
+tests/
+├─ fixtures/               # 固定測試圖檔與預設案件資料 (sample01.jpg, sample02.jpg...)
+├─ unit/                   # 1. 純邏輯自動化測試 (Node.js 100% 自動化)
+│  ├─ validation.test.js   # 民國日期、時間格式合法性檢驗
+│  ├─ audit.test.js        # 完整度稽核、同名照片計算、問題過濾
+│  └─ history.test.js      # 快照簽名、Undo/Redo 狀態不污染檢驗
+├─ e2e/                    # 2. Web UI 自動化測試 (Playwright 模擬真實操作)
+│  └─ photo-report.spec.js # 載入、篩選列、Badge 同步、Modal 切換、快捷鍵
+└─ baseline/               # 3. 匯出結構 Golden Baseline (DOCX, PDF, Excel 結構比對)
+   ├─ docx-structure.json  # 表格行列數、欄寬、單元格結構
+   ├─ excel-data.json      # 工作表欄位、標題、資料筆數比對
+   └─ pdf-metadata.json    # 頁數、版面方向與文字分佈
+```
 
 ---
 
-## 二、功能驗收基準矩陣 (Functional Baseline Checklist)
+## 二、第一層防線：純邏輯 100% 自動化 (Unit Tests)
 
-### 1. 照片載入與記憶體控制
-- [ ] **多檔加入**：透過檔案選取或拖曳多張 JPG/PNG 至工作區，卡片依檔名自然排序正確載入。
-- [ ] **資料夾加入**：透過「加入資料夾」按鈕選取目錄，批次遞迴讀取照片。
-- [ ] **記憶體釋放**：點擊個別照片刪除或「全部清除」時，確實執行 `URL.revokeObjectURL` 釋放記憶體，避免瀏覽器頁籤記憶體洩漏。
+- **執行工具**：Node.js (原生斷言庫，零額外相依套件負擔)
+- **測試標的**：
+  1. **`validation.test.js`**：
+     - 民國日期合法性：7 碼數字、閏年判斷（民國 113 年 2 月有 29 日，民國 114 年無 29 日）、大小月、非數字過濾。
+     - 時間合法性：4 碼 (HH:MM)、6 碼 (HH:MM:SS)、時分秒範圍 (0-23, 0-59, 0-59)。
+  2. **`audit.test.js`**：
+     - 同名照片集合計算：`_buildDupSet()` 在多組重複與不重複檔名下的精確 Set 判定。
+     - 完整度統計：缺失地點、缺失說明、時間異常、同名照片之精確統計與首要過濾器指標。
+     - 唯讀性驗證：確認呼叫 `auditPhotosCompleteness()` 前後，照片陣列物件未被新增、刪除或修改。
+  3. **`history.test.js`**：
+     - 快照簽名比對：確認 `historySignature()` 僅擷取純資料欄位（`uid`, `seq`, `date`, `time`, `location`, `desc`, `stageX`, `stageY`）。
+     - 視圖隔離驗證：確認切換 `activeFilter` 或縮放比例時，歷史特徵簽名維持不變。
 
-### 2. 資料編輯與遮罩行為
-- [ ] **民國日期遮罩 (`caseDate`, `editDate`)**：
-  - 輸入 7 碼數字（例：`1130826`）自動格式化為 `113/08/26`。
-  - 非法格式（如 `113/13/01`、`114/02/29` 平年無29日、位數不足）正確由稽核標記。
-- [ ] **採證時間遮罩 (`editTime`)**：
-  - 輸入 4 碼（`1430` → `14:30`）或 6 碼（`143015` → `14:30:15`）。
-  - 非法數值（如 `24:00`、`12:60`）正確標記為時間異常。
-- [ ] **解析檔名時間**：點擊「解析檔名時間」，支援自動提取 `YYYYMMDD_HHMMSS`、`Screenshot_...` 等格式為照片時間。
-- [ ] **向下填滿**：點擊「向下填滿」可將第一筆或當前選取之日期、時間、地點批次覆蓋後續照片。
+---
 
-### 3. 完整度工作台與篩選列
-- [ ] **即時徽章同步**：篩選列（全部 / 未填地點 / 未填說明 / 日期時間待確認 / 同名照片）隨編輯與載入即時更新問題張數。
-- [ ] **視圖過濾**：點擊各篩選按鈕僅顯示符合條件的照片，**絕不異動 `photos` 原始陣列資料**。
-- [ ] **單次點擊事件**：點擊篩選按鈕僅觸發一次過濾與渲染，無雙重事件。
-- [ ] **同名照片比對**：檔名相同之照片正確標記於「同名照片」類別。
+## 三、第二層防線：Web UI 自動化 (Playwright E2E)
 
-### 4. 畫布互動、多選與排序手感
-- [ ] **選取模式**：
-  - 單擊選取單張。
-  - `Ctrl + 點擊`：切換複選狀態。
-  - `Shift + 點擊`：連續範圍選取。
-  - 空白處拖曳：Marquee 框選範圍內照片。
-  - `Ctrl + A`：全選 / 取消全選。
-- [ ] **鍵盤移動與排序**：
-  - 鍵盤方向鍵（← → ↑ ↓）：在目前可見照片中精確導航。
-  - `Ctrl + Home / End`：將已選照片直接移至首張或末張。
-- [ ] **拖曳排序**：
-  - 卡片拖曳時顯示插入指示線，放開後自動重排流水號（`seq`）。
-  - 多選整組拖曳位移保持相對順序。
+- **執行工具**：Playwright (Chromium / Edge WebView2 核心)
+- **測試標的**：
+  1. **照片載入與 DOM 生成**：自動上傳 fixture 照片，驗證縮圖卡片正確出現在畫布。
+  2. **完整度篩選列與 Badge 同步**：
+     - 檢查「全部 / 未填地點 / 未填說明 / 日期時間待確認 / 同名照片」徽章數字。
+     - 點擊「同名照片」篩選按鈕，驗證畫布卡片顯示數量等於同名照片數。
+     - 點擊「全部」恢復顯示全部照片。
+  3. **匯出前非阻斷提醒 Modal**：
+     - 在照片有缺失資料時觸發匯出按鈕（Word / PDF / Excel）。
+     - 斷言 `#exportAuditModal` 移除 `hidden` 類別。
+     - 斷言標題文字包含對應匯出清冊名稱（如 `匯出前確認（Word 清冊）`）。
+     - 測試點擊「查看問題照片」：Modal 自動關閉，且篩選列自動切換至首個問題分類。
+     - 測試點擊「仍要匯出」：暫存之匯出回呼動作正確執行。
+  4. **鍵盤導航與單次事件**：
+     - 驗證點擊篩選按鈕無重複呼叫（單一事件來源）。
+     - 驗證篩選模式下鍵盤導航僅在可見照片間切換焦點。
 
-### 5. Undo / Redo 資料防護
-- [ ] **資料狀態歷程**：新增照片、旋轉、修改文字、拖曳排序、向下填滿後，`Ctrl + Z`（復原）與 `Ctrl + Y`（重做）皆能精確復原資料。
-- [ ] **UI 狀態不進歷史**：切換篩選分類、調整縮放比例、開啟/關閉 Modal **不產生 Undo 歷史步驟**，復原時維持目前視圖。
+---
 
-### 6. 公務清冊匯出與非阻斷確認
-- [ ] **匯出前非阻斷提醒彈窗 (`#exportAuditModal`)**：
-  - 若照片有未填地點、未填說明、時間異常或同名照片，點擊 Word/PDF/Excel 匯出時自動彈出提示彈窗。
-  - 彈窗標題正確動態顯示：`匯出前確認（Word 清冊）` / `匯出前確認（PDF 清冊）` / `匯出前確認（Excel 清冊）`。
-  - 點擊「查看問題照片」：自動關閉彈窗並切換至首個問題篩選類別。
-  - 點擊「仍要匯出」：關閉彈窗並繼續原本之匯出流程。
-- [ ] **Word (`.docx`) 匯出**：
-  - 支援三大經典版型：`A4 直式上下兩張`、`A4 直式雙欄左右兩張`、`A4 橫式三欄三張`。
-  - 表格尺寸（8302 dxa）、段落固定行高（5 點）、圖片邊界比例精確吻合官方公務標準。
-- [ ] **PDF 匯出**：jsPDF Canvas 等比縮放繪製，文字清晰置中，分頁正確。
-- [ ] **Excel 清冊**：產出案件基本資料與照片序號、日期、時間、地點、說明清單；支援 Excel 修改後匯入回填。
-- [ ] **ZIP 原圖封裝**：支援將原始照片依流水號重新命名打包匯出。
+## 四、第三層防線：匯出內容與結構 Golden Baseline
 
-### 7. 雙模式執行相容性
-- [ ] **純 Web 模式**：直接以瀏覽器雙擊開啟 `index.html`，所有功能 100% 離線正常執行（無任何 CDN 網路請求）。
-- [ ] **Tauri 桌面模式**：經由 `scripts/prepare-web.ps1` 產出 `web/`，供 Tauri 封裝執行。
+- **核心原則**：不只驗證「檔案有產出」，而是將產出檔案解構為資料結構，與 Baseline 進行精準 Diff 比對。
+- **比對機制**：
+  1. **Word (`.docx`)**：
+     - 將產出的 `.docx`（ZIP 格式）解壓縮，解析內部 `word/document.xml`。
+     - 比對 XML 中的 `<w:tbl>` 表格數量、欄列數、欄寬（如標準 8302 dxa）、儲存格文字與圖片項目。
+  2. **Excel (`.xlsx`)**：
+     - 使用現有 `xlsx` 工具讀取產出之活頁簿。
+     - 驗證工作表名稱、標題欄位（案由、日期、地點、序號、說明）與資料筆數。
+  3. **PDF (`.pdf`)**：
+     - 驗證輸出二進位結構、頁數、頁面寬高比例（直式 A4 與橫式 A4）。
+
+---
+
+## 五、第四層防線：Tauri Smoke Test 與最終人工視覺驗收
+
+### 1. 各 Phase 的 Tauri Smoke Test
+在模組化推進期間，各 Phase 僅執行：
+- 檢查 `scripts/prepare-web.ps1` 是否成功產出 `web/`。
+- 檢查 `src-tauri/tauri.conf.json` 設定無語法錯誤。
+- 確保無任何破壞 WebView2 載入之 ESM 匯入路徑問題。
+
+### 2. 全部 Phase 完成後之「最終人工視覺驗收」
+人工驗收集中於全案模組化完成後進行**單次全面驗收**，專注於「自動化測試不擅長的體驗細節」：
+- **Word / PDF 視覺版型**：以 Microsoft Word / 閱讀器實際開啟，肉眼檢查公務表格線條、5 點中繼段落行高、標楷體渲染與圖片採證質感。
+- **操作手感**：實際操作拖曳排序時指示線跟隨手感、畫布平滑滾輪縮放、Marquee 框選流暢度。
+- **Tauri 桌面端實裝**：啟動 Windows 獨立 Exe，確認原生視窗縮放與記憶體管理正常。
+
+---
+
+## 六、Phase 0 執行路徑 (Phase 0A ~ 0C)
+
+```text
+Phase 0A｜自動測試基礎建設
+  ├─ 建立 tests/ 目錄架構與 fixtures 測試圖檔
+  ├─ 完成 validation.test.js、audit.test.js、history.test.js
+  └─ npm test 指令整合，確認 100% 通過
+
+Phase 0B｜Web E2E 自動化腳本
+  └─ 完成 Playwright 測試腳本 (photo-report.spec.js) 驗證 UI 流程
+
+Phase 0C｜匯出結構 Golden Baseline
+  └─ 建立固定案例之 DOCX/PDF/Excel 結構基準檔與比對工具
+
+=> 完成 Phase 0 全部自動化基準後，方可解鎖 Phase 1 (抽離 validation.js / audit.js)
+```
