@@ -1,0 +1,34 @@
+{
+  "tableCount": 2,
+  "paragraphCount": 31,
+  "keywords": [
+    {
+      "keyword": "現場勘驗採證案件",
+      "present": true
+    },
+    {
+      "keyword": "113/08/26",
+      "present": true
+    },
+    {
+      "keyword": "現場第一勘驗點",
+      "present": true
+    },
+    {
+      "keyword": "臺南市政府警察局新化分局",
+      "present": false
+    },
+    {
+      "keyword": "巡官梁家豪",
+      "present": true
+    },
+    {
+      "keyword": "第一張跡證說明",
+      "present": true
+    },
+    {
+      "keyword": "第二張跡證說明",
+      "present": true
+    }
+  ]
+}

@@ -3,7 +3,9 @@
   "version": "2.2.1",
   "scripts": {
     "test": "node tests/run-all-unit.js",
-    "test:e2e": "node tests/e2e/photo-report.spec.js"
+    "test:e2e": "node tests/e2e/photo-report.spec.js",
+    "test:baseline": "node tests/run-baseline-test.js",
+    "test:all": "node tests/run-all-unit.js && node tests/e2e/photo-report.spec.js && node tests/run-baseline-test.js"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.4"
