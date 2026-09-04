@@ -670,20 +670,20 @@
                     <span class="text-[11px] font-bold text-[#4B5563] flex items-center gap-1 mr-1">
                         <i class="fa-solid fa-list-check text-[#5B5CE2]"></i> 完整度檢視：
                     </span>
-                    <button type="button" id="filterBtn_all" class="audit-filter-btn active" onclick="window.app.setActiveFilter('all')">
+                    <button type="button" id="filterBtn_all" class="audit-filter-btn active">
                         <span>全部</span> <span id="auditBadge_all" class="audit-filter-badge">0</span>
                     </button>
-                    <button type="button" id="filterBtn_missingLocation" class="audit-filter-btn" onclick="window.app.setActiveFilter('missingLocation')">
+                    <button type="button" id="filterBtn_missingLocation" class="audit-filter-btn">
                         <i class="fa-solid fa-location-dot text-amber-500 text-[10px]"></i> <span>未填地點</span> <span id="auditBadge_missingLocation" class="audit-filter-badge">0</span>
                     </button>
-                    <button type="button" id="filterBtn_missingDesc" class="audit-filter-btn" onclick="window.app.setActiveFilter('missingDesc')">
+                    <button type="button" id="filterBtn_missingDesc" class="audit-filter-btn">
                         <i class="fa-solid fa-align-left text-amber-500 text-[10px]"></i> <span>未填說明</span> <span id="auditBadge_missingDesc" class="audit-filter-badge">0</span>
                     </button>
-                    <button type="button" id="filterBtn_invalidDateTime" class="audit-filter-btn" onclick="window.app.setActiveFilter('invalidDateTime')">
+                    <button type="button" id="filterBtn_invalidDateTime" class="audit-filter-btn">
                         <i class="fa-regular fa-clock text-amber-500 text-[10px]"></i> <span>日期時間待確認</span> <span id="auditBadge_invalidDateTime" class="audit-filter-badge">0</span>
                     </button>
-                    <button type="button" id="filterBtn_duplicatePhotos" class="audit-filter-btn" onclick="window.app.setActiveFilter('duplicatePhotos')">
-                        <i class="fa-solid fa-copy text-amber-500 text-[10px]"></i> <span>疑似重複</span> <span id="auditBadge_duplicatePhotos" class="audit-filter-badge">0</span>
+                    <button type="button" id="filterBtn_duplicatePhotos" class="audit-filter-btn">
+                        <i class="fa-solid fa-copy text-amber-500 text-[10px]"></i> <span>同名照片</span> <span id="auditBadge_duplicatePhotos" class="audit-filter-badge">0</span>
                     </button>
                 </div>
                 <div id="filterNoticeText" class="text-[11px] text-[#6B7280] hidden sm:flex items-center gap-1">
@@ -1168,6 +1168,7 @@
 
                 // 匯出前非阻斷提醒彈窗
                 this.exportAuditModal = document.getElementById('exportAuditModal');
+                this.exportAuditModalTitle = document.getElementById('exportAuditModalTitle');
                 this.exportAuditList = document.getElementById('exportAuditList');
                 this.btnAuditViewIssues = document.getElementById('btnAuditViewIssues');
                 this.btnAuditProceedExport = document.getElementById('btnAuditProceedExport');
@@ -1437,8 +1438,8 @@
                         case 'invalidDateTime': {
                             const d = photo.date?.trim() || '';
                             const t = photo.time?.trim() || '';
-                            const dateInvalid = d && (d.replace(/\//g, '').length < 6);
-                            const timeInvalid = !t;
+                            const dateInvalid = d ? !this.isValidMinguoDate(d) : false;
+                            const timeInvalid = !this.isValidTimeFormat(t);
                             return dateInvalid || timeInvalid;
                         }
                         case 'duplicatePhotos': {
@@ -1935,6 +1936,50 @@
                 if (digits.length > 3) result += '/' + digits.slice(3, 5);
                 if (digits.length > 5) result += '/' + digits.slice(5, 7);
                 return result;
+            }
+
+            // ── 日期與時間格式合法性驗證（遵循專案既有民國格式與時間範圍）────
+            isValidMinguoDate(raw) {
+                if (!raw || typeof raw !== 'string') return false;
+                const digits = raw.replace(/[^0-9]/g, '');
+                if (digits.length !== 7) return false;
+                const year = parseInt(digits.slice(0, 3), 10);
+                const month = parseInt(digits.slice(3, 5), 10);
+                const day = parseInt(digits.slice(5, 7), 10);
+
+                if (year < 1 || year > 999) return false;
+                if (month < 1 || month > 12) return false;
+
+                const daysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+                const adYear = year + 1911;
+                const isLeap = (adYear % 4 === 0 && adYear % 100 !== 0) || (adYear % 400 === 0);
+                const maxDay = (month === 2 && isLeap) ? 29 : daysInMonth[month - 1];
+
+                return day >= 1 && day <= maxDay;
+            }
+
+            isValidTimeFormat(raw) {
+                if (!raw || typeof raw !== 'string') return false;
+                const trimmed = raw.trim();
+                let h, m, s = 0;
+                if (/^\d{2}:\d{2}$/.test(trimmed)) {
+                    [h, m] = trimmed.split(':').map(Number);
+                } else if (/^\d{2}:\d{2}:\d{2}$/.test(trimmed)) {
+                    [h, m, s] = trimmed.split(':').map(Number);
+                } else {
+                    const digits = trimmed.replace(/[^0-9]/g, '');
+                    if (digits.length === 4) {
+                        h = parseInt(digits.slice(0, 2), 10);
+                        m = parseInt(digits.slice(2, 4), 10);
+                    } else if (digits.length === 6) {
+                        h = parseInt(digits.slice(0, 2), 10);
+                        m = parseInt(digits.slice(2, 4), 10);
+                        s = parseInt(digits.slice(4, 6), 10);
+                    } else {
+                        return false;
+                    }
+                }
+                return h >= 0 && h <= 23 && m >= 0 && m <= 59 && s >= 0 && s <= 59;
             }
 
             // ── 計算目前畫布的欄數（用於 Ctrl+↑↓ 整列移動）────
@@ -3161,7 +3206,9 @@
                     if (!photo.desc?.trim()) missingDesc++;
                     const d = photo.date?.trim() || '';
                     const t = photo.time?.trim() || '';
-                    if ((d && d.replace(/\//g, '').length < 6) || !t) invalidDateTime++;
+                    const dateInvalid = d ? !this.isValidMinguoDate(d) : false;
+                    const timeInvalid = !this.isValidTimeFormat(t);
+                    if (dateInvalid || timeInvalid) invalidDateTime++;
                     if (this._dupSet.has(photo.name)) duplicatePhotos++;
                 });
 
@@ -3245,7 +3292,7 @@
                             missingLocation: '未填地點',
                             missingDesc: '未填說明',
                             invalidDateTime: '時間異常',
-                            duplicatePhotos: '疑似重複',
+                            duplicatePhotos: '同名照片',
                         };
                         const label = labels[this.activeFilter] || '';
                         const count = this.getVisiblePhotoIndices().length;
@@ -3274,11 +3321,11 @@
                     if (audit.missingDesc > 0) items.push(`未填說明：${audit.missingDesc} 張`);
                     if (audit.missingLocation > 0) items.push(`未填地點：${audit.missingLocation} 張`);
                     if (audit.invalidDateTime > 0) items.push(`時間異常：${audit.invalidDateTime} 張`);
-                    if (audit.duplicatePhotos > 0) items.push(`疑似重複：${audit.duplicatePhotos} 張`);
+                    if (audit.duplicatePhotos > 0) items.push(`同名照片：${audit.duplicatePhotos} 張`);
                     this.exportAuditList.innerHTML = items.map(t => `<li>${t}</li>`).join('');
                 }
-                // 更新彈窗標題（若有 title span）
-                const titleEl = this.exportAuditModal?.querySelector('#exportAuditTitle');
+                // 更新彈窗標題
+                const titleEl = this.exportAuditModalTitle || this.exportAuditModal?.querySelector('#exportAuditModalTitle') || this.exportAuditModal?.querySelector('#exportAuditTitle');
                 if (titleEl) titleEl.textContent = `匯出前確認（${title}）`;
                 this.exportAuditModal?.classList.remove('hidden');
             }
