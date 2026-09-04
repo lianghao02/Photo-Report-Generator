@@ -1054,9 +1054,11 @@
         </div>
     </div>
 
-    <!-- 模組化純邏輯抽離 (Phase 1) -->
+    <!-- 模組化純邏輯抽離 (Phase 1 & Phase 2) -->
     <script src="js/validation.js"></script>
     <script src="js/audit.js"></script>
+    <script src="js/selection.js"></script>
+    <script src="js/history.js"></script>
 
     <!-- 核心應用程式邏輯 -->
     <script>
@@ -1428,11 +1430,14 @@
             }
 
             getVisiblePhotoIndices() {
+                if (typeof PhotoReportSelection !== 'undefined') {
+                    const globalLocation = document.getElementById('defaultLocation')?.value?.trim() || '';
+                    if (!this._dupSet && this.activeFilter === 'duplicatePhotos') this._buildDupSet();
+                    return PhotoReportSelection.getVisiblePhotoIndices(this.photos, this.activeFilter, globalLocation, this._dupSet);
+                }
                 const all = this.photos.map((photo, index) => ({ photo, index }));
                 if (this.activeFilter === 'all') return all;
-
                 const globalLocation = document.getElementById('defaultLocation')?.value?.trim() || '';
-
                 return all.filter(({ photo }) => {
                     switch (this.activeFilter) {
                         case 'missingLocation':
@@ -1447,7 +1452,6 @@
                             return dateInvalid || timeInvalid;
                         }
                         case 'duplicatePhotos': {
-                            // 依檔名計算重複組，標記屬於重複組的照片
                             if (!this._dupSet) this._buildDupSet();
                             return this._dupSet.has(photo.name);
                         }
@@ -2079,6 +2083,9 @@
             }
 
             historySignature(state) {
+                if (typeof PhotoReportHistory !== 'undefined') {
+                    return PhotoReportHistory.historySignature(state);
+                }
                 return JSON.stringify({
                     caseData: state.caseData,
                     currentIndex: state.currentIndex,
@@ -2120,6 +2127,9 @@
             }
 
             projectSignature() {
+                if (typeof PhotoReportHistory !== 'undefined') {
+                    return PhotoReportHistory.projectSignature(this.getCaseData(), this.photos);
+                }
                 return JSON.stringify({
                     caseData: this.getCaseData(),
                     photos: this.photos.map(({ uid, rotation, seq, date, time, location, desc, stageX, stageY }) =>
@@ -2867,6 +2877,9 @@
             }
 
             getSelectedIndicesOrCurrent() {
+                if (typeof PhotoReportSelection !== 'undefined') {
+                    return PhotoReportSelection.getSelectedIndicesOrCurrent(this.photos, this.currentIndex);
+                }
                 const selectedIndices = this.photos.map((photo, index) => photo.selected ? index : -1).filter(index => index !== -1);
                 if (selectedIndices.length) return selectedIndices;
                 return this.photos[this.currentIndex] ? [this.currentIndex] : [];
@@ -2877,28 +2890,30 @@
                 const visible = this.getVisiblePhotoIndices();
                 if (!visible.length) return;
 
-                if (this.activeFilter !== 'all') {
-                    // 篩選模式：在可見照片清單中前後移動
+                let nextIndex;
+                if (typeof PhotoReportSelection !== 'undefined') {
+                    nextIndex = PhotoReportSelection.computeKeyboardNavIndex({
+                        totalPhotos: this.photos.length,
+                        currentIndex: this.currentIndex,
+                        delta: delta,
+                        activeFilter: this.activeFilter,
+                        visibleEntries: visible
+                    });
+                } else if (this.activeFilter !== 'all') {
                     const currentPos = visible.findIndex(({ index }) => index === this.currentIndex);
                     const pos = currentPos < 0 ? 0 : currentPos;
                     const nextPos = Math.max(0, Math.min(pos + delta, visible.length - 1));
-                    const nextIndex = visible[nextPos].index;
-                    this.photos.forEach((photo, index) => photo.selected = index === nextIndex);
-                    this.currentIndex = nextIndex;
-                    this.lastSelectedIndex = nextIndex;
-                    this.render();
-                    this.recordHistory('切換目前照片');
-                    document.getElementById(`thumb_${this.photos[nextIndex].uid}`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+                    nextIndex = visible[nextPos].index;
                 } else {
-                    // 全部模式：使用全域索引
-                    const nextIndex = Math.max(0, Math.min(this.currentIndex + delta, this.photos.length - 1));
-                    this.photos.forEach((photo, index) => photo.selected = index === nextIndex);
-                    this.currentIndex = nextIndex;
-                    this.lastSelectedIndex = nextIndex;
-                    this.render();
-                    this.recordHistory('切換目前照片');
-                    document.getElementById(`thumb_${this.photos[nextIndex].uid}`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+                    nextIndex = Math.max(0, Math.min(this.currentIndex + delta, this.photos.length - 1));
                 }
+
+                this.photos.forEach((photo, index) => photo.selected = index === nextIndex);
+                this.currentIndex = nextIndex;
+                this.lastSelectedIndex = nextIndex;
+                this.render();
+                this.recordHistory('切換目前照片');
+                document.getElementById(`thumb_${this.photos[nextIndex].uid}`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
             }
 
             moveSelectedBy(delta) {

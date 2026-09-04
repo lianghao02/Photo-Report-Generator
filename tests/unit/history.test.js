@@ -1,9 +1,10 @@
 const assert = require('assert');
+const { historySignature, projectSignature, HistoryManager } = require('../../js/history');
 const { loadAppMethods } = require('./app-bridge');
 
 const app = loadAppMethods();
 
-console.log('--- 測試 history.test.js ---');
+console.log('--- 測試 history.test.js (包含獨立模組與 App 委派) ---');
 
 // 1. 建立基礎狀態
 const baseState = {
@@ -43,14 +44,22 @@ stateWithUiChange.photos[0].isDragging = true;
 stateWithUiChange.photos[0].tempFilter = 'missing-location';
 stateWithUiChange.photos[0].uiHovered = false;
 
-const sig1 = app.historySignature(baseState);
-const sig2 = app.historySignature(stateWithUiChange);
-
+const sig1Module = historySignature(baseState);
+const sig2Module = historySignature(stateWithUiChange);
 assert.strictEqual(
-    sig1,
-    sig2,
-    '僅更動 UI 暫存屬性 (previewUrl, isDragging, tempFilter, uiHovered) 時，historySignature 必須維持完全一致'
+    sig1Module,
+    sig2Module,
+    '獨立模組：僅更動 UI 暫存屬性時，historySignature 必須維持完全一致'
 );
+
+const sig1App = app.historySignature(baseState);
+const sig2App = app.historySignature(stateWithUiChange);
+assert.strictEqual(
+    sig1App,
+    sig2App,
+    'App 委派：僅更動 UI 暫存屬性時，historySignature 必須維持完全一致'
+);
+assert.strictEqual(sig1App, sig1Module, 'App 委派簽名應與模組導出函式計算結果完全一致');
 
 // 3. 測試：純資料屬性變更時，簽名必須改變
 const dataFieldsToTest = [
@@ -68,9 +77,9 @@ const dataFieldsToTest = [
 dataFieldsToTest.forEach(({ field, value }) => {
     const modifiedState = JSON.parse(JSON.stringify(baseState));
     modifiedState.photos[0][field] = value;
-    const modifiedSig = app.historySignature(modifiedState);
+    const modifiedSig = historySignature(modifiedState);
     assert.notStrictEqual(
-        sig1,
+        sig1Module,
         modifiedSig,
         `當核心資料欄位 [${field}] 改變時，historySignature 必須改變`
     );
@@ -80,8 +89,8 @@ dataFieldsToTest.forEach(({ field, value }) => {
 const stateWithCaseDataChange = JSON.parse(JSON.stringify(baseState));
 stateWithCaseDataChange.caseData.caseNumber = '113-警-002';
 assert.notStrictEqual(
-    sig1,
-    app.historySignature(stateWithCaseDataChange),
+    sig1Module,
+    historySignature(stateWithCaseDataChange),
     '當 caseData 改變時，historySignature 必須改變'
 );
 
@@ -89,16 +98,16 @@ assert.notStrictEqual(
 const stateWithIndexChange = JSON.parse(JSON.stringify(baseState));
 stateWithIndexChange.currentIndex = 1;
 assert.notStrictEqual(
-    sig1,
-    app.historySignature(stateWithIndexChange),
+    sig1Module,
+    historySignature(stateWithIndexChange),
     '當 currentIndex 改變時，historySignature 必須改變'
 );
 
 const stateWithLastSelectedChange = JSON.parse(JSON.stringify(baseState));
 stateWithLastSelectedChange.lastSelectedIndex = 1;
 assert.notStrictEqual(
-    sig1,
-    app.historySignature(stateWithLastSelectedChange),
+    sig1Module,
+    historySignature(stateWithLastSelectedChange),
     '當 lastSelectedIndex 改變時，historySignature 必須改變'
 );
 
@@ -117,9 +126,38 @@ stateWithMorePhotos.photos.push({
     stageY: 0
 });
 assert.notStrictEqual(
-    sig1,
-    app.historySignature(stateWithMorePhotos),
+    sig1Module,
+    historySignature(stateWithMorePhotos),
     '當照片清單長度改變時，historySignature 必須改變'
 );
+
+// 7. 測試 HistoryManager 類別狀態推移與 Undo/Redo
+const manager = new HistoryManager(3);
+assert.strictEqual(manager.canUndo(), false, '初始無步驟時不可 Undo');
+assert.strictEqual(manager.canRedo(), false, '初始無步驟時不可 Redo');
+
+manager.record(baseState);
+assert.strictEqual(manager.canUndo(), false, '只有 1 個初始步驟時不可 Undo');
+assert.strictEqual(manager.canRedo(), false, '只有 1 個步驟時不可 Redo');
+
+// 重複相同狀態不應推入
+const duplicateRecorded = manager.record(stateWithUiChange);
+assert.strictEqual(duplicateRecorded, false, '相同歷史簽名狀態不應重複推入堆疊');
+
+// 推入第 2 個不同狀態
+manager.record(stateWithCaseDataChange);
+assert.strictEqual(manager.canUndo(), true, '有 2 個不同步驟時應可 Undo');
+assert.strictEqual(manager.canRedo(), false, '處於最新步驟時不可 Redo');
+
+// 執行 Undo
+const undoneState = manager.undo();
+assert.strictEqual(historySignature(undoneState), sig1Module, 'Undo 應回到初始狀態');
+assert.strictEqual(manager.canUndo(), false, '回到初始步驟時不可再 Undo');
+assert.strictEqual(manager.canRedo(), true, 'Undo 後應可 Redo');
+
+// 執行 Redo
+const redoneState = manager.redo();
+assert.strictEqual(historySignature(redoneState), historySignature(stateWithCaseDataChange), 'Redo 應回到最新狀態');
+assert.strictEqual(manager.canRedo(), false, 'Redo 後無後續步驟，不可再 Redo');
 
 console.log('✅ history.test.js 全部斷言通過！');
