@@ -2,20 +2,7 @@ const path = require('path');
 const fs = require('fs');
 const assert = require('assert');
 
-// 優先載入全域 Playwright 或本機 Playwright
-let playwright;
-try {
-    playwright = require('playwright');
-} catch (e) {
-    try {
-        playwright = require('C:/Users/tpc09/AppData/Roaming/npm/node_modules/playwright');
-    } catch (err) {
-        console.error('無法載入 Playwright 模組:', err.message);
-        process.exit(1);
-    }
-}
-
-const { chromium } = playwright;
+const { chromium } = require('playwright');
 
 async function runBaselineTests() {
     console.log('========================================');

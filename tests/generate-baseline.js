@@ -1,10 +1,10 @@
-const playwright = require('C:/Users/tpc09/AppData/Roaming/npm/node_modules/playwright');
+const { chromium } = require('playwright');
 const path = require('path');
 const fs = require('fs');
 
 (async () => {
     console.log('正在為 Phase 0C 產生 Golden Baseline 基準檔...');
-    const browser = await playwright.chromium.launch();
+    const browser = await chromium.launch();
     const page = await browser.newPage();
     const htmlPath = path.resolve('index.html');
     await page.goto('file:///' + htmlPath.replace(/\\/g, '/'));

@@ -8,7 +8,8 @@
     "test:all": "node tests/run-all-unit.js && node tests/e2e/photo-report.spec.js && node tests/run-baseline-test.js"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.11.4"
+    "@tauri-apps/cli": "^2.11.4",
+    "playwright": "^1.62.1"
   },
   "dependencies": {
     "@fortawesome/fontawesome-free": "^6.4.0",
