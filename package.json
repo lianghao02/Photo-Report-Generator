@@ -5,7 +5,8 @@
     "test": "node tests/run-all-unit.js",
     "test:e2e": "node tests/e2e/photo-report.spec.js",
     "test:baseline": "node tests/run-baseline-test.js",
-    "test:all": "node tests/run-all-unit.js && node tests/e2e/photo-report.spec.js && node tests/run-baseline-test.js"
+    "test:all": "node tests/run-all-unit.js && node tests/e2e/photo-report.spec.js && node tests/run-baseline-test.js",
+    "setup:test": "playwright install chromium"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.4",

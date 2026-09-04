@@ -10,6 +10,7 @@
 ## 已完成
 1. **依賴管理與跨電腦測試可攜性修正**：
    - 將 `playwright` 註冊至 `package.json` 之 `devDependencies`。
+   - 新增 `npm run setup:test` 指令（`playwright install chromium`），提供新電腦一鍵安裝輕量 Chromium binary 之標準化流程。
    - 重構 [`tests/e2e/photo-report.spec.js`](file:///C:/Development/GitHub/04_Photo-Report-Generator/tests/e2e/photo-report.spec.js)、[`tests/run-baseline-test.js`](file:///C:/Development/GitHub/04_Photo-Report-Generator/tests/run-baseline-test.js) 與 [`tests/generate-baseline.js`](file:///C:/Development/GitHub/04_Photo-Report-Generator/tests/generate-baseline.js)，全面改用標準 `const { chromium } = require('playwright');`，移除所有 `C:/Users/...` 硬編碼路徑。
 2. **Phase 1～4 模組化成果維持完備**：
    - 純邏輯層：`js/validation.js`、`js/audit.js`。
@@ -31,8 +32,9 @@
    - Phase 0A 單元測試：4/4 套件通過（`validation`, `audit`, `history`, `selection`）。
    - Phase 0B E2E 測試：5/5 流程通過（標準 Playwright 無硬編碼路徑載入，涵蓋 UI 篩選與匯出 Modal 互動）。
    - Phase 0C Golden Baseline：3/3 格式完全吻合（Word XML 表格與關鍵字、Excel 欄位資料行、PDF 頁數/尺寸）。
-2. **前端資產打包構建通過**：`powershell -ExecutionPolicy Bypass -File scripts\prepare-web.ps1`（`web/js/` 各模組正常同步）。
-3. **共用 QA 檢驗通過**：`powershell -ExecutionPolicy Bypass -File scripts\qa.ps1`（exit code 0）。
+2. **Playwright 瀏覽器初次安裝驗證**：`npm run setup:test` 執行成功（Chromium binary 就緒）。
+3. **前端資產打包構建通過**：`powershell -ExecutionPolicy Bypass -File scripts\prepare-web.ps1`（`web/js/` 各模組正常同步）。
+4. **共用 QA 檢驗通過**：`powershell -ExecutionPolicy Bypass -File scripts\qa.ps1`（exit code 0）。
 
 ### 尚未驗證
 - **Tauri 桌面端實體手感驗收**：資產已建置相容，但尚未於桌面端視窗手動操作驗收。
@@ -48,5 +50,5 @@
 - Branch：main
 
 ## 下一步
-1. 提交 Playwright 依賴修正。
+1. 提交 `setup:test` 腳本與 HANDOFF 更新。
 2. 進行最終人工肉眼視覺與桌面端手感驗收。
