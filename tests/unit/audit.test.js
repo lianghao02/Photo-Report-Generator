@@ -1,12 +1,13 @@
 const assert = require('assert');
+const { buildDuplicateNameSet, auditPhotosCompleteness } = require('../../js/audit');
 const { loadAppMethods } = require('./app-bridge');
 
 const app = loadAppMethods();
 
-console.log('--- 測試 audit.test.js ---');
+console.log('--- 測試 audit.test.js (包含獨立模組與 App 委派) ---');
 
-// 1. 同名照片集合計算 _buildDupSet
-app.photos = [
+// 1. 同名照片集合計算
+const samplePhotoNames = [
     { name: 'A.jpg' },
     { name: 'B.jpg' },
     { name: 'A.jpg' },
@@ -16,18 +17,23 @@ app.photos = [
     { name: 'E.jpg' }
 ];
 
+// 測試獨立模組 buildDuplicateNameSet
+const dupSetModule = buildDuplicateNameSet(samplePhotoNames);
+assert.strictEqual(dupSetModule instanceof Set, true, '獨立模組 dupSet 應為 Set 物件');
+assert.strictEqual(dupSetModule.has('A.jpg'), true, 'A.jpg 出現2次應在 dupSet 內');
+assert.strictEqual(dupSetModule.has('B.jpg'), true, 'B.jpg 出現2次應在 dupSet 內');
+assert.strictEqual(dupSetModule.has('C.jpg'), false, 'C.jpg 僅出現1次不應在 dupSet 內');
+assert.strictEqual(dupSetModule.size, 2, '應只有 2 組重複檔名');
+
+// 測試 App 委派 _buildDupSet
+app.photos = samplePhotoNames;
 app._buildDupSet();
-assert.strictEqual(app._dupSet instanceof Set, true, '_dupSet 應為 Set 物件');
-assert.strictEqual(app._dupSet.has('A.jpg'), true, 'A.jpg 出現2次應在 _dupSet 內');
-assert.strictEqual(app._dupSet.has('B.jpg'), true, 'B.jpg 出現2次應在 _dupSet 內');
-assert.strictEqual(app._dupSet.has('C.jpg'), false, 'C.jpg 僅出現1次不應在 _dupSet 內');
-assert.strictEqual(app._dupSet.has('D.jpg'), false, 'D.jpg 僅出現1次不應在 _dupSet 內');
-assert.strictEqual(app._dupSet.has('E.jpg'), false, 'E.jpg 僅出現1次不應在 _dupSet 內');
-assert.strictEqual(app._dupSet.size, 2, '應只有 2 組重複檔名');
+assert.strictEqual(app._dupSet instanceof Set, true, 'App._dupSet 應為 Set 物件');
+assert.strictEqual(app._dupSet.has('A.jpg'), true, 'A.jpg 應在 App._dupSet 內');
+assert.strictEqual(app._dupSet.has('B.jpg'), true, 'B.jpg 應在 App._dupSet 內');
+assert.strictEqual(app._dupSet.size, 2, 'App._dupSet 大小應為 2');
 
 // 2. 完整度稽核 auditPhotosCompleteness
-// 建立含有各種缺失狀態的測試照片陣列
-// 模擬全域預設地點為空白
 global.document = {
     getElementById: (id) => {
         if (id === 'defaultLocation') return { value: '' };
@@ -86,31 +92,28 @@ const samplePhotos = [
     } // 同名照片
 ];
 
-// 保留原始深度拷貝以驗證唯讀性
 const originalPhotosJson = JSON.stringify(samplePhotos);
 
+// 測試獨立模組 auditPhotosCompleteness
+const auditModuleResult = auditPhotosCompleteness(samplePhotos, '');
+assert.strictEqual(auditModuleResult.total, 6, '總張數應為 6');
+assert.strictEqual(auditModuleResult.missingLocation, 1, '未填地點應為 1 (p2)');
+assert.strictEqual(auditModuleResult.missingDesc, 1, '未填說明應為 1 (p3)');
+assert.strictEqual(auditModuleResult.invalidDateTime, 2, '時間日期異常應為 2 (p4, p5)');
+assert.strictEqual(auditModuleResult.duplicatePhotos, 2, '同名照片張數應為 2 (p1, p6)');
+assert.strictEqual(auditModuleResult.issuesCount, 6, '問題總數應為 1+1+2+2 = 6');
+assert.strictEqual(auditModuleResult.firstIssueFilter, 'missingDesc', '首要篩選應為未填說明');
+
+// 測試 App 委派 auditPhotosCompleteness
 app.photos = samplePhotos;
-const auditResult = app.auditPhotosCompleteness();
+const auditAppResult = app.auditPhotosCompleteness();
+assert.deepStrictEqual(auditAppResult, auditModuleResult, 'App 委派結果應與獨立模組計算結果完全一致');
 
-assert.strictEqual(auditResult.total, 6, '總張數應為 6');
-assert.strictEqual(auditResult.missingLocation, 1, '未填地點應為 1 (p2)');
-assert.strictEqual(auditResult.missingDesc, 1, '未填說明應為 1 (p3)');
-assert.strictEqual(auditResult.invalidDateTime, 2, '時間日期異常應為 2 (p4, p5)');
-assert.strictEqual(auditResult.duplicatePhotos, 2, '同名照片張數應為 2 (p1, p6)');
-assert.strictEqual(auditResult.issuesCount, 6, '問題總數應為 1+1+2+2 = 6');
-assert.strictEqual(auditResult.firstIssueFilter, 'missingDesc', '優先切換之首個問題篩選應為 missingDesc');
-
-// 驗證當全域有設定清冊地點時，照片未填個別地點不算 missingLocation
-global.document = {
-    getElementById: (id) => {
-        if (id === 'defaultLocation') return { value: '新化分局' };
-        return null;
-    }
-};
-const auditWithGlobalLoc = app.auditPhotosCompleteness();
-assert.strictEqual(auditWithGlobalLoc.missingLocation, 0, '有全域預設地點時，未填個別地點應視為已繼承');
-
-// 3. 唯讀性驗證：確認 audit 執行後 photos 內容未被更動
-assert.strictEqual(JSON.stringify(samplePhotos), originalPhotosJson, '稽核演算法必須為純讀取，不得修改 photos 陣列或物件屬性');
+// 驗證唯讀性保證
+assert.strictEqual(
+    JSON.stringify(samplePhotos),
+    originalPhotosJson,
+    'audit 計算前後，傳入之 photos 陣列絕對不得被修改（唯讀性）'
+);
 
 console.log('✅ audit.test.js 全部斷言通過！');

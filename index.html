@@ -1054,6 +1054,10 @@
         </div>
     </div>
 
+    <!-- 模組化純邏輯抽離 (Phase 1) -->
+    <script src="js/validation.js"></script>
+    <script src="js/audit.js"></script>
+
     <!-- 核心應用程式邏輯 -->
     <script>
         document.getElementById('year').textContent = new Date().getFullYear();
@@ -1938,27 +1942,29 @@
                 return result;
             }
 
-            // ── 日期與時間格式合法性驗證（遵循專案既有民國格式與時間範圍）────
+            // ── 日期與時間格式合法性驗證（委派至 PhotoReportValidation 模組）────
             isValidMinguoDate(raw) {
+                if (typeof PhotoReportValidation !== 'undefined') {
+                    return PhotoReportValidation.isValidMinguoDate(raw);
+                }
                 if (!raw || typeof raw !== 'string') return false;
                 const digits = raw.replace(/[^0-9]/g, '');
                 if (digits.length !== 7) return false;
                 const year = parseInt(digits.slice(0, 3), 10);
                 const month = parseInt(digits.slice(3, 5), 10);
                 const day = parseInt(digits.slice(5, 7), 10);
-
-                if (year < 1 || year > 999) return false;
-                if (month < 1 || month > 12) return false;
-
+                if (year < 1 || year > 999 || month < 1 || month > 12) return false;
                 const daysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
                 const adYear = year + 1911;
                 const isLeap = (adYear % 4 === 0 && adYear % 100 !== 0) || (adYear % 400 === 0);
                 const maxDay = (month === 2 && isLeap) ? 29 : daysInMonth[month - 1];
-
                 return day >= 1 && day <= maxDay;
             }
 
             isValidTimeFormat(raw) {
+                if (typeof PhotoReportValidation !== 'undefined') {
+                    return PhotoReportValidation.isValidTimeFormat(raw);
+                }
                 if (!raw || typeof raw !== 'string') return false;
                 const trimmed = raw.trim();
                 let h, m, s = 0;
@@ -3184,8 +3190,12 @@
                 }
             }
 
-            // 建立重複檔名 Set（快取於 _dupSet，供 getVisiblePhotoIndices 使用）
+            // 建立重複檔名 Set（快取於 _dupSet，委派 PhotoReportAudit 模組）
             _buildDupSet() {
+                if (typeof PhotoReportAudit !== 'undefined') {
+                    this._dupSet = PhotoReportAudit.buildDuplicateNameSet(this.photos);
+                    return;
+                }
                 const nameCount = new Map();
                 this.photos.forEach(p => {
                     const n = p.name || '';
@@ -3195,12 +3205,14 @@
                 this._dupSet = new Set([...nameCount.entries()].filter(([, c]) => c > 1).map(([n]) => n));
             }
 
-            // 完整度稽核：純讀取，不修改 photos，回傳統計物件
+            // 完整度稽核：委派至 PhotoReportAudit 模組，純讀取不修改 photos
             auditPhotosCompleteness() {
                 const globalLocation = document.getElementById('defaultLocation')?.value?.trim() || '';
-                let missingLocation = 0, missingDesc = 0, invalidDateTime = 0, duplicatePhotos = 0;
                 this._buildDupSet();
-
+                if (typeof PhotoReportAudit !== 'undefined') {
+                    return PhotoReportAudit.auditPhotosCompleteness(this.photos, globalLocation);
+                }
+                let missingLocation = 0, missingDesc = 0, invalidDateTime = 0, duplicatePhotos = 0;
                 this.photos.forEach(photo => {
                     if (!photo.location?.trim() && !globalLocation) missingLocation++;
                     if (!photo.desc?.trim()) missingDesc++;
@@ -3211,14 +3223,12 @@
                     if (dateInvalid || timeInvalid) invalidDateTime++;
                     if (this._dupSet.has(photo.name)) duplicatePhotos++;
                 });
-
                 const issuesCount = missingLocation + missingDesc + invalidDateTime + duplicatePhotos;
                 let firstIssueFilter = null;
                 if (missingDesc > 0) firstIssueFilter = 'missingDesc';
                 else if (missingLocation > 0) firstIssueFilter = 'missingLocation';
                 else if (invalidDateTime > 0) firstIssueFilter = 'invalidDateTime';
                 else if (duplicatePhotos > 0) firstIssueFilter = 'duplicatePhotos';
-
                 return {
                     total: this.photos.length,
                     missingLocation,

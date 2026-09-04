@@ -1,46 +1,52 @@
 # HANDOFF
 
 ## 目前狀態
-可交付（Phase 0 全部自動化回歸防線 0A、0B、0C 建設完成，已具備解鎖 Phase 1 之充分條件）
+可交付（Phase 1 純邏輯抽離完成，待進行 Phase 2）
 
 ## 本輪目標
-落實 Phase 0C：建立匯出結構 Golden Baseline 比對機制，自動產出並比對 Word (`.docx`) 表格行列與 XML 關鍵字、Excel (`.xlsx`) 工作表與欄位資料、PDF (`.pdf`) 頁數與版面尺寸，確保各模組化階段的產出檔案結構 100% 零偏差。
+落實 Phase 1：低風險純邏輯拆分（Pure Logic Extraction）。
+抽離無副作用、純資料計算、不依賴 DOM 與 App State 的獨立邏輯：
+1. `js/validation.js`：`isValidMinguoDate`、`isValidTimeFormat`。
+2. `js/audit.js`：`buildDuplicateNameSet`、`auditPhotosCompleteness`。
+3. `index.html` 引入新模組，宿主同名方法改為委派調用以兼顧 100% 向後相容。
+4. 更新 `scripts/prepare-web.ps1`，確保建構時自動將 `js/` 模組目錄同步至 `web/js/`（Tauri 桌面端相容）。
+5. 執行 `npm run test:all` 全套自動化回歸測試確認零回歸。
 
 ## 已完成
-1. **建立匯出結構 Golden Baseline 基準檔 (`tests/baseline/`)**：
-   - 建立 [`tests/generate-baseline.js`](file:///C:/Development/GitHub/04_Photo-Report-Generator/tests/generate-baseline.js)，以標準固定案例自動生成三份 Golden 基準：
-     - [`tests/baseline/docx-structure.json`](file:///C:/Development/GitHub/04_Photo-Report-Generator/tests/baseline/docx-structure.json)：記錄 Word 清冊之 `<w:tbl>` 表格數量 (2)、段落數 (31)、核心採證關鍵字（案由、日期、地點、製作人、各照片說明）。
-     - [`tests/baseline/excel-data.json`](file:///C:/Development/GitHub/04_Photo-Report-Generator/tests/baseline/excel-data.json)：記錄 Excel 活頁簿工作表名稱（工作表1）、標題欄位（編號、檔名、案由、日期、時間、地點、製作人、說明）與精確資料行。
-     - [`tests/baseline/pdf-metadata.json`](file:///C:/Development/GitHub/04_Photo-Report-Generator/tests/baseline/pdf-metadata.json)：記錄 PDF 報表總頁數 (1) 與標準 A4 尺寸 (210 x 297 mm)。
-2. **建立自動化 Golden Baseline 比對測試腳本**：
-   - 建立 [`tests/run-baseline-test.js`](file:///C:/Development/GitHub/04_Photo-Report-Generator/tests/run-baseline-test.js)：
-     - 以 Headless Playwright 執行 `exportDocx()`，透過 JSZip 解壓讀取 `word/document.xml` 與 `word/header1.xml`，斷言表格數量、段落數與文字精確符合基準。
-     - 攔截 `exportExcel()`，斷言活頁簿工作表名稱、總列數、欄位標題與資料陣列完全吻合。
-     - 攔截 `exportPdf()`，斷言產出頁數與 A4 尺寸比例精確符合基準。
-3. **完成 Phase 0 全自動化測試套件整合**：
-   - 更新 [`package.json`](file:///C:/Development/GitHub/04_Photo-Report-Generator/package.json)：
-     - `"test"`：Phase 0A 純邏輯單元測試（Node.js）。
-     - `"test:e2e"`：Phase 0B Web UI 自動化測試（Playwright）。
-     - `"test:baseline"`：Phase 0C 匯出結構 Golden Baseline 比對。
-     - `"test:all"`：全套自動化回歸測試一鍵執行（0A + 0B + 0C）。
+1. **建立獨立純邏輯模組 (`js/`)**：
+   - [`js/validation.js`](file:///C:/Development/GitHub/04_Photo-Report-Generator/js/validation.js)：
+     - 封裝為 UMD 模式（相容 Node.js 與純瀏覽器環境）。
+     - 提供 `isValidMinguoDate(raw)`、`isValidTimeFormat(raw)`。
+     - 零 DOM 依賴、無副作用。
+   - [`js/audit.js`](file:///C:/Development/GitHub/04_Photo-Report-Generator/js/audit.js)：
+     - 封裝為 UMD 模式，依賴 `validation.js`。
+     - 提供 `buildDuplicateNameSet(photos)`、`auditPhotosCompleteness(photos, defaultLocation)`。
+     - 保證 `photos` 唯讀、不修改傳入資料、不呼叫任何 UI 函式。
+2. **`index.html` 整合與委派**：
+   - 引入 `<script src="js/validation.js"></script>` 與 `<script src="js/audit.js"></script>`。
+   - `PhotoReportApp` 內的 `isValidMinguoDate`、`isValidTimeFormat`、`_buildDupSet`、`auditPhotosCompleteness` 改為安全委派至新模組（包含降級容錯邏輯），維持 100% 呼叫相容性。
+3. **構建與部署腳本強化**：
+   - 更新 [`scripts/prepare-web.ps1`](file:///C:/Development/GitHub/04_Photo-Report-Generator/scripts/prepare-web.ps1)，加入同步 `js/` 目錄至 `web/js/` 的邏輯，保障 Tauri 桌面端與 `web/` 發布檔完整可用。
+4. **單元測試套件升級**：
+   - 更新 `tests/unit/validation.test.js` 與 `audit.test.js`，同時直接測試獨立模組導出函式與 App 委派方法，確保雙軌 100% 通過。
 
 ## 刻意未修改
-- **零業務程式碼改動**：`index.html` 與相關 JavaScript 業務邏輯保持 100% 零改動。
-- 嚴格守門：至此 Phase 0A～0C 全部完成，下一輪方可正式開啟 Phase 1（抽離 `validation.js`、`audit.js`）。
+- **不碰觸 UI 與匯出層**：嚴格遵守 Phase 1 邊界，不碰觸選取、歷史、DOM 渲染或 Exporter。
+- **保留既有 API 簽名**：`PhotoReportApp` 既有同名方法均保留為轉發層，外部調用端零破壞。
 
 ## 尚未完成
-- Phase 1：抽離獨立模組 `src/core/validation.js` 與 `src/core/audit.js`（待下一輪啟動）。
-- Phase 2～4：依總計畫持續推進。
+- Phase 2：選取與歷史責任拆分（`js/selection.js`、`js/history.js`）。
+- Phase 3：UI Controller 漸進拆分。
+- Phase 4：匯出模組分離。
 
 ## 驗證結果
 ### 已執行
-1. **匯出結構 Golden 比對通過**：`npm run test:baseline`（Word / Excel / PDF 比對全數通過）。
-2. **Phase 0 全自動化回歸套件執行通過**：`npm run test:all`
-   - Phase 0A 單元測試：3/3 套件通過。
-   - Phase 0B E2E 測試：5/5 流程通過。
-   - Phase 0C 基準比對：3/3 格式完全吻合。
-3. **共用 QA 檢驗通過**：`powershell -ExecutionPolicy Bypass -File scripts\qa.ps1`（exit code 0）。
-4. **前端資產打包構建通過**：`powershell -ExecutionPolicy Bypass -File scripts\prepare-web.ps1`（Rebuilding done in 479ms）。
+1. **Phase 0 全套自動化回歸測試 100% 通過**：`npm run test:all`
+   - Phase 0A 單元測試：3/3 套件通過（涵蓋獨立模組直接斷言與宿主委派斷言）。
+   - Phase 0B E2E 測試：5/5 流程通過（模擬檔案上傳、篩選列 Badge 統計、卡片可見度切換、匯出確認 Modal）。
+   - Phase 0C 基準比對：3/3 格式完全吻合（Word DOCX XML 表格數/關鍵字、Excel 欄位資料行、PDF 頁數/尺寸）。
+2. **共用 QA 檢驗通過**：`powershell -ExecutionPolicy Bypass -File scripts\qa.ps1`（exit code 0）。
+3. **前端資產打包構建通過**：`powershell -ExecutionPolicy Bypass -File scripts\prepare-web.ps1`，成功驗證 `web/js/validation.js` 與 `web/js/audit.js` 正確產出。
 
 ### 尚未驗證
 - 全模組化完成後之最終人工視覺版型驗收（依策略放至 Phase 4 結束後）。
@@ -55,4 +61,7 @@
 - Branch：main
 
 ## 下一步
-Phase 0 自動化回歸防線全數完成，下一輪正式啟動 **Phase 1：低風險純邏輯模組抽離**（抽離 `src/core/validation.js` 與 `src/core/audit.js`，每步均以 `npm run test:all` 守門）。
+啟動 **Phase 2：選取與歷史責任拆分 (Selection & History Models)**：
+1. 抽離 `js/selection.js`：可見照片過濾、鍵盤導航索引、多選計算。
+2. 抽離 `js/history.js`：`HistoryManager`、`historySignature`、快照堆疊管理。
+3. 每次調整均以 `npm run test:all` 確保全套回歸零錯誤。
