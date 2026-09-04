@@ -1054,11 +1054,13 @@
         </div>
     </div>
 
-    <!-- 模組化純邏輯抽離 (Phase 1 & Phase 2) -->
+    <!-- 模組化純邏輯與 UI 控制器抽離 (Phase 1 ~ Phase 3) -->
     <script src="js/validation.js"></script>
     <script src="js/audit.js"></script>
     <script src="js/selection.js"></script>
     <script src="js/history.js"></script>
+    <script src="js/ui/audit-ui.js"></script>
+    <script src="js/ui/modal-ui.js"></script>
 
     <!-- 核心應用程式邏輯 -->
     <script>
@@ -3262,20 +3264,37 @@
                 this.render();
             }
 
-            // 更新篩選列徽章數字與 warning 樣式
+            // 更新篩選列徽章數字與 warning 樣式（委派 PhotoReportAuditUi 模組）
             updateAuditBarUi() {
+                if (typeof PhotoReportAuditUi !== 'undefined') {
+                    const audit = this.auditPhotosCompleteness();
+                    const visibleCount = this.getVisiblePhotoIndices().length;
+                    PhotoReportAuditUi.renderAuditBar({
+                        filterBar: this.auditFilterBar,
+                        totalPhotos: this.photos.length,
+                        audit: audit,
+                        activeFilter: this.activeFilter,
+                        visibleCount: visibleCount,
+                        badges: {
+                            all: this.auditBadge_all,
+                            missingLocation: this.auditBadge_missingLocation,
+                            missingDesc: this.auditBadge_missingDesc,
+                            invalidDateTime: this.auditBadge_invalidDateTime,
+                            duplicatePhotos: this.auditBadge_duplicatePhotos
+                        },
+                        filterNoticeText: this.filterNoticeText
+                    });
+                    return;
+                }
+
                 if (!this.auditFilterBar) return;
                 const totalPhotos = this.photos.length;
-
                 if (totalPhotos === 0) {
                     this.auditFilterBar.classList.add('hidden');
                     return;
                 }
                 this.auditFilterBar.classList.remove('hidden');
-
                 const audit = this.auditPhotosCompleteness();
-
-                // 更新各徽章數字
                 if (this.auditBadge_all) this.auditBadge_all.textContent = totalPhotos;
                 if (this.auditBadge_missingLocation) {
                     this.auditBadge_missingLocation.textContent = audit.missingLocation;
@@ -3293,8 +3312,6 @@
                     this.auditBadge_duplicatePhotos.textContent = audit.duplicatePhotos;
                     this.auditBadge_duplicatePhotos.classList.toggle('has-warning', audit.duplicatePhotos > 0);
                 }
-
-                // 更新按鈕 active 樣式
                 const filterIds = {
                     'all': 'filterBtn_all',
                     'missingLocation': 'filterBtn_missingLocation',
@@ -3307,8 +3324,6 @@
                     if (!btn) return;
                     btn.classList.toggle('active', this.activeFilter === key);
                 });
-
-                // 篩選提示文字
                 if (this.filterNoticeText) {
                     if (this.activeFilter === 'all') {
                         this.filterNoticeText.classList.add('hidden');
@@ -3327,7 +3342,7 @@
                 }
             }
 
-            // 匯出前完整度檢查（非阻斷）
+            // 匯出前完整度檢查（非阻斷，委派 PhotoReportModalUi 模組）
             confirmExportWithAudit(action, title) {
                 if (!this.photos.length) {
                     action();
@@ -3341,6 +3356,18 @@
 
                 // 有問題時顯示提醒彈窗，暫存 action
                 this.pendingExportAction = action;
+                const titleEl = this.exportAuditModalTitle || this.exportAuditModal?.querySelector('#exportAuditModalTitle') || this.exportAuditModal?.querySelector('#exportAuditTitle');
+                if (typeof PhotoReportModalUi !== 'undefined') {
+                    PhotoReportModalUi.showExportAuditPrompt({
+                        modal: this.exportAuditModal,
+                        titleEl: titleEl,
+                        listEl: this.exportAuditList,
+                        exportTitle: title,
+                        audit: audit
+                    });
+                    return;
+                }
+
                 if (this.exportAuditList) {
                     const items = [];
                     if (audit.missingDesc > 0) items.push(`未填說明：${audit.missingDesc} 張`);
@@ -3349,8 +3376,6 @@
                     if (audit.duplicatePhotos > 0) items.push(`同名照片：${audit.duplicatePhotos} 張`);
                     this.exportAuditList.innerHTML = items.map(t => `<li>${t}</li>`).join('');
                 }
-                // 更新彈窗標題
-                const titleEl = this.exportAuditModalTitle || this.exportAuditModal?.querySelector('#exportAuditModalTitle') || this.exportAuditModal?.querySelector('#exportAuditTitle');
                 if (titleEl) titleEl.textContent = `匯出前確認（${title}）`;
                 this.exportAuditModal?.classList.remove('hidden');
             }
@@ -3577,11 +3602,21 @@
             }
 
             openModal(id) {
-                document.getElementById(id).classList.remove('hidden');
+                if (typeof PhotoReportModalUi !== 'undefined') {
+                    PhotoReportModalUi.openModal(id);
+                    return;
+                }
+                const el = typeof id === 'string' ? document.getElementById(id) : id;
+                if (el) el.classList.remove('hidden');
             }
 
             closeModal(id) {
-                document.getElementById(id).classList.add('hidden');
+                if (typeof PhotoReportModalUi !== 'undefined') {
+                    PhotoReportModalUi.closeModal(id);
+                    return;
+                }
+                const el = typeof id === 'string' ? document.getElementById(id) : id;
+                if (el) el.classList.add('hidden');
             }
 
             async processImageToBlob(photoItem, maxDimension = 1600, quality = 0.88) {
