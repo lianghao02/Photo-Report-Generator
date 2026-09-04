@@ -1,41 +1,40 @@
 # HANDOFF
 
 ## 目前狀態
-可交付（Phase 0A 自動化單元測試建設完成，待進行 Phase 0B）
+可交付（Phase 0B Web UI 自動化測試建設完成，待進行 Phase 0C）
 
 ## 本輪目標
-落實 Phase 0A：建立純邏輯 100% 自動化單元測試基礎建設（fixtures、測試橋接器、validation/audit/history 單元測試套件與 npm test 腳本），確認現有邏輯零回歸風險且不改動任何業務代碼。
+落實 Phase 0B：建立 Web UI 自動化測試防線，撰寫 `tests/e2e/photo-report.spec.js`，使用 Playwright 模擬真實瀏覽器環境，自動驗證照片上傳與 DOM 縮圖卡片渲染、完整度篩選列 Badge 統計計算、篩選按鈕切換卡片可見度、匯出前非阻斷確認 Modal 彈窗與「查看問題照片 / 仍要匯出」按鈕行為。
 
 ## 已完成
-1. **測試架構與 Fixtures 建立**：
-   - 建立 `tests/fixtures/`：包含標準測試圖檔 `sample01.jpg`、`sample02.jpg`、`sample01_dup.jpg`（合法 1x1 JPEG）與預設案件資料 `sample-case.json`。
-   - 建立測試專用目錄：`tests/unit/`、`tests/e2e/`、`tests/baseline/`。
-2. **無侵入式測試橋接器**：
-   - 建立 [`tests/unit/app-bridge.js`](file:///C:/Development/GitHub/04_Photo-Report-Generator/tests/unit/app-bridge.js)：以動態括號配對從 `index.html` 抽取待測純邏輯方法，在 Phase 0 不改動 `index.html` 原始碼前提下進行 100% 原生 Node.js 斷言測試。
-3. **完成三組純邏輯單元測試套件**：
-   - [`tests/unit/validation.test.js`](file:///C:/Development/GitHub/04_Photo-Report-Generator/tests/unit/validation.test.js)：完整覆蓋民國日期（7 碼、大小月、民國 113 閏年 vs 114 平年 2/29）與時間格式（4 碼/6 碼、合法範圍、異常邊界）測試。
-   - [`tests/unit/audit.test.js`](file:///C:/Development/GitHub/04_Photo-Report-Generator/tests/unit/audit.test.js)：完整覆蓋同名照片計算（`_buildDupSet` Set 判定）、完整度稽核（缺失地點、缺失說明、時間異常、同名照片統計與問題過濾器）及 `photos` 陣列唯讀性保證。
-   - [`tests/unit/history.test.js`](file:///C:/Development/GitHub/04_Photo-Report-Generator/tests/unit/history.test.js)：驗證 Undo/Redo `historySignature` 正確提取純資料欄位（`uid`, `rotation`, `seq`, `date`, `time`, `location`, `desc`, `selected`, `stageX`, `stageY`、`caseData`、索引），且確保 UI 暫存屬性（`previewUrl`, `isDragging`, `tempFilter`, `uiHovered`）不會觸發簽名變更。
-4. **測試運行器與 npm 整合**：
-   - 建立 [`tests/run-all-unit.js`](file:///C:/Development/GitHub/04_Photo-Report-Generator/tests/run-all-unit.js)。
-   - 更新 [`package.json`](file:///C:/Development/GitHub/04_Photo-Report-Generator/package.json) 新增 `"test": "node tests/run-all-unit.js"`。
+1. **Fixture 圖檔標準化修訂**：
+   - 使用真實 Canvas 渲染編碼生成標準合法 JPEG 測試圖檔，確保在 Chromium/WebKit 等環境下 100% 正常解碼（`sample01.jpg`、`sample02.jpg`、`dup/sample01.jpg`）。
+2. **Web UI Playwright 測試腳本建立**：
+   - 建立 [`tests/e2e/photo-report.spec.js`](file:///C:/Development/GitHub/04_Photo-Report-Generator/tests/e2e/photo-report.spec.js)。
+   - 測試覆蓋五大核心流程：
+     1. 本機頁面開啟與 `window.app` 初始化狀態。
+     2. 透過 `#fileInput` 上傳 3 張照片，斷言 DOM 生成對應數量之 `.photo-thumb-card` 與 Canvas 縮圖。
+     3. 檢驗完整度篩選列 Badge 數值（全部 3、未填地點 3、未填說明 3、同名照片 2）。
+     4. 點擊「同名照片」篩選按鈕，驗證 DOM 卡片可見數精準過濾為 2 張；切回「全部」恢復顯示 3 張。
+     5. 觸發 `confirmExportWithAudit`，驗證 `#exportAuditModal` 彈出、標題顯示「匯出前確認（Word 清冊）」；驗證點擊「查看問題照片」關閉 Modal 並自動切換篩選視圖；驗證「仍要匯出」正確執行暫存匯出回呼動作。
+3. **專案腳本整合**：
+   - 在 [`package.json`](file:///C:/Development/GitHub/04_Photo-Report-Generator/package.json) 新增 `"test:e2e": "node tests/e2e/photo-report.spec.js"`。
 
 ## 刻意未修改
-- **零功能代碼改動**：`index.html`、JS、CSS、Tauri 設定皆保持原樣。
+- **零業務程式碼改動**：`index.html` 與相關核心 JavaScript 維持 100% 零改動。
 - 嚴格維持「Phase 0 未全部自動化前，不啟動 Phase 1」之邊界。
 
 ## 尚未完成
-- Phase 0B：撰寫 `tests/e2e/photo-report.spec.js`（Playwright UI 測試）。
 - Phase 0C：建立 DOCX/PDF/Excel Golden 結構比對基準（`tests/baseline/`）。
 
 ## 驗證結果
 ### 已執行
-1. **單元測試全數通過**：`npm test`（3/3 套件、數十項斷言全數通過）。
-2. **共用 QA 檢驗通過**：`powershell -ExecutionPolicy Bypass -File scripts\qa.ps1`（exit code 0）。
-3. **前端資產打包構建通過**：`powershell -ExecutionPolicy Bypass -File scripts\prepare-web.ps1`（Tailwind CSS Rebuilt、web/ 目錄同步成功）。
+1. **Web UI E2E 測試全數通過**：`npm run test:e2e`（Playwright  headless 5 大測試流程 100% PASS）。
+2. **純邏輯單元測試無回歸**：`npm test`（3/3 套件全數通過）。
+3. **共用 QA 檢驗通過**：`powershell -ExecutionPolicy Bypass -File scripts\qa.ps1`（exit code 0）。
+4. **前端資產打包構建通過**：`powershell -ExecutionPolicy Bypass -File scripts\prepare-web.ps1`（Rebuilding done in 665ms）。
 
 ### 尚未驗證
-- Phase 0B Playwright E2E UI 自動化流程。
 - Phase 0C 匯出檔 XML 與工作表結構比對。
 
 ### 已知風險
@@ -48,5 +47,4 @@
 - Branch：main
 
 ## 下一步
-1. 啟動 **Phase 0B**：撰寫 `tests/e2e/photo-report.spec.js`，以 Playwright 驗證照片載入、篩選按鈕與 Badge 同步、匯出前非阻斷提醒 Modal 互動。
-2. 啟動 **Phase 0C**：建立匯出結構 Golden Baseline。
+啟動 **Phase 0C**：建立匯出結構 Golden Baseline（`tests/baseline/`），比對 Word DOCX XML 表格結構、Excel 工作表欄位、PDF 頁數與排版結構。
