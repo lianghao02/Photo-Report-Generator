@@ -1062,6 +1062,11 @@
     <script src="js/ui/audit-ui.js"></script>
     <script src="js/ui/modal-ui.js"></script>
 
+    <!-- 模組化匯出引擎抽離 (Phase 4) -->
+    <script src="js/exporters/excel-exporter.js"></script>
+    <script src="js/exporters/docx-exporter.js"></script>
+    <script src="js/exporters/pdf-exporter.js"></script>
+
     <!-- 核心應用程式邏輯 -->
     <script>
         document.getElementById('year').textContent = new Date().getFullYear();
@@ -3687,505 +3692,39 @@
             // 📑 100% 精準對齊原 VBA 範本之 OpenXML 報表生成引擎
             // (全標楷體、頁首頁尾、自然行距、圖片置中、紙張橫直向精確設定)
             // ============================================================
+            // 📑 報表匯出委派引擎 (Phase 4 模組化抽離：Word / PDF / Excel)
+            // ============================================================
+            getExportContext() {
+                const caseData = this.getCaseData();
+                return {
+                    photos: this.photos,
+                    caseTitle: caseData.caseTitle || '',
+                    caseDate: caseData.caseDate || '',
+                    defaultLocation: caseData.defaultLocation || '',
+                    deptName: caseData.deptName || '臺南市政府警察局新化分局',
+                    globalOfficer: caseData.officerName || '巡官梁家豪',
+                    layout: this.layoutSelect.value,
+                    processImageToBlob: (photo, maxDim, quality) => this.processImageToBlob(photo, maxDim, quality),
+                    setProgress: (msg, cur, total) => this.setProgress(msg, cur, total),
+                    clearProgress: () => this.clearProgress(),
+                    throwIfCancelled: () => this.throwIfProcessingCancelled(),
+                    yieldToBrowser: () => this.yieldToBrowser(),
+                    saveAs: typeof saveAs === 'function' ? saveAs : (window.saveAs || null)
+                };
+            }
+
             async exportDocx() {
-                if (!this.photos.length) return alert('請先載入照片再匯出！');
-                this.processingCancelled = false;
-
-                const docxLib = getDocxLib();
-                if (!docxLib) {
-                    return alert('docx.js 函式庫尚未載入完成，請確認網路連線是否正常！');
+                if (typeof PhotoReportDocxExporter !== 'undefined') {
+                    this.processingCancelled = false;
+                    return PhotoReportDocxExporter.exportDocx(this.getExportContext());
                 }
-
-                const caseTitle = document.getElementById('caseTitle').value.trim() || '現場照片清冊';
-                const caseDate = document.getElementById('caseDate').value.trim() || '';
-                const defaultLocation = document.getElementById('defaultLocation').value.trim() || '';
-                const deptName = document.getElementById('deptName').value.trim() || '臺南市政府警察局新化分局';
-                const globalOfficer = document.getElementById('officerName').value.trim() || '巡官梁家豪';
-                const layout = this.layoutSelect.value;
-
-                const {
-                    Document, Packer, Paragraph, Table, TableRow, TableCell,
-                    TextRun, WidthType, AlignmentType, HeightRule,
-                    ImageRun, BorderStyle, Header, Footer, PageNumber, PageOrientation, VerticalAlign,
-                    LineRuleType
-                } = docxLib;
-
-                const borderSingle = { style: BorderStyle.SINGLE, size: 4, color: "000000" };
-                const bordersAllSingle = { top: borderSingle, bottom: borderSingle, left: borderSingle, right: borderSingle };
-
-                // 處理所有圖片轉 Blob
-                const processedPhotos = [];
-                this.setProgress('正在壓縮照片並建立 Word 報表…', 0, this.photos.length);
-                for (let i = 0; i < this.photos.length; i++) {
-                    const item = this.photos[i];
-                    const processed = await this.processImageToBlob(item, 1600, 0.88);
-                    const arrayBuffer = await processed.blob.arrayBuffer();
-                    processedPhotos.push({
-                        data: new Uint8Array(arrayBuffer),
-                        w: processed.width,
-                        h: processed.height,
-                        item: item
-                    });
-                    this.setProgress('正在壓縮照片並建立 Word 報表…', i + 1, this.photos.length);
-                    this.throwIfProcessingCancelled();
-                    if ((i + 1) % 5 === 0) await this.yieldToBrowser();
-                }
-
-                let docSections = [];
-
-                // -------------------------------------------------------------
-                // 1. 經典版型：上下兩張 (A4 直式，100% 精準對齊 上下兩張.docx 範本)
-                // -------------------------------------------------------------
-                if (layout === 'up_down_2') {
-                    const children = [];
-                    // 圖片儲存格可用範圍：約 535 × 365px；以較先觸頂的一邊決定等比例縮放
-                    const MAX_IMG_W = 535;
-                    const MAX_IMG_H = 365;
-
-                    for (let i = 0; i < processedPhotos.length; i++) {
-                        const p = processedPhotos[i];
-                        let imgW = p.w;
-                        let imgH = p.h;
-                        const ratio = Math.min(MAX_IMG_W / imgW, MAX_IMG_H / imgH);
-                        imgW = Math.round(imgW * ratio);
-                        imgH = Math.round(imgH * ratio);
-
-                        // 構建與 上下兩張.docx 完全相同的 4 列 9 欄 OpenXML 表格
-                        const table = new Table({
-                            width: { size: 8302, type: WidthType.DXA },
-                            columnWidths: [553, 554, 731, 1559, 709, 1701, 142, 709, 1644],
-                            cantSplit: true,
-                            borders: bordersAllSingle,
-                            rows: [
-                                // Row 1: 案由 | [案由名稱] | 日期 | [採證日期] | 時間 | [時間]
-                                new TableRow({
-                                    height: { value: 420, rule: HeightRule.ATLEAST },
-                                    children: [
-                                        new TableCell({ width: { size: 1107, type: WidthType.DXA }, columnSpan: 2, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "案由", bold: true, font: "標楷體", size: 24 })] })] }),
-                                        new TableCell({ width: { size: 2290, type: WidthType.DXA }, columnSpan: 2, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: caseTitle, font: "標楷體", size: 22 })] })] }),
-                                        new TableCell({ width: { size: 709, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "日期", bold: true, font: "標楷體", size: 24 })] })] }),
-                                        new TableCell({ width: { size: 1843, type: WidthType.DXA }, columnSpan: 2, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: p.item.date || caseDate, font: "標楷體", size: 20 })] })] }),
-                                        new TableCell({ width: { size: 709, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "時間", bold: true, font: "標楷體", size: 24 })] })] }),
-                                        new TableCell({ width: { size: 1644, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: p.item.time, font: "標楷體", size: 20 })] })] }),
-                                    ]
-                                }),
-                                // Row 2: 照片主圖 (全寬 8302 dxa，高度 5726 dxa，精確置中)
-                                new TableRow({
-                                    height: { value: 5726, rule: HeightRule.EXACT },
-                                    children: [
-                                        new TableCell({
-                                            width: { size: 8302, type: WidthType.DXA },
-                                            columnSpan: 9,
-                                            borders: bordersAllSingle,
-                                            verticalAlign: VerticalAlign.CENTER,
-                                            children: [
-                                                new Paragraph({
-                                                    alignment: AlignmentType.CENTER,
-                                                    children: [
-                                                        new ImageRun({
-                                                            data: p.data,
-                                                            transformation: { width: imgW, height: imgH },
-                                                        })
-                                                    ]
-                                                })
-                                            ]
-                                        })
-                                    ]
-                                }),
-                                // Row 3: 編號 | [編號] | 地點： | [地點] | 製作人 | [製作人]
-                                new TableRow({
-                                    height: { value: 375, rule: HeightRule.ATLEAST },
-                                    children: [
-                                        new TableCell({ width: { size: 553, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "編號", bold: true, font: "標楷體", size: 22 })] })] }),
-                                        new TableCell({ width: { size: 554, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: p.item.seq, bold: true, font: "標楷體", size: 22 })] })] }),
-                                        new TableCell({ width: { size: 731, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "地點：", bold: true, font: "標楷體", size: 22 })] })] }),
-                                        new TableCell({ width: { size: 3969, type: WidthType.DXA }, columnSpan: 3, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: p.item.location || defaultLocation, font: "標楷體", size: 22 })] })] }),
-                                        new TableCell({ width: { size: 851, type: WidthType.DXA }, columnSpan: 2, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "製作人", bold: true, font: "標楷體", size: 22 })] })] }),
-                                        new TableCell({ width: { size: 1644, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: globalOfficer, font: "標楷體", size: 22 })] })] }),
-                                    ]
-                                }),
-                                // Row 4: 說明 | [現場跡證說明]
-                                new TableRow({
-                                    height: { value: 664, rule: HeightRule.ATLEAST },
-                                    children: [
-                                        new TableCell({ width: { size: 1107, type: WidthType.DXA }, columnSpan: 2, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "說明", bold: true, font: "標楷體", size: 22 })] })] }),
-                                        new TableCell({
-                                            width: { size: 7195, type: WidthType.DXA },
-                                            columnSpan: 7,
-                                            borders: bordersAllSingle,
-                                            verticalAlign: VerticalAlign.CENTER,
-                                            children: [
-                                                new Paragraph({
-                                                    alignment: AlignmentType.CENTER,
-                                                    children: [new TextRun({ text: p.item.desc || "現場照片紀錄。", font: "標楷體", size: 20 })]
-                                                })
-                                            ]
-                                        })
-                                    ]
-                                })
-                            ]
-                        });
-
-                        children.push(table);
-
-                        // 上下兩張表格之間：精確設定固定行高 5 點 (line: 100, lineRule: exact)，前後段距離 0
-                        if (i % 2 === 0 && i < processedPhotos.length - 1) {
-                            children.push(new Paragraph({
-                                spacing: { line: 100, lineRule: LineRuleType.EXACT, before: 0, after: 0 }
-                            }));
-                        } else if (i % 2 === 1 && i < processedPhotos.length - 1) {
-                            children.push(new Paragraph({
-                                pageBreakBefore: true,
-                                spacing: { line: 20, lineRule: LineRuleType.EXACT, before: 0, after: 0 }
-                            }));
-                        }
-                    }
-
-                    // 頁首 Header: 置中 標楷體 18pt 粗體
-                    // 頁尾 Footer: 置中 標楷體 10pt (第 X 頁 / 共 Y 頁)
-                    docSections.push({
-                        properties: {
-                            page: {
-                                size: { width: 11906, height: 16838, orientation: PageOrientation.PORTRAIT },
-                                margin: { top: 1077, right: 1797, bottom: 907, left: 1797, header: 850, footer: 567 }
-                            }
-                        },
-                        headers: {
-                            default: new Header({
-                                children: [
-                                    new Paragraph({
-                                        alignment: AlignmentType.CENTER,
-                                        children: [new TextRun({ text: `${deptName}蒐證照片`, bold: true, font: "標楷體", size: 36 })]
-                                    })
-                                ]
-                            })
-                        },
-                        footers: {
-                            default: new Footer({
-                                children: [
-                                    new Paragraph({
-                                        alignment: AlignmentType.CENTER,
-                                        children: [
-                                            new TextRun({ text: "第 ", font: "標楷體", size: 20 }),
-                                            new TextRun({ children: [PageNumber.CURRENT], font: "標楷體", size: 20 }),
-                                            new TextRun({ text: " 頁 / 共 ", font: "標楷體", size: 20 }),
-                                            new TextRun({ children: [PageNumber.TOTAL_PAGES], font: "標楷體", size: 20 }),
-                                            new TextRun({ text: " 頁", font: "標楷體", size: 20 }),
-                                        ]
-                                    })
-                                ]
-                            })
-                        },
-                        children: children
-                    });
-                }
-
-                // -------------------------------------------------------------
-                // 2. 對照版型：左右兩張 (A4 直式雙欄，100% 精準對齊 左右兩張.docx 範本)
-                // -------------------------------------------------------------
-                else if (layout === 'left_right_2') {
-                    const children = [];
-                    // 每欄圖片儲存格可用範圍：約 315 × 690px；以較先觸頂的一邊決定等比例縮放
-                    const MAX_IMG_W = 315;
-                    const MAX_IMG_H = 690;
-
-                    for (let i = 0; i < processedPhotos.length; i += 2) {
-                        const p1 = processedPhotos[i];
-                        const p2 = processedPhotos[i + 1] || null;
-
-                        let w1 = p1.w, h1 = p1.h;
-                        let r1 = Math.min(MAX_IMG_W / w1, MAX_IMG_H / h1);
-                        w1 = Math.round(w1 * r1);
-                        h1 = Math.round(h1 * r1);
-
-                        let w2 = p2 ? p2.w : 1, h2 = p2 ? p2.h : 1;
-                        if (p2) {
-                            let r2 = Math.min(MAX_IMG_W / w2, MAX_IMG_H / h2);
-                            w2 = Math.round(w2 * r2);
-                            h2 = Math.round(h2 * r2);
-                        }
-
-                        const table = new Table({
-                            width: { size: 9864, type: WidthType.DXA },
-                            columnWidths: [1000, 3932, 1000, 3932],
-                            cantSplit: true,
-                            borders: bordersAllSingle,
-                            rows: [
-                                // Row 1: 案由 (全寬 9864 dxa, 32pt/16pt 粗體置中)
-                                new TableRow({
-                                    height: { value: 500, rule: HeightRule.ATLEAST },
-                                    children: [
-                                        new TableCell({
-                                            width: { size: 9864, type: WidthType.DXA },
-                                            columnSpan: 4,
-                                            borders: bordersAllSingle,
-                                            verticalAlign: VerticalAlign.CENTER,
-                                            children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: caseTitle, bold: true, font: "標楷體", size: 32 })] })]
-                                        })
-                                    ]
-                                }),
-                                // Row 2: 蒐證時間/地點 (左) | 蒐證單位 (右)
-                                new TableRow({
-                                    height: { value: 400, rule: HeightRule.ATLEAST },
-                                    children: [
-                                        new TableCell({
-                                            width: { size: 4932, type: WidthType.DXA },
-                                            columnSpan: 2,
-                                            borders: bordersAllSingle,
-                                            verticalAlign: VerticalAlign.CENTER,
-                                            children: [
-                                                new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: "蒐證時間：", bold: true, font: "標楷體", size: 22 }), new TextRun({ text: `${p1.item.date || caseDate} ${p1.item.time}`, font: "標楷體", size: 20 })] }),
-                                                new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: "蒐證地點：", bold: true, font: "標楷體", size: 22 }), new TextRun({ text: p1.item.location || defaultLocation, font: "標楷體", size: 20 })] })
-                                            ]
-                                        }),
-                                        new TableCell({
-                                            width: { size: 4932, type: WidthType.DXA },
-                                            columnSpan: 2,
-                                            borders: bordersAllSingle,
-                                            verticalAlign: VerticalAlign.CENTER,
-                                            children: [
-                                                new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: "蒐證單位：", bold: true, font: "標楷體", size: 22 }), new TextRun({ text: globalOfficer, font: "標楷體", size: 20 })] })
-                                            ]
-                                        })
-                                    ]
-                                }),
-                                // Row 3: 左右雙照片 (各 4932 dxa，高度 10642 dxa，精確置中)
-                                new TableRow({
-                                    height: { value: 10642, rule: HeightRule.EXACT },
-                                    children: [
-                                        new TableCell({
-                                            width: { size: 4932, type: WidthType.DXA },
-                                            columnSpan: 2,
-                                            borders: bordersAllSingle,
-                                            verticalAlign: VerticalAlign.CENTER,
-                                            children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new ImageRun({ data: p1.data, transformation: { width: w1, height: h1 } })] })]
-                                        }),
-                                        new TableCell({
-                                            width: { size: 4932, type: WidthType.DXA },
-                                            columnSpan: 2,
-                                            borders: bordersAllSingle,
-                                            verticalAlign: VerticalAlign.CENTER,
-                                            children: [
-                                                p2 ? new Paragraph({ alignment: AlignmentType.CENTER, children: [new ImageRun({ data: p2.data, transformation: { width: w2, height: h2 } })] })
-                                                   : new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "（無照片）", font: "標楷體", size: 20 })] })
-                                            ]
-                                        })
-                                    ]
-                                }),
-                                // Row 4: 編號 | [編號1] | 編號 | [編號2]
-                                new TableRow({
-                                    height: { value: 380, rule: HeightRule.ATLEAST },
-                                    children: [
-                                        new TableCell({ width: { size: 1000, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "編號", bold: true, font: "標楷體", size: 22 })] })] }),
-                                        new TableCell({ width: { size: 3932, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: p1.item.seq, font: "標楷體", size: 22 })] })] }),
-                                        new TableCell({ width: { size: 1000, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "編號", bold: true, font: "標楷體", size: 22 })] })] }),
-                                        new TableCell({ width: { size: 3932, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: p2 ? p2.item.seq : "", font: "標楷體", size: 22 })] })] }),
-                                    ]
-                                }),
-                                // Row 5: 說明 | [說明1] | 說明 | [說明2]
-                                new TableRow({
-                                    height: { value: 1200, rule: HeightRule.ATLEAST },
-                                    children: [
-                                        new TableCell({ width: { size: 1000, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "說明", bold: true, font: "標楷體", size: 22 })] })] }),
-                                        new TableCell({ width: { size: 3932, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ children: [new TextRun({ text: p1.item.desc || "無說明", font: "標楷體", size: 20 })] })] }),
-                                        new TableCell({ width: { size: 1000, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "說明", bold: true, font: "標楷體", size: 22 })] })] }),
-                                        new TableCell({ width: { size: 3932, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ children: [new TextRun({ text: p2 ? (p2.item.desc || "無說明") : "", font: "標楷體", size: 20 })] })] }),
-                                    ]
-                                })
-                            ]
-                        });
-
-                        children.push(table);
-
-                        if (i + 2 < processedPhotos.length) {
-                            children.push(new Paragraph({ pageBreakBefore: true }));
-                        }
-                    }
-
-                    docSections.push({
-                        properties: {
-                            page: {
-                                size: { width: 11906, height: 16838, orientation: PageOrientation.PORTRAIT },
-                                margin: { top: 1020, right: 1020, bottom: 1020, left: 1020, header: 720, footer: 720 }
-                            }
-                        },
-                        headers: {
-                            default: new Header({
-                                children: [
-                                    new Paragraph({
-                                        alignment: AlignmentType.CENTER,
-                                        children: [new TextRun({ text: `${deptName}蒐證照片`, bold: true, font: "標楷體", size: 36 })]
-                                    })
-                                ]
-                            })
-                        },
-                        footers: {
-                            default: new Footer({
-                                children: [
-                                    new Paragraph({
-                                        alignment: AlignmentType.CENTER,
-                                        children: [
-                                            new TextRun({ text: "第 ", font: "標楷體", size: 20 }),
-                                            new TextRun({ children: [PageNumber.CURRENT], font: "標楷體", size: 20 }),
-                                            new TextRun({ text: " 頁 / 共 ", font: "標楷體", size: 20 }),
-                                            new TextRun({ children: [PageNumber.TOTAL_PAGES], font: "標楷體", size: 20 }),
-                                            new TextRun({ text: " 頁", font: "標楷體", size: 20 }),
-                                        ]
-                                    })
-                                ]
-                            })
-                        },
-                        children: children
-                    });
-                }
-
-                // -------------------------------------------------------------
-                // 3. 廣角版型：橫式三張 (A4 橫式三欄，100% 精準對齊 橫式三張.docx 範本)
-                // -------------------------------------------------------------
-                else if (layout === 'landscape_3') {
-                    const children = [];
-                    // 每欄圖片儲存格可用範圍：約 335 × 535px；以較先觸頂的一邊決定等比例縮放
-                    const MAX_IMG_W = 335;
-                    const MAX_IMG_H = 535;
-
-                    for (let i = 0; i < processedPhotos.length; i += 3) {
-                        const p1 = processedPhotos[i];
-                        const p2 = processedPhotos[i + 1] || null;
-                        const p3 = processedPhotos[i + 2] || null;
-
-                        const calcSize = (p) => {
-                            if (!p) return { w: 1, h: 1 };
-                            let w = p.w, h = p.h;
-                            let r = Math.min(MAX_IMG_W / w, MAX_IMG_H / h);
-                            return { w: Math.round(w * r), h: Math.round(h * r) };
-                        };
-
-                        const s1 = calcSize(p1);
-                        const s2 = calcSize(p2);
-                        const s3 = calcSize(p3);
-
-                        const table = new Table({
-                            width: { size: 15648, type: WidthType.DXA },
-                            columnWidths: [1266, 3950, 1295, 3921, 1182, 4034],
-                            cantSplit: true,
-                            borders: bordersAllSingle,
-                            rows: [
-                                // Row 1: 蒐證時間 | [時間] | 蒐證地點 | [地點] | 製作人 | [製作人]
-                                new TableRow({
-                                    height: { value: 420, rule: HeightRule.ATLEAST },
-                                    children: [
-                                        new TableCell({ width: { size: 1266, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: "蒐證時間", bold: true, font: "標楷體", size: 24 })] })] }),
-                                        new TableCell({ width: { size: 3950, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: `${p1.item.date || caseDate} ${p1.item.time}`, font: "標楷體", size: 24 })] })] }),
-                                        new TableCell({ width: { size: 1295, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: "蒐證地點", bold: true, font: "標楷體", size: 24 })] })] }),
-                                        new TableCell({ width: { size: 3921, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: p1.item.location || defaultLocation, font: "標楷體", size: 24 })] })] }),
-                                        new TableCell({ width: { size: 1182, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: "製作人", bold: true, font: "標楷體", size: 24 })] })] }),
-                                        new TableCell({ width: { size: 4034, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.TOP, children: [new Paragraph({ alignment: AlignmentType.LEFT, children: [new TextRun({ text: globalOfficer, font: "標楷體", size: 24 })] })] }),
-                                    ]
-                                }),
-                                // Row 2: 照片編號 | [編號1] | 照片編號 | [編號2] | 照片編號 | [編號3]
-                                new TableRow({
-                                    height: { value: 380, rule: HeightRule.ATLEAST },
-                                    children: [
-                                        new TableCell({ width: { size: 1266, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: "照片編號", bold: true, font: "標楷體", size: 24 })] })] }),
-                                        new TableCell({ width: { size: 3950, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: p1.item.seq, font: "標楷體", size: 24 })] })] }),
-                                        new TableCell({ width: { size: 1295, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: "照片編號", bold: true, font: "標楷體", size: 24 })] })] }),
-                                        new TableCell({ width: { size: 3921, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: p2 ? p2.item.seq : "", font: "標楷體", size: 24 })] })] }),
-                                        new TableCell({ width: { size: 1182, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: "照片編號", bold: true, font: "標楷體", size: 24 })] })] }),
-                                        new TableCell({ width: { size: 4034, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: p3 ? p3.item.seq : "", font: "標楷體", size: 24 })] })] }),
-                                    ]
-                                }),
-                                // Row 3: 並排三照片 (各 5216 dxa，高度 8254 dxa，精確置中)
-                                new TableRow({
-                                    height: { value: 8254, rule: HeightRule.EXACT },
-                                    children: [
-                                        new TableCell({ width: { size: 5216, type: WidthType.DXA }, columnSpan: 2, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new ImageRun({ data: p1.data, transformation: { width: s1.w, height: s1.h } })] })] }),
-                                        new TableCell({ width: { size: 5216, type: WidthType.DXA }, columnSpan: 2, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [p2 ? new Paragraph({ alignment: AlignmentType.CENTER, children: [new ImageRun({ data: p2.data, transformation: { width: s2.w, height: s2.h } })] }) : new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "（無照片）", font: "標楷體", size: 20 })] })] }),
-                                        new TableCell({ width: { size: 5216, type: WidthType.DXA }, columnSpan: 2, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [p3 ? new Paragraph({ alignment: AlignmentType.CENTER, children: [new ImageRun({ data: p3.data, transformation: { width: s3.w, height: s3.h } })] }) : new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "（無照片）", font: "標楷體", size: 20 })] })] }),
-                                    ]
-                                }),
-                                // Row 4: 照片說明 | [說明1] | 照片說明 | [說明2] | 照片說明 | [說明3]
-                                new TableRow({
-                                    height: { value: 962, rule: HeightRule.ATLEAST },
-                                    children: [
-                                        new TableCell({ width: { size: 1266, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "照片說明", bold: true, font: "標楷體", size: 24 })] })] }),
-                                        new TableCell({ width: { size: 3950, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: p1.item.desc || "無", font: "標楷體", size: 20 })] })] }),
-                                        new TableCell({ width: { size: 1295, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "照片說明", bold: true, font: "標楷體", size: 24 })] })] }),
-                                        new TableCell({ width: { size: 3921, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: p2 ? (p2.item.desc || "無") : "", font: "標楷體", size: 20 })] })] }),
-                                        new TableCell({ width: { size: 1182, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "照片說明", bold: true, font: "標楷體", size: 24 })] })] }),
-                                        new TableCell({ width: { size: 4034, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: p3 ? (p3.item.desc || "無") : "", font: "標楷體", size: 20 })] })] }),
-                                    ]
-                                })
-                            ]
-                        });
-
-                        children.push(table);
-
-                        if (i + 3 < processedPhotos.length) {
-                            children.push(new Paragraph({ pageBreakBefore: true }));
-                        }
-                    }
-
-                    // 橫式三張 Header: 置中 標楷體 18pt 粗體
-                    // 橫式三張 Footer: 置中 標楷體 10pt (第 X 頁 / 共 Y 頁)
-                    docSections.push({
-                        properties: {
-                            page: {
-                                size: { width: 11906, height: 16838, orientation: PageOrientation.LANDSCAPE },
-                                margin: { top: 454, right: 510, bottom: 680, left: 510, header: 283, footer: 283 }
-                            }
-                        },
-                        headers: {
-                            default: new Header({
-                                children: [
-                                    new Paragraph({
-                                        alignment: AlignmentType.CENTER,
-                                        children: [new TextRun({ text: `${deptName}${caseTitle}蒐證照片`, bold: true, font: "標楷體", size: 36 })]
-                                    })
-                                ]
-                            })
-                        },
-                        footers: {
-                            default: new Footer({
-                                children: [
-                                    new Paragraph({
-                                        alignment: AlignmentType.CENTER,
-                                        children: [
-                                            new TextRun({ text: "第 ", font: "標楷體", size: 20 }),
-                                            new TextRun({ children: [PageNumber.CURRENT], font: "標楷體", size: 20 }),
-                                            new TextRun({ text: " 頁 / 共 ", font: "標楷體", size: 20 }),
-                                            new TextRun({ children: [PageNumber.TOTAL_PAGES], font: "標楷體", size: 20 }),
-                                            new TextRun({ text: " 頁", font: "標楷體", size: 20 }),
-                                        ]
-                                    })
-                                ]
-                            })
-                        },
-                        children: children
-                    });
-                }
-
-                const doc = new Document({
-                    styles: {
-                        default: {
-                            document: {
-                                run: {
-                                    font: "標楷體",
-                                    size: 22,
-                                    color: "000000"
-                                }
-                            }
-                        }
-                    },
-                    sections: docSections
-                });
-
-                const blob = await Packer.toBlob(doc);
-                const safeName = `${caseDate || '報告'}_${caseTitle}_現場照片清冊.docx`.replace(/[\\/:*?"<>|]/g, '_');
-                saveAs(blob, safeName);
-                this.clearProgress();
+                alert('Word 匯出模組尚未載入！');
             }
 
             blobToDataUrl(blob) {
+                if (typeof PhotoReportPdfExporter !== 'undefined') {
+                    return PhotoReportPdfExporter.blobToDataUrl(blob);
+                }
                 return new Promise((resolve, reject) => {
                     const reader = new FileReader();
                     reader.onload = () => resolve(reader.result);
@@ -4195,159 +3734,25 @@
             }
 
             async exportPdf() {
-                if (!this.photos.length) return alert('請先載入照片再匯出！');
-                if (!window.jspdf?.jsPDF) return alert('PDF 函式庫尚未載入，請重新整理後再試一次。');
-
-                this.processingCancelled = false;
-                const { jsPDF } = window.jspdf;
-                const layout = this.layoutSelect.value;
-                const isLandscape = layout === 'landscape_3';
-                const perPage = layout === 'up_down_2' ? 2 : layout === 'left_right_2' ? 2 : 3;
-                const totalPages = Math.ceil(this.photos.length / perPage);
-                const pdf = new jsPDF({ orientation: isLandscape ? 'landscape' : 'portrait', unit: 'mm', format: 'a4', compress: true });
-                const pageWidth = pdf.internal.pageSize.getWidth();
-                const pageHeight = pdf.internal.pageSize.getHeight();
-                const caseTitle = document.getElementById('caseTitle').value.trim() || '現場照片';
-                const caseDate = document.getElementById('caseDate').value.trim() || '';
-                const defaultLocation = document.getElementById('defaultLocation').value.trim() || '';
-                const globalOfficer = document.getElementById('officerName').value.trim() || '';
-                const deptName = document.getElementById('deptName').value.trim() || '臺南市政府警察局新化分局';
-
-                const drawText = (text, x, y, width, size = 9, align = 'left') => {
-                    // jsPDF 內建字型沒有中文；以 Canvas 使用 Windows 系統中文字型繪製後嵌入 PDF。
-                    const scale = 3;
-                    const pixelsPerMm = 3.78 * scale;
-                    const fontPixels = Math.max(12, size * 1.35 * scale);
-                    const canvas = document.createElement('canvas');
-                    const context = canvas.getContext('2d');
-                    context.font = `${fontPixels}px "Microsoft JhengHei", sans-serif`;
-                    const maxPixels = width * pixelsPerMm;
-                    const lines = [];
-                    let line = '';
-                    for (const character of String(text || '')) {
-                        const candidate = line + character;
-                        if (line && context.measureText(candidate).width > maxPixels) {
-                            lines.push(line);
-                            line = character;
-                        } else {
-                            line = candidate;
-                        }
-                    }
-                    lines.push(line || ' ');
-                    const linePixels = Math.ceil(fontPixels * 1.45);
-                    canvas.width = Math.ceil(maxPixels);
-                    canvas.height = linePixels * lines.length + Math.ceil(fontPixels * 0.5);
-                    context.font = `${fontPixels}px "Microsoft JhengHei", sans-serif`;
-                    context.fillStyle = '#20242B';
-                    context.textBaseline = 'top';
-                    lines.forEach((lineText, lineIndex) => {
-                        const measured = context.measureText(lineText).width;
-                        const textX = align === 'center' ? (canvas.width - measured) / 2 : align === 'right' ? canvas.width - measured : 0;
-                        context.fillText(lineText, textX, lineIndex * linePixels);
-                    });
-                    const height = canvas.height / pixelsPerMm;
-                    pdf.addImage(canvas.toDataURL('image/png'), 'PNG', x, y - (fontPixels * 0.9 / pixelsPerMm), width, height, undefined, 'FAST');
-                    return height;
-                };
-                const drawPhoto = (dataUrl, x, y, maxWidth, maxHeight) => {
-                    const properties = pdf.getImageProperties(dataUrl);
-                    const ratio = Math.min(maxWidth / properties.width, maxHeight / properties.height);
-                    const width = properties.width * ratio;
-                    const height = properties.height * ratio;
-                    pdf.addImage(dataUrl, 'JPEG', x + (maxWidth - width) / 2, y + (maxHeight - height) / 2, width, height, undefined, 'FAST');
-                };
-                const unit = deptName;
-                const margin = 10;
-
-                this.setProgress('正在壓縮照片並建立 PDF 清冊…', 0, this.photos.length);
-                for (let index = 0; index < this.photos.length; index++) {
-                    const photo = this.photos[index];
-                    if (index > 0 && index % perPage === 0) pdf.addPage();
-                    const pageIndex = Math.floor(index / perPage) + 1;
-                    const slot = index % perPage;
-                    const processed = await this.processImageToBlob(photo, 1600, 0.88);
-                    const dataUrl = await this.blobToDataUrl(processed.blob);
-                    this.throwIfProcessingCancelled();
-
-                    pdf.setDrawColor(65, 88, 117);
-                    if (slot === 0) drawText(`${unit ? `${unit} ` : ''}蒐證照片`, margin, 8, pageWidth - margin * 2, 14, 'center');
-
-                    if (layout === 'up_down_2') {
-                        const top = 14 + slot * ((pageHeight - 22) / 2);
-                        const cardHeight = (pageHeight - 22) / 2 - 3;
-                        pdf.rect(margin, top, pageWidth - margin * 2, cardHeight);
-                        drawText(`案由：${caseTitle}`, margin + 4, top + 7, pageWidth - 28, 9);
-                        drawText(`日期：${photo.date || caseDate}　時間：${photo.time || ''}　地點：${photo.location || defaultLocation}`, margin + 4, top + 13, pageWidth - 28, 8);
-                        drawPhoto(dataUrl, margin + 5, top + 17, pageWidth - margin * 2 - 10, cardHeight - 42);
-                        drawText(`說明：${photo.desc || '（無說明）'}`, margin + 4, top + cardHeight - 19, pageWidth - 28, 8);
-                        drawText(`編號：${photo.seq}　製作人：${globalOfficer}`, margin + 4, top + cardHeight - 7, pageWidth - 28, 8);
-                    } else if (layout === 'left_right_2') {
-                        const cardWidth = (pageWidth - margin * 2 - 4) / 2;
-                        const left = margin + slot * (cardWidth + 4);
-                        const top = 14;
-                        const cardHeight = pageHeight - 27;
-                        pdf.rect(left, top, cardWidth, cardHeight);
-                        drawText(`#${photo.seq}　${caseTitle}`, left + 3, top + 7, cardWidth - 6, 9);
-                        drawText(`${photo.date || caseDate} ${photo.time || ''}`, left + 3, top + 13, cardWidth - 6, 8);
-                        drawText(photo.location || defaultLocation, left + 3, top + 19, cardWidth - 6, 8);
-                        drawPhoto(dataUrl, left + 4, top + 23, cardWidth - 8, cardHeight - 65);
-                        drawText(`說明：${photo.desc || '（無說明）'}`, left + 3, top + cardHeight - 34, cardWidth - 6, 8);
-                        drawText(`製作人：${globalOfficer}`, left + 3, top + cardHeight - 8, cardWidth - 6, 8);
-                    } else {
-                        const cardWidth = (pageWidth - margin * 2 - 4) / 3;
-                        const left = margin + slot * (cardWidth + 2);
-                        const top = 14;
-                        const cardHeight = pageHeight - 27;
-                        pdf.rect(left, top, cardWidth, cardHeight);
-                        drawText(`#${photo.seq}　${caseTitle}`, left + 3, top + 7, cardWidth - 6, 8);
-                        drawText(`${photo.date || caseDate} ${photo.time || ''}`, left + 3, top + 12, cardWidth - 6, 7);
-                        drawText(photo.location || defaultLocation, left + 3, top + 17, cardWidth - 6, 7);
-                        drawPhoto(dataUrl, left + 3, top + 21, cardWidth - 6, cardHeight - 56);
-                        drawText(`說明：${photo.desc || '（無說明）'}`, left + 3, top + cardHeight - 25, cardWidth - 6, 7);
-                    }
-                    if (slot === perPage - 1 || index === this.photos.length - 1) {
-                        drawText(`第 ${pageIndex} 頁 / 共 ${totalPages} 頁`, margin, pageHeight - 5, pageWidth - margin * 2, 8, 'center');
-                    }
-                    this.setProgress('正在壓縮照片並建立 PDF 清冊…', index + 1, this.photos.length);
-                    if ((index + 1) % 3 === 0) await this.yieldToBrowser();
+                if (typeof PhotoReportPdfExporter !== 'undefined') {
+                    this.processingCancelled = false;
+                    return PhotoReportPdfExporter.exportPdf(this.getExportContext());
                 }
-
-                const safeName = `${caseDate || '報告'}_${caseTitle}_現場照片清冊.pdf`.replace(/[\\/:*?"<>|]/g, '_');
-                pdf.save(safeName);
-                this.clearProgress();
+                alert('PDF 匯出模組尚未載入！');
             }
 
             exportExcel() {
-                if (!this.photos.length) return alert('請先載入照片！');
-                if (typeof XLSX === 'undefined') return alert('SheetJS 尚未載入！');
-
-                const caseTitle = document.getElementById('caseTitle').value.trim() || '詐欺案';
-                const caseDate = document.getElementById('caseDate').value.trim() || '';
-                const defaultLocation = document.getElementById('defaultLocation').value.trim() || '';
-                const globalOfficer = document.getElementById('officerName').value.trim() || '巡官梁家豪';
-
-                const headers = ['編號', '檔名', '案由', '日期', '時間', '地點', '製作人', '說明'];
-                const data = [headers];
-
-                this.photos.forEach(p => {
-                    data.push([
-                        p.seq,
-                        p.name,
-                        caseTitle,
-                        p.date || caseDate,
-                        p.time,
-                        p.location || defaultLocation,
-                        globalOfficer,
-                        p.desc
-                    ]);
-                });
-
-                const ws = XLSX.utils.aoa_to_sheet(data);
-                const wb = XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(wb, ws, '工作表1');
-
-                const safeName = `${caseDate || '報告'}_${caseTitle}_資料清單.xlsx`.replace(/[\\/:*?"<>|]/g, '_');
-                XLSX.writeFile(wb, safeName);
+                if (typeof PhotoReportExcelExporter !== 'undefined') {
+                    const caseData = this.getCaseData();
+                    return PhotoReportExcelExporter.exportExcel({
+                        photos: this.photos,
+                        caseTitle: caseData.caseTitle || '',
+                        caseDate: caseData.caseDate || '',
+                        defaultLocation: caseData.defaultLocation || '',
+                        globalOfficer: caseData.officerName || '巡官梁家豪'
+                    });
+                }
+                alert('Excel 匯出模組尚未載入！');
             }
 
             importExcel(e) {
