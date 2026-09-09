@@ -133,6 +133,68 @@ async function runBaselineTests() {
     assert.strictEqual(currentPdf.pageSize.height, pdfBaseline.pageSize.height, 'PDF 頁面高度不一致');
     console.log('  ✅ PDF (.pdf) 頁數與版面尺寸完全符合 Golden Baseline！');
 
+    // 4. 三種清冊版型均需能實際產生 Word 與 PDF；UI 搬移不應影響匯出器讀取版型。
+    console.log('[4/3] 驗證三種清冊版型的 Word／PDF 匯出...');
+    const layoutExports = await page.evaluate(async () => {
+        const variants = [
+            { value: 'up_down_2', expectedLandscape: false },
+            { value: 'left_right_2', expectedLandscape: false },
+            { value: 'landscape_3', expectedLandscape: true }
+        ];
+        const originalSaveAs = window.saveAs;
+        const originalJsPdf = window.jspdf.jsPDF;
+        const results = [];
+
+        try {
+            for (const variant of variants) {
+                const layoutSelect = document.getElementById('layoutSelect');
+                layoutSelect.value = variant.value;
+                layoutSelect.dispatchEvent(new Event('change', { bubbles: true }));
+
+                let docxBlob = null;
+                window.saveAs = blob => { docxBlob = blob; };
+                await window.app.exportDocx();
+                const docxZip = await window.JSZip.loadAsync(docxBlob);
+                const docxXml = await docxZip.file('word/document.xml').async('string');
+
+                let pdfOutput = null;
+                window.jspdf.jsPDF = function(...args) {
+                    const doc = new originalJsPdf(...args);
+                    doc.save = function() {
+                        pdfOutput = {
+                            pageCount: doc.internal.getNumberOfPages(),
+                            width: Math.round(doc.internal.pageSize.getWidth()),
+                            height: Math.round(doc.internal.pageSize.getHeight())
+                        };
+                    };
+                    return doc;
+                };
+                await window.app.exportPdf();
+
+                results.push({
+                    value: variant.value,
+                    expectedLandscape: variant.expectedLandscape,
+                    docxBytes: docxBlob?.size || 0,
+                    docxIsValidDocument: docxXml.includes('<w:document') && docxXml.includes('<w:tbl'),
+                    pdfOutput
+                });
+            }
+        } finally {
+            window.saveAs = originalSaveAs;
+            window.jspdf.jsPDF = originalJsPdf;
+        }
+
+        return results;
+    });
+
+    layoutExports.forEach(result => {
+        assert.ok(result.docxBytes > 0, `${result.value} Word 未產生檔案內容`);
+        assert.strictEqual(result.docxIsValidDocument, true, `${result.value} Word 文件結構不正確`);
+        assert.ok(result.pdfOutput?.pageCount >= 1, `${result.value} PDF 未產生頁面`);
+        assert.strictEqual(result.pdfOutput.width > result.pdfOutput.height, result.expectedLandscape, `${result.value} PDF 方向不正確`);
+    });
+    console.log('  ✅ 上下兩張、左右兩張、橫式三張皆可正常產生 Word／PDF！');
+
     await browser.close();
     console.log('\n========================================');
     console.log('🎉 Phase 0C 匯出結構 Golden Baseline 比對全部通過！');

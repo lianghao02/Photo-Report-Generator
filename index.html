@@ -465,22 +465,34 @@
 
         <!-- 左側固定操作欄：不受右側照片高度影響 -->
         <aside id="sidePanel" class="flex flex-col gap-4 lg:sticky lg:top-4 self-start">
+        <!-- 專案管理：與案件資料及輸出操作分開，避免誤認為匯出步驟 -->
+        <section class="morandi-card px-4 py-3 flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+                <i class="fa-solid fa-folder-tree text-[#5B5CE2]"></i>
+                <div>
+                    <h2 class="text-sm font-bold text-[#20242B]">專案</h2>
+                    <p class="text-[10px] text-[#6B7280]">開啟或儲存目前工作內容</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <label class="btn-secondary px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer" title="開啟先前儲存的專案檔">
+                    <i class="fa-solid fa-folder-open text-[#5B5CE2]"></i> 開啟
+                    <input type="file" id="importProjectInput" accept=".photo-report,application/zip" class="hidden">
+                </label>
+                <button type="button" id="btnSaveProject" class="btn-secondary px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5" title="將照片與編輯資料儲存成單一專案檔">
+                    <i class="fa-solid fa-floppy-disk text-[#5B5CE2]"></i> 儲存
+                </button>
+            </div>
+        </section>
+
         <!-- 1. 全域案件表頭資訊 -->
         <section class="morandi-card p-4 md:p-5">
-            <div class="flex flex-wrap items-center justify-between border-b border-[#C7CBD3]/20 pb-2.5 mb-3 gap-2">
+            <div class="border-b border-[#C7CBD3]/20 pb-2.5 mb-3">
                 <div>
                     <h2 class="text-sm font-bold text-[#20242B] flex items-center gap-2">
-                        <i class="fa-solid fa-clipboard-list text-[#5B5CE2]"></i> 案件資料、清冊預設與版型
+                        <i class="fa-solid fa-clipboard-list text-[#5B5CE2]"></i> 案件資料與清冊預設
                     </h2>
                     <p class="text-[10px] text-[#6B7280] mt-1">清冊預設會用於尚未設定本張覆寫資料的照片。</p>
-                </div>
-                <div class="flex items-center gap-2">
-                    <span class="text-xs font-semibold text-[#6B7280]">Word 版型：</span>
-                    <select id="layoutSelect" class="input-field text-xs font-bold text-[#5B5CE2] bg-[#EEF0F3] py-1 px-2.5">
-                        <option value="up_down_2">上下兩張 (A4 直式．預設經典範本)</option>
-                        <option value="left_right_2">左右兩張 (A4 直式雙欄．對照範本)</option>
-                        <option value="landscape_3">橫式三張 (A4 橫式三欄．廣角範本)</option>
-                    </select>
                 </div>
             </div>
 
@@ -516,41 +528,54 @@
             </div>
         </section>
 
-        <!-- 3. 正式輸出與操作列 -->
+        <!-- 3. 版型與匯出：保留既有控制項 ID 與匯出行為 -->
         <section class="morandi-card p-4 md:p-5 shadow-xl bg-white/95 border-2 border-[#5B5CE2]/30">
             <div class="flex flex-col gap-3">
                 <div>
                     <div class="text-sm font-bold text-[#20242B] flex items-center gap-2">
                         <i class="fa-solid fa-file-word text-[#5B5CE2] text-base"></i>
-                        準備產出正式現場照片清冊
+                        版型與匯出
                     </div>
-                    <p class="text-[11px] text-[#6B7280]">純正標楷體．頁首頁尾（第X頁/共Y頁）．標準尺寸．100% 零巨集標準 OpenXML</p>
+                    <p class="text-[11px] text-[#6B7280]">選擇版型後匯出 Word 或 PDF 清冊。</p>
                 </div>
 
                 <div class="flex flex-col gap-2">
-                    <button type="button" id="btnSaveProject" class="btn-secondary w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-start gap-1.5" title="將照片與編輯資料儲存成單一專案檔">
-                        <i class="fa-solid fa-floppy-disk text-[#5B5CE2] text-sm"></i> 儲存專案
-                    </button>
-                    <label class="btn-secondary w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer" title="開啟先前儲存的專案檔">
-                        <i class="fa-solid fa-folder-open text-[#5B5CE2] text-sm"></i> 開啟專案
-                        <input type="file" id="importProjectInput" accept=".photo-report,application/zip" class="hidden">
-                    </label>
-                    <button type="button" id="btnExportExcel" class="btn-secondary w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-start gap-1.5">
-                        <i class="fa-regular fa-file-excel text-emerald-600 text-sm"></i> 匯出 Excel
-                    </button>
-                    <label class="btn-secondary w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer">
-                        <i class="fa-solid fa-file-import text-blue-600 text-sm"></i> 匯入 Excel 說明
-                        <input type="file" id="importExcelInput" accept=".xlsx, .xls" class="hidden">
-                    </label>
-                    <button type="button" id="btnExportZip" class="btn-secondary w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-start gap-1.5">
-                        <i class="fa-regular fa-file-zipper text-amber-600 text-sm"></i> 最佳化 ZIP
-                    </button>
-                    <button type="button" id="btnExportPdf" class="btn-secondary w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-start gap-1.5">
-                        <i class="fa-regular fa-file-pdf text-red-600 text-sm"></i> 匯出 PDF 清冊
-                    </button>
-                    <button type="button" id="btnExportDocx" class="btn-primary w-full px-5 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-lg hover:shadow-blue-500/20">
-                        <i class="fa-solid fa-download"></i> 匯出 Word 清冊 (.docx)
-                    </button>
+                    <div>
+                        <label for="layoutSelect" class="block text-xs font-bold text-[#6B7280] mb-1">清冊版型</label>
+                        <select id="layoutSelect" class="input-field w-full text-xs font-bold text-[#5B5CE2] bg-[#EEF0F3] py-2 px-2.5">
+                            <option value="up_down_2">上下兩張</option>
+                            <option value="left_right_2">左右兩張</option>
+                            <option value="landscape_3">橫式三張</option>
+                        </select>
+                        <p id="layoutDescription" class="text-[11px] text-[#6B7280] mt-1.5" aria-live="polite">上下兩張・A4 直式・每頁 2 張</p>
+                    </div>
+
+                    <div class="border-t border-[#C7CBD3]/25 pt-3 flex flex-col gap-2">
+                        <button type="button" id="btnExportDocx" class="btn-primary w-full px-5 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-lg hover:shadow-blue-500/20">
+                            <i class="fa-solid fa-download"></i> 匯出 Word 清冊 (.docx)
+                        </button>
+                        <button type="button" id="btnExportPdf" class="btn-secondary w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-start gap-1.5">
+                            <i class="fa-regular fa-file-pdf text-red-600 text-sm"></i> 匯出 PDF 清冊
+                        </button>
+                    </div>
+
+                    <div class="border-t border-[#C7CBD3]/25 pt-3 flex flex-col gap-2">
+                        <p class="text-[11px] font-bold text-[#6B7280]">資料交換</p>
+                        <label class="btn-secondary w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer">
+                            <i class="fa-solid fa-file-import text-blue-600 text-sm"></i> 匯入 Excel 說明
+                            <input type="file" id="importExcelInput" accept=".xlsx, .xls" class="hidden">
+                        </label>
+                        <button type="button" id="btnExportExcel" class="btn-secondary w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-start gap-1.5">
+                            <i class="fa-regular fa-file-excel text-emerald-600 text-sm"></i> 匯出 Excel
+                        </button>
+                    </div>
+
+                    <div class="border-t border-[#C7CBD3]/25 pt-3 flex flex-col gap-2">
+                        <p class="text-[11px] font-bold text-[#6B7280]">其他輸出</p>
+                        <button type="button" id="btnExportZip" class="btn-secondary w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-start gap-1.5">
+                            <i class="fa-regular fa-file-zipper text-amber-600 text-sm"></i> 最佳化照片 ZIP
+                        </button>
+                    </div>
                 </div>
             </div>
         </section>
@@ -1116,6 +1141,7 @@
                 this.initEvents();
                 this.applyWorkspaceLayout();
                 this.setDefaultTodayDate();
+                this.updateLayoutDescription();
                 this.loadAppVersion();
                 this.recordHistory('初始狀態');
                 this.markProjectSaved();
@@ -1143,6 +1169,7 @@
                 this.pageEstimate = document.getElementById('pageEstimate');
                 this.selectedCountBadge = document.getElementById('selectedCountBadge');
                 this.layoutSelect = document.getElementById('layoutSelect');
+                this.layoutDescription = document.getElementById('layoutDescription');
                 this.processingStatus = document.getElementById('processingStatus');
                 this.processingMessage = document.getElementById('processingMessage');
                 this.processingCount = document.getElementById('processingCount');
@@ -1263,8 +1290,9 @@
                 document.getElementById('btnExportPdf').addEventListener('click', () => this.confirmExportWithAudit(() => this.exportPdf().catch(e => this.handleExportError(e)), 'PDF 清冊'));
                 document.getElementById('importExcelInput').addEventListener('change', (e) => this.importExcel(e));
                 this.layoutSelect.addEventListener('change', () => {
+                    this.updateLayoutDescription();
                     this.updatePageEstimate();
-                    this.scheduleHistory('變更 Word 版型');
+                    this.scheduleHistory('變更清冊版型');
                 });
                 this.btnCheckUpdate.addEventListener('click', () => this.checkForUpdates());
                 this.btnCancelProcessing.addEventListener('click', () => { this.processingCancelled = true; });
@@ -2077,6 +2105,7 @@
                 ['caseTitle', 'caseDate', 'defaultLocation', 'deptName', 'officerName', 'layoutSelect'].forEach(id => {
                     if (typeof data[id] === 'string') document.getElementById(id).value = data[id];
                 });
+                this.updateLayoutDescription();
             }
 
             snapshotState(label = '') {
@@ -2658,6 +2687,16 @@
                 const pages = count === 0 ? 0 : Math.ceil(count / perPage);
                 this.photoCount.textContent = count;
                 this.pageEstimate.textContent = `（約 ${pages} 頁 Word 報表）`;
+            }
+
+            updateLayoutDescription() {
+                if (!this.layoutDescription) return;
+                const descriptions = {
+                    up_down_2: '上下兩張・A4 直式・每頁 2 張',
+                    left_right_2: '左右兩張・A4 直式雙欄・每頁 2 張',
+                    landscape_3: '橫式三張・A4 橫式・每頁 3 張'
+                };
+                this.layoutDescription.textContent = descriptions[this.layoutSelect.value] || descriptions.up_down_2;
             }
 
             // ============================================================

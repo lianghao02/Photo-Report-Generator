@@ -29,6 +29,38 @@ async function runE2eTests() {
     }
     console.log('  ✅ window.app 初始化完成');
 
+    // 驗證左側資訊架構與版型提示：維持既有控制項 ID，並讓 Word/PDF 共用同一版型。
+    console.log('[1A/5] 驗證版型與匯出區的資訊架構...');
+    const exportUi = await page.evaluate(() => {
+        const byId = id => document.getElementById(id);
+        const layoutSection = byId('layoutSelect')?.closest('section');
+        const caseSection = byId('caseTitle')?.closest('section');
+        return {
+            requiredControlsPresent: ['layoutSelect', 'btnSaveProject', 'importProjectInput', 'btnExportExcel', 'importExcelInput', 'btnExportZip', 'btnExportPdf', 'btnExportDocx']
+                .every(id => Boolean(byId(id))),
+            layoutSectionTitle: layoutSection?.querySelector('div.text-sm')?.textContent?.trim(),
+            caseSectionTitle: caseSection?.querySelector('h2')?.textContent?.trim(),
+            layoutInCaseSection: Boolean(caseSection?.querySelector('#layoutSelect')),
+            wordIsPrimary: byId('btnExportDocx')?.classList.contains('btn-primary'),
+            initialDescription: byId('layoutDescription')?.textContent?.trim()
+        };
+    });
+    if (!exportUi.requiredControlsPresent) throw new Error('既有專案／匯出控制項 ID 不完整');
+    if (exportUi.layoutSectionTitle !== '版型與匯出') throw new Error(`版型區標題不正確：${exportUi.layoutSectionTitle}`);
+    if (!exportUi.caseSectionTitle?.includes('案件資料與清冊預設')) throw new Error(`案件區標題不正確：${exportUi.caseSectionTitle}`);
+    if (exportUi.layoutInCaseSection) throw new Error('清冊版型不應留在案件資料區');
+    if (!exportUi.wordIsPrimary) throw new Error('Word 清冊應維持主要操作按鈕');
+    if (exportUi.initialDescription !== '上下兩張・A4 直式・每頁 2 張') throw new Error(`預設版型提示不正確：${exportUi.initialDescription}`);
+
+    await page.selectOption('#layoutSelect', 'left_right_2');
+    const twoColumnDescription = await page.$eval('#layoutDescription', el => el.textContent.trim());
+    if (twoColumnDescription !== '左右兩張・A4 直式雙欄・每頁 2 張') throw new Error(`左右兩張版型提示不正確：${twoColumnDescription}`);
+    await page.selectOption('#layoutSelect', 'landscape_3');
+    const landscapeDescription = await page.$eval('#layoutDescription', el => el.textContent.trim());
+    if (landscapeDescription !== '橫式三張・A4 橫式・每頁 3 張') throw new Error(`橫式三張版型提示不正確：${landscapeDescription}`);
+    await page.selectOption('#layoutSelect', 'up_down_2');
+    console.log('  ✅ 左側分群、既有控制項與三種版型提示皆正常');
+
     // [2/5] 上傳測試照片至 fileInput
     console.log('[2/5] 模擬檔案上傳 (fixtures)...');
     const fixturesDir = path.resolve(__dirname, '../fixtures');
@@ -145,6 +177,67 @@ async function runE2eTests() {
         throw new Error('點擊「仍要匯出」後，暫存之匯出回呼動作應被執行！');
     }
     console.log('  ✅ 「仍要匯出」行為正確：Modal 關閉且匯出回呼正常觸發');
+
+    // 專案、Excel、ZIP 按鈕雖只搬移位置，仍實際驗證其既有資料流程。
+    console.log('[6/5] 驗證專案、Excel 與 ZIP 資料操作...');
+    const dataActions = await page.evaluate(async () => {
+        const originalSaveAs = window.saveAs;
+        const originalAlert = window.alert;
+        const originalConfirm = window.confirm;
+        const savedFiles = [];
+        const alerts = [];
+        window.saveAs = (blob, name) => savedFiles.push({ blob, name });
+        window.alert = message => alerts.push(String(message));
+        window.confirm = () => true;
+
+        try {
+            await window.app.saveProject();
+            const project = savedFiles.find(file => file.name.endsWith('.photo-report'));
+            if (!project) throw new Error('未產生專案檔');
+            const projectFile = new File([project.blob], project.name, { type: 'application/zip' });
+            await window.app.openProject({ target: { files: [projectFile], value: '' } });
+
+            const importTarget = window.app.photos.find(photo => photo.name === 'sample02.jpg');
+            if (!importTarget) throw new Error('找不到唯一檔名的 Excel 匯入測試照片');
+            const importSheet = window.XLSX.utils.aoa_to_sheet([
+                ['編號', '檔名', '日期', '時間', '地點', '說明'],
+                [importTarget.seq, importTarget.name, '115/09/09', '10:30', '測試地點', 'Excel 匯入驗證']
+            ]);
+            const workbook = window.XLSX.utils.book_new();
+            window.XLSX.utils.book_append_sheet(workbook, importSheet, '照片清冊');
+            const excelFile = new File([window.XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })], 'import.xlsx', {
+                type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            });
+            window.app.importExcel({ target: { files: [excelFile], value: '' } });
+            await new Promise((resolve, reject) => {
+                const deadline = Date.now() + 3000;
+                const check = () => {
+                    if (window.app.photos.some(photo => photo.name === 'sample02.jpg' && photo.desc === 'Excel 匯入驗證')) return resolve();
+                    if (Date.now() >= deadline) return reject(new Error('Excel 匯入逾時'));
+                    setTimeout(check, 25);
+                };
+                check();
+            });
+
+            await window.app.exportZip();
+            const zip = savedFiles.find(file => file.name.endsWith('.zip'));
+            return {
+                restoredPhotoCount: window.app.photos.length,
+                importedDescription: window.app.photos.find(photo => photo.name === 'sample02.jpg')?.desc,
+                zipBytes: zip?.blob?.size || 0,
+                projectOpened: alerts.some(message => message.includes('已開啟專案'))
+            };
+        } finally {
+            window.saveAs = originalSaveAs;
+            window.alert = originalAlert;
+            window.confirm = originalConfirm;
+        }
+    });
+    if (dataActions.restoredPhotoCount !== 3) throw new Error(`開啟專案後照片數量不正確：${dataActions.restoredPhotoCount}`);
+    if (dataActions.importedDescription !== 'Excel 匯入驗證') throw new Error('Excel 匯入未寫入預期說明');
+    if (dataActions.zipBytes <= 0) throw new Error('最佳化照片 ZIP 未產生內容');
+    if (!dataActions.projectOpened) throw new Error('專案開啟流程未完成');
+    console.log('  ✅ 專案開啟／儲存、Excel 匯入與 ZIP 匯出皆正常');
 
     if (pageErrors.length > 0) {
         console.warn('⚠️ 頁面出現 Uncaught Error:', pageErrors);
