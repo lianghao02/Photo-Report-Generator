@@ -1,23 +1,21 @@
 # 當前交接狀態 (Current Handoff)
 
-- **本輪目標**：重整左側「案件資料、專案管理、清冊版型與匯出」資訊架構，不變更既有輸出與專案資料格式。
-- **已完成**：
-  1. 「案件資料、清冊預設與版型」改為「案件資料與清冊預設」，並移出 `layoutSelect`。
-  2. 新增精簡「專案」列，保留既有 `btnSaveProject`、`importProjectInput` 與行為。
-  3. 「準備產出正式現場照片清冊」改為「版型與匯出」；`layoutSelect` 改標示「清冊版型」。
-  4. 新增三種版型的即時說明；Word/PDF 共用原有版型值與匯出邏輯。
-  5. Word 保持主要操作；Excel 匯入／匯出歸入「資料交換」，ZIP 歸入「其他輸出」。
-  6. 擴充 E2E：驗證左側分群、既有 ID、版型提示、專案開啟／儲存、Excel 匯入與 ZIP 匯出。
-  7. 擴充匯出基準測試：三種版型皆實際產生有效 Word 與 PDF。
-- **刻意未修改（保留範圍）**：Word/PDF/Excel/ZIP exporter 核心、三種正式版型尺寸、專案檔格式、Undo/Redo、拖曳排序、照片載入與 EXIF 均未修改。
-- **驗證結果與測試證據**：
-  - `npm test`：4/4 單元測試通過。
-  - `npm run test:e2e`：左側 UX、完整度提醒、專案、Excel、ZIP 流程通過。
-  - `npm run test:baseline`：既有 Golden Baseline 與三種 Word/PDF 版型通過。
-  - `scripts/qa.ps1`、`git diff --check`：通過。
-  - `scripts/build-portable.ps1`：通過；本輪產物為 `照片清冊產生器_2.2.1_x64-setup.exe` 與 `照片清冊產生器_2.2.1_x64_portable.zip`（2026-09-09 12:48）。
-- **已知事項與注意事項**：
-  - `Browserslist` 顯示 caniuse-lite 更新提示，未影響建置或測試；本輪不擴大處理相依更新。
-  - 已完成自動化網頁與建置驗證；Tauri 桌面視窗的人工肉眼手感驗收仍可在實機進行。
-- **下一步建議**：若要發布下一正式版本，另行決定版本號、Release 與 GitHub Pages 部署；本輪未修改版本號。
-- **目前狀態判定**：可交付
+- **Release Gate**：PASS
+- **正式版本**：v2.3.0
+- **狀態**：Stable / Maintenance
+
+## 驗證結果與測試證據
+- **Web 自動化測試**：PASS（`npm test` 4/4 單元測試全部通過）
+- **E2E 測試**：PASS（`npm run test:e2e` Playwright UI 流程全部通過）
+- **Golden Baseline 測試**：PASS（`npm run test:baseline` Word / Excel / PDF 結構比對全部通過）
+- **QA 檢核**：PASS（`scripts/qa.ps1` 與 `git diff --check` 通過）
+- **Build 產出**：PASS（`scripts/build-portable.ps1` 建置通過，產出 Setup EXE 與 Portable ZIP）
+- **Desktop 實機操作**：PASS（使用者實機操作驗收結果正常）
+- **Word / PDF / Excel / ZIP**：PASS（各匯出格式回歸驗證通過）
+- **Project Save / Load**：PASS（專案檔儲存與還原流程通過）
+- **Version 一致性**：PASS（version.txt、index.html、package.json、tauri.conf.json、Cargo.toml、README.md 均為 v2.3.0 / 2.3.0）
+- **Release 狀態**：PASS（GitHub Release v2.3.0 正式發布，安裝檔與免安裝包上傳完成）
+- **Sensitive Data 檢核**：PASS（無 API key、password、token、個人路徑或臨時資料提交）
+
+## 備註
+- 本版本收斂完成，後續進入維護階段（Stable / Maintenance）。只有真實 Bug、使用需求、相容性或安全問題才重新開啟開發。

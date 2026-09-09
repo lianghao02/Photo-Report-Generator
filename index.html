@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="mobile-web-app-capable" content="yes">
-    <title>現場照片清冊生成工具 v2.2.1</title>
+    <title>現場照片清冊生成工具 v2.3.0</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📷</text></svg>">
 
     <link rel="stylesheet" href="vendor/tailwind.css">
@@ -445,7 +445,7 @@
             <!-- 內嵌版本徽章：version.txt 於建置時一致性檢核，避免 file:// 執行期 CORS 限制 -->
             <span id="appVersionBadge" class="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-[#5B5CE2]/15 text-[#5B5CE2] border border-[#5B5CE2]/30 flex items-center gap-1.5 shadow-sm select-none" title="目前版本（離線可用）">
                 <i class="fa-solid fa-tag text-[11px]"></i>
-                <span id="appVersionText">v2.2.1</span>
+                <span id="appVersionText">v2.3.0</span>
             </span>
 
             <!-- 檢查更新按鈕 -->
@@ -966,7 +966,7 @@
             <div class="grid grid-cols-3 gap-2 bg-[#EEF0FF] p-3 rounded-xl border border-[#C7CBD3]/20 text-xs">
                 <div class="flex flex-col">
                     <span class="text-[#6B7280] text-[10px] font-bold">目前使用版本</span>
-                    <span id="updateCurrentVer" class="font-bold text-[#20242B] mt-0.5">v2.2.1</span>
+                    <span id="updateCurrentVer" class="font-bold text-[#20242B] mt-0.5">v2.3.0</span>
                 </div>
                 <div class="flex flex-col items-center justify-center border-x border-[#C7CBD3]/20">
                     <span class="text-emerald-600 text-[10px] font-bold">GitHub 最新版本</span>
@@ -1011,7 +1011,7 @@
             <div>
                 <h3 class="text-sm font-black text-[#20242B]">目前已是最新版本！</h3>
                 <p class="text-xs text-[#6B7280] mt-1.5 leading-relaxed">
-                    您目前使用的版本為 <span id="upToDateVer" class="font-bold text-[#5B5CE2]">v2.2.1</span>，各項功能皆為最新，無需進行更新。
+                    您目前使用的版本為 <span id="upToDateVer" class="font-bold text-[#5B5CE2]">v2.3.0</span>，各項功能皆為最新，無需進行更新。
                 </p>
             </div>
             <button type="button" onclick="window.app.closeModal('upToDateModal')" class="btn-primary w-full py-2 rounded-lg text-xs font-bold mt-2 shadow">
