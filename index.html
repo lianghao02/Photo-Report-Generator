@@ -2993,6 +2993,8 @@
             // 不依賴瀏覽器原生 draggable：Windows 的部分觸控板／卡片子元素會讓 dragstart 不穩定。
             beginCardPointerDrag(index, event) {
                 if (event.button !== 0 || this.isTypingTarget(event.target) || event.target.closest('button, a, label, input')) return;
+                // 按住 Ctrl、Meta 或 Shift 時為多選／連續選取操作，嚴禁啟動拖曳與覆寫選取狀態
+                if (event.ctrlKey || event.metaKey || event.shiftKey) return;
                 const card = event.currentTarget;
                 if (!(card instanceof HTMLElement) || !this.photos[index]) return;
 

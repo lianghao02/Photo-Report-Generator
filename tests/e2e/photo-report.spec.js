@@ -241,6 +241,7 @@ async function runE2eTests() {
 
     // [7/5] 驗證鑑識級大圖燈箱 (PaperSwitch 規格) 與雙擊卡片展開編輯
     console.log('[7/5] 驗證鑑識級大圖燈箱 (縮放/平移/旋轉/快速鍵) 與雙擊卡片展開編輯...');
+    await page.click('#filterBtn_all');
     // 1. 測試點擊放大按鈕
     await page.hover('.photo-thumb-card .thumbnail-stage');
     const firstZoomBtn = await page.$('.photo-thumb-card .btn-zoom-preview');
@@ -322,9 +323,30 @@ async function runE2eTests() {
     await page.keyboard.press('Space');
     const isLightboxReopened = await page.$eval('#imageLightboxModal', el => !el.classList.contains('hidden'));
     if (!isLightboxReopened) throw new Error('在主畫布選取照片後按 Space 鍵未能開啟大圖燈箱');
-    console.log('  ✅ 主畫布選取照片按 Space 鍵成功開啟燈箱');
     await page.keyboard.press('Escape');
+    await page.waitForFunction(() => document.getElementById('imageLightboxModal').classList.contains('hidden'));
 
+    // 1B. 測試 Ctrl + 點選與 Shift + 點選連續範圍多選
+    console.log('  驗證 Ctrl + 點選多選與 Shift + 連續範圍選取...');
+    await (await page.$$('.photo-thumb-card'))[0].click();
+    await page.keyboard.down('Control');
+    await (await page.$$('.photo-thumb-card'))[2].click();
+    await page.keyboard.up('Control');
+    const ctrlSelTest = await page.evaluate(() => window.app.photos.map(p => p.selected));
+    if (!ctrlSelTest[0] || !ctrlSelTest[2] || ctrlSelTest[1]) {
+        throw new Error(`Ctrl+點選多選失敗，選取狀態: ${JSON.stringify(ctrlSelTest)}`);
+    }
+    console.log('  ✅ Ctrl + 點選多選功能正常');
+
+    await (await page.$$('.photo-thumb-card'))[0].click();
+    await page.keyboard.down('Shift');
+    await (await page.$$('.photo-thumb-card'))[2].click();
+    await page.keyboard.up('Shift');
+    const shiftSelTest = await page.evaluate(() => window.app.photos.map(p => p.selected));
+    if (!shiftSelTest[0] || !shiftSelTest[1] || !shiftSelTest[2]) {
+        throw new Error(`Shift+點選連續範圍選取失敗，選取狀態: ${JSON.stringify(shiftSelTest)}`);
+    }
+    console.log('  ✅ Shift + 點選連續範圍選取功能正常');
 
     // 2. 測試雙擊卡片展開單張編輯
     // 先確保編輯面板為收合狀態
