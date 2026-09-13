@@ -244,6 +244,17 @@
         .photo-thumb-card.pointer-drop-after {
             box-shadow: inset -3px 0 0 #6366F1, 0 8px 20px rgba(99, 102, 241, 0.14) !important;
         }
+        .thumbnail-zoom-trigger {
+            pointer-events: none;
+        }
+        .btn-zoom-preview {
+            position: absolute;
+            bottom: 6px;
+            right: 6px;
+            z-index: 10;
+            pointer-events: auto !important;
+            cursor: pointer;
+        }
         #dragInsertOverlay {
             position: fixed;
             width: 34px;
@@ -983,6 +994,7 @@
                     <div class="flex items-center justify-between"><span class="text-[#6B7280]">連續範圍選取</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">Shift + 點選</kbd></div>
                     <div class="flex items-center justify-between"><span class="text-[#6B7280]">矩形框選</span><span class="text-[#4B5563] font-medium">舞台空白處拖曳</span></div>
                     <div class="flex items-center justify-between"><span class="text-[#6B7280]">全選 / 全不選</span><span class="text-[#4B5563] font-medium">點擊工具列「全選」</span></div>
+                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">單張編輯</span><span class="text-[#4B5563] font-medium">雙擊縮圖展開</span></div>
                 </div>
 
                 <div class="p-3 bg-slate-50 rounded-xl border border-slate-200/60 flex flex-col gap-2">
@@ -1008,7 +1020,7 @@
                         <i class="fa-solid fa-magnifying-glass-plus text-[#5B5CE2]"></i> 縮放與檢視
                     </span>
                     <div class="flex items-center justify-between"><span class="text-[#6B7280]">調整縮圖尺寸</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">Ctrl + 滾輪</kbd></div>
-                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">燈箱放大照片</span><span class="text-[#4B5563] font-medium">點擊照片放大圖示</span></div>
+                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">燈箱放大照片</span><span class="text-[#4B5563] font-medium">點擊照片「放大」圖示</span></div>
                     <div class="flex items-center justify-between"><span class="text-[#6B7280]">關閉任何彈窗</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">ESC</kbd></div>
                 </div>
             </div>
@@ -2855,7 +2867,7 @@
             // ============================================================
             // 不依賴瀏覽器原生 draggable：Windows 的部分觸控板／卡片子元素會讓 dragstart 不穩定。
             beginCardPointerDrag(index, event) {
-                if (event.button !== 0 || this.isTypingTarget(event.target) || event.target.closest('button, a, label')) return;
+                if (event.button !== 0 || this.isTypingTarget(event.target) || event.target.closest('button, a, label, input')) return;
                 const card = event.currentTarget;
                 if (!(card instanceof HTMLElement) || !this.photos[index]) return;
 
@@ -2876,7 +2888,6 @@
                     moved: false,
                     targetCard: null
                 };
-                card.setPointerCapture(event.pointerId);
             }
 
             updateCardPointerDrag(event) {
@@ -2886,7 +2897,12 @@
                 const deltaX = event.clientX - state.startX;
                 const deltaY = event.clientY - state.startY;
                 if (!state.moved && Math.hypot(deltaX, deltaY) < 6) return;
-                state.moved = true;
+                if (!state.moved) {
+                    state.moved = true;
+                    try {
+                        state.sourceCard.setPointerCapture(event.pointerId);
+                    } catch (_) {}
+                }
                 this.draggedIndices.forEach(draggedIndex => {
                     const draggedCard = document.getElementById(`thumb_${this.photos[draggedIndex]?.uid}`);
                     draggedCard?.classList.add('pointer-dragging');
@@ -2933,7 +2949,11 @@
             endCardPointerDrag(event, cancelled = false) {
                 const state = this.pointerCardDrag;
                 if (!state || state.pointerId !== event.pointerId) return;
-                if (state.sourceCard.hasPointerCapture(event.pointerId)) state.sourceCard.releasePointerCapture(event.pointerId);
+                try {
+                    if (state.sourceCard.hasPointerCapture(event.pointerId)) {
+                        state.sourceCard.releasePointerCapture(event.pointerId);
+                    }
+                } catch (_) {}
                 this.pointerCardDrag = null;
                 this.clearCardPointerDragVisuals();
 
@@ -2949,7 +2969,11 @@
             cancelCardPointerDrag() {
                 const state = this.pointerCardDrag;
                 if (!state) return;
-                if (state.sourceCard.hasPointerCapture(state.pointerId)) state.sourceCard.releasePointerCapture(state.pointerId);
+                try {
+                    if (state.sourceCard.hasPointerCapture(state.pointerId)) {
+                        state.sourceCard.releasePointerCapture(state.pointerId);
+                    }
+                } catch (_) {}
                 this.pointerCardDrag = null;
                 this.draggedIndices = [];
                 this.dragInsertBeforeUid = null;
@@ -3349,7 +3373,7 @@
 
             handleCardClick(index, event) {
                 if (performance.now() < this.suppressCardClickUntil) return;
-                if (['INPUT', 'BUTTON', 'I'].includes(event.target.tagName)) return;
+                if (event.target.closest('button, a, label, input')) return;
 
                 if (event.ctrlKey || event.metaKey) {
                     this.photos[index].selected = !this.photos[index].selected;
@@ -3368,6 +3392,26 @@
                 this.currentIndex = index;
                 this.render();
                 this.recordHistory('變更照片選取');
+            }
+
+            handleCardDblClick(index, event) {
+                if (event.target.closest('button, a, label, input')) return;
+                this.photos.forEach((photo, photoIndex) => {
+                    photo.selected = (photoIndex === index);
+                });
+                this.currentIndex = index;
+                this.lastSelectedIndex = index;
+                if (this.editorCollapsed) {
+                    this.toggleEditor();
+                }
+                this.render();
+                setTimeout(() => {
+                    if (this.editDesc) {
+                        this.editDesc.focus();
+                        const len = this.editDesc.value.length;
+                        this.editDesc.setSelectionRange(len, len);
+                    }
+                }, 50);
             }
 
             togglePhotoSelect(index, event) {
@@ -3683,7 +3727,7 @@
                     const missingFields = [!String(p.location || '').trim() && !defaultLocation ? '地點' : '', !String(p.desc || '').trim() ? '說明' : ''].filter(Boolean);
                     const statusText = missingFields.length ? `待補：${missingFields.join('、')}` : '資料完整';
                     const displayLayout = this.getPhotoDisplayLayout(p);
-                    const cardTitle = `第 ${p.seq} 張｜採證時間：${p.time || '未填'}｜${statusText}；可拖曳調整順序`;
+                    const cardTitle = `第 ${p.seq} 張｜採證時間：${p.time || '未填'}｜${statusText}；雙擊展開編輯，拖曳調整順序`;
 
                     return `
                         <div class="photo-thumb-card morandi-card p-1.5 flex flex-col gap-1 bg-white border border-[#C7CBD3]/25 rounded-xl ${isSelected} ${isCurrent}"
@@ -3692,6 +3736,7 @@
                              title="${escapeHtml(cardTitle)}"
                              draggable="false"
                              onclick="window.app.handleCardClick(${idx}, event)"
+                             ondblclick="window.app.handleCardDblClick(${idx}, event)"
                              onpointerdown="window.app.beginCardPointerDrag(${idx}, event)">
 
                             <div class="thumbnail-meta-row flex items-center justify-between min-h-5">
@@ -3707,10 +3752,15 @@
                                 </span>
                             </div>
 
-                            <div class="thumbnail-stage w-full bg-[#EEF0F3] rounded-lg overflow-hidden relative group cursor-pointer" onclick="event.stopPropagation(); window.app.openLightboxByIndex(${idx})">
+                            <div class="thumbnail-stage w-full bg-[#EEF0F3] rounded-lg overflow-hidden relative group cursor-pointer">
                                 <img src="${p.thumbnailSrc}" alt="${escapeHtml(p.name)}" loading="lazy" decoding="async" style="${displayLayout.imageStyle}" class="absolute left-1/2 top-1/2 object-contain pointer-events-none">
-                                <div class="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-[10px] gap-1 transition">
-                                    <i class="fa-solid fa-magnifying-glass-plus"></i> 放大
+                                <div class="thumbnail-zoom-trigger absolute inset-0 opacity-0 group-hover:opacity-100 transition">
+                                    <button type="button" class="btn-zoom-preview absolute bottom-1.5 right-1.5 px-2 py-1 bg-black/75 hover:bg-[#5B5CE2] text-white text-[10px] font-bold rounded-md shadow-md flex items-center gap-1 transition-all transform hover:scale-105 active:scale-95"
+                                            style="pointer-events: auto;"
+                                            onclick="event.stopPropagation(); window.app.openLightboxByIndex(${idx})"
+                                            title="點擊放大檢視照片 (燈箱)">
+                                        <i class="fa-solid fa-magnifying-glass-plus"></i> 放大
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -3721,12 +3771,13 @@
 
                 // 渲染試算表視圖 (DataGrid)
                 this.gridTbody.innerHTML = this.photos.map((p, idx) => `
-                    <tr class="hover:bg-[#F7F7F5]/70 ${idx === this.currentIndex ? 'bg-blue-50/50' : ''}">
+                    <tr class="hover:bg-[#F7F7F5]/70 ${idx === this.currentIndex ? 'bg-blue-50/50' : ''}"
+                        ondblclick="window.app.handleCardDblClick(${idx}, event)">
                         <td class="p-2 text-center">
                             <input type="checkbox" ${p.selected ? 'checked' : ''} onclick="window.app.togglePhotoSelect(${idx}, event)" class="rounded text-[#5B5CE2] cursor-pointer">
                         </td>
                         <td class="p-2 text-center">
-                            <img src="${p.thumbnailSrc}" style="transform: rotate(${p.rotation}deg);" class="w-10 h-10 object-contain mx-auto rounded border bg-[#EEF0F3] cursor-pointer" onclick="window.app.openLightboxByIndex(${idx})">
+                            <img src="${p.thumbnailSrc}" style="transform: rotate(${p.rotation}deg);" class="w-10 h-10 object-contain mx-auto rounded border bg-[#EEF0F3] cursor-pointer" onclick="event.stopPropagation(); window.app.openLightboxByIndex(${idx})" title="點擊放大">
                         </td>
                         <td class="p-2">
                             <input type="text" value="${escapeHtml(p.seq)}" oninput="window.app.updatePhotoField(${idx}, 'seq', this.value)" class="input-field w-full text-xs font-bold text-[#5B5CE2]">

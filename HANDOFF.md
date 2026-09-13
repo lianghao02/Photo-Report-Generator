@@ -4,35 +4,31 @@
 可交付
 
 ## 本輪目標
-升級現場照片清冊生成工具之 UI/UX 至商用軟體水準，包含左側邊欄人體工學、版型微縮示意圖、中央智慧工具列模組化分群、商業級 Hero 空狀態、獨立快捷鍵與操作指南彈窗，並保證 100% 相容所有測試與匯出引擎。
+修復縮圖卡片「點擊放大圖示開啟燈箱」與「雙擊縮圖卡片自動展開單張編輯並聚焦說明欄位」兩項核心操作互動。
 
 ## 已完成
-1. **左側邊欄人體工學與首屏完整度（Above the Fold）**：
-   - 案件資料欄位全面雙欄化（「採證日期/地點」、「製作單位/製作人」並排），大幅節省垂直高度。
-   - 修正預編譯 Tailwind CSS 缺乏 `w-8` 導致 `#layoutMiniPreview` 撐爆版面問題，以專屬 CSS 明確鎖定 36px × 48px。
-   - 確保在 800px 視窗高度下，專案檔、案件資訊、版型、Word 匯出、PDF 匯出、Excel 匯入/匯出、ZIP 打包「全數免滾動、一屏可見」，並附帶自適應捲動保護。
-2. **中央智慧工具列結構化雙層設計**：
-   - 將單一隨機換行的 `flex-wrap` 工具列重構為嚴謹的「雙層指揮台」結構：
-     - 第一層：左側為批次編輯動作（全選、流水號、檔名時間、復原重做、旋轉、位移），右側為危險操作（移除選取、清空）。
-     - 第二層：左側為檢視模式分段切換（工作台、試算表、分頁預覽），右側為縮放滑桿、排序、單張編輯。
-   - 徹底根除危險操作按鈕被擠出第三行孤立於右側的版面破綻。
-3. **商業級 Hero 空狀態與動態降噪**：
-   - 0 張照片時自動隱藏頂部次要匯入列，消除畫面上下重複「加入照片/資料夾」的認知雜訊。
-   - 0 張照片時工具列依賴照片之按鈕自動半透明禁用，焦點完全留給中央高挑舒適的 Hero 拖曳區。
-   - 載入照片後，頂部匯入列、審計篩選列、縮圖網格與各操作按鈕無縫切換啟動。
-4. **快捷鍵與操作指南彈窗**：
-   - 移除非結構化的狀態列長文案，改為「[ ⌨️ 快速鍵指南 ]」按鈕與獨立 `#shortcutsModal`。
-   - 以標準鍵盤鍵位（`<kbd>`）呈現四維度操作指南，支援背景點擊、關閉按鈕與 ESC 鍵快速關閉。
-5. **完整回歸驗證**：
-   - `npm test`（4/4 單元測試通過）
-   - `npm run test:e2e`（Playwright UI 測試 6/6 階段通過）
-   - `npm run test:baseline`（Word/Excel/PDF 匯出結構比對通過）
-   - `scripts/qa.ps1`（QA 腳本通過）
-   - Playwright 800px 高度空狀態與載入狀態實測截圖全數通過。
+1. **點擊放大圖示開啟燈箱大圖**：
+   - 診斷出 PaperSwitch 指標拖曳在 `beginCardPointerDrag` 時過早執行 `card.setPointerCapture`，導致點擊事件直接派發給父容器 `card`，而忽略子層 `.thumbnail-stage` 點擊的問題。
+   - 將 `setPointerCapture` 移至 `updateCardPointerDrag`（僅在滑鼠移動距離超過 6px 門檻時才觸發 capture），徹底還原原生點擊與雙擊事件傳遞機制。
+   - 將縮圖卡片上的「放大圖示」獨立為右下角優雅的 `.btn-zoom-preview` 按鈕，設定明確的 `position: absolute; bottom: 6px; right: 6px; pointer-events: auto !important;`，排除預編譯 Tailwind 樣式失效隱患。
+   - 點擊按鈕時透過 `event.stopPropagation()` 與 `window.app.openLightboxByIndex(idx)` 順暢開啟 `#imageLightboxModal` 燈箱，按 ESC 鍵或關閉按鈕即可退出。
+2. **雙擊縮圖自動展開單張編輯**：
+   - 在縮圖卡片模板（以及試算表 DataGrid 的 `<tr>`）綁定 `ondblclick="window.app.handleCardDblClick(${idx}, event)"`。
+   - 實作 `handleCardDblClick(index, event)` 方法：
+     - 精確排除按鈕、核取方塊、連結等次要控制項。
+     - 自動選取該張照片並設定焦點索引（`currentIndex = index`）。
+     - 若右側單張編輯面板為收合狀態（`editorCollapsed === true`），自動呼叫 `this.toggleEditor()` 展開面板。
+     - 自動將游標聚焦（`focus()`）於現場跡證說明欄位（`#editDesc`），並將文字游標移至末端，支援立即鍵入說明。
+3. **快速鍵與操作指南彈窗同步更新**：
+   - 在「選取操作」分類新增「單張編輯：雙擊縮圖展開」之指南項目。
+4. **全套自動化測試與 E2E 擴充**：
+   - 在 `tests/e2e/photo-report.spec.js` 擴充 `[7/5]` 測試案例：實測點擊縮圖放大圖示、驗證燈箱開啟與 ESC 關閉、驗證收合狀態下雙擊卡片自動展開編輯器並聚焦 `#editDesc`。
+   - 執行 `npm run test:all`（Phase 0A, 0B, 0C 全部通過）。
+   - 執行 `scripts/qa.ps1` 通過。
 
 ## 刻意未修改
-- 未改動任何 DOM 元素 ID、Class 依賴與事件繫結架構。
-- 未更動 Word、PDF、Excel、ZIP 匯出演算法或範本結構。
+- 未改動 PaperSwitch 拖曳排版演算法與拖曳門檻（6px），確保卡片排序手感依然平順穩定。
+- 未改動 Word、PDF、Excel、ZIP 匯出結構。
 
 ## 尚未完成
 無
@@ -40,20 +36,23 @@
 ## 驗證結果
 ### 已執行
 - `npm test`：全部通過 (4/4)
-- `npm run test:e2e`：全部通過 (6/6 階段)
-- `npm run test:baseline`：全部通過 (Word, Excel, PDF)
+- `npm run test:e2e`：全部通過 (7/5 階段完整涵蓋放大燈箱與雙擊展開)
+- `npm run test:baseline`：全部通過 (Word, Excel, PDF 結構符合 Golden Baseline)
+- `npm run test:all`：全部通過 (Phase 0A, 0B, 0C)
 - `powershell -ExecutionPolicy Bypass -File scripts\qa.ps1`：通過
-- Playwright 800px Viewport 實測截圖驗證（04_empty_state_ergonomic.png, 05_populated_state_ergonomic.png）
-- `git diff --check`：通過
+- Playwright 實測截圖存檔：
+  - `06_thumbnail_zoom_hover.png`（右下角放大圖示浮現效果）
+  - `07_double_click_expanded_editor.png`（雙擊後自動展開右側單張編輯並聚焦 #editDesc）
+  - `08_lightbox_zoomed.png`（點擊放大後燈箱大圖開啟）
 
 ### 尚未驗證
 - 無阻斷性未驗證項目。
 
 ### 已知風險
-- 無阻斷性風險。所有匯出與既有功能皆受 E2E 與 Baseline 比對防護。
+- 無阻斷性風險。所有功能皆受單元、E2E 與 Baseline 回歸測試保護。
 
 ## Git 狀態
-- Commit：cd83d7b (design: 優化左側首屏佈局與雙層工具列，消弭換行孤立與空狀態雜訊)
+- Commit：40c9d79 (fix: 修復縮圖點擊放大燈箱與雙擊展開單張編輯功能)
 - Push：否
 - Working Tree：Clean
 - Branch: main

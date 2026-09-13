@@ -239,6 +239,52 @@ async function runE2eTests() {
     if (!dataActions.projectOpened) throw new Error('專案開啟流程未完成');
     console.log('  ✅ 專案開啟／儲存、Excel 匯入與 ZIP 匯出皆正常');
 
+    // [7/5] 驗證縮圖「放大」圖示開啟燈箱與雙擊卡片展開編輯
+    console.log('[7/5] 驗證縮圖「放大」圖示開啟燈箱與雙擊卡片展開編輯...');
+    // 1. 測試點擊放大按鈕
+    await page.hover('.photo-thumb-card .thumbnail-stage');
+    const firstZoomBtn = await page.$('.photo-thumb-card .btn-zoom-preview');
+    if (!firstZoomBtn) throw new Error('找不到縮圖放大按鈕 .btn-zoom-preview');
+    await firstZoomBtn.click({ force: true });
+    const isLightboxVisible = await page.$eval('#imageLightboxModal', el => !el.classList.contains('hidden'));
+    if (!isLightboxVisible) throw new Error('點擊放大按鈕後，燈箱 Modal 未正常顯示 (仍有 hidden 類別)');
+    console.log('  ✅ 點擊縮圖放大圖示成功開啟燈箱');
+
+    // 關閉燈箱 (按 ESC)
+    await page.keyboard.press('Escape');
+    const isLightboxClosed = await page.$eval('#imageLightboxModal', el => el.classList.contains('hidden'));
+    if (!isLightboxClosed) throw new Error('按 ESC 鍵後燈箱未能成功關閉');
+    console.log('  ✅ ESC 鍵成功關閉燈箱');
+
+    // 2. 測試雙擊卡片展開單張編輯
+    // 先確保編輯面板為收合狀態
+    await page.evaluate(() => {
+        if (!window.app.editorCollapsed) {
+            window.app.toggleEditor();
+        }
+    });
+    const isEditorHiddenBefore = await page.$eval('#editorPanel', el => el.classList.contains('hidden'));
+    if (!isEditorHiddenBefore) throw new Error('測試前提失敗：編輯面板未能設為收合');
+
+    // 雙擊第二張卡片
+    const secondCard = (await page.$$('.photo-thumb-card'))[1];
+    if (!secondCard) throw new Error('找不到第二張照片卡片');
+    await secondCard.dblclick();
+
+    // 檢查編輯面板是否展開
+    const isEditorOpenAfter = await page.$eval('#editorPanel', el => !el.classList.contains('hidden'));
+    if (!isEditorOpenAfter) throw new Error('雙擊卡片後，右側單張編輯面板未自動展開');
+
+    // 檢查目前選取索引是否為第二張 (index 1)
+    const activeIndex = await page.evaluate(() => window.app.currentIndex);
+    if (activeIndex !== 1) throw new Error(`雙擊卡片後目前編輯索引應為 1，實際為: ${activeIndex}`);
+
+    // 等待 100ms 檢查焦點是否在 #editDesc
+    await page.waitForTimeout(100);
+    const isFocusedOnDesc = await page.evaluate(() => document.activeElement && document.activeElement.id === 'editDesc');
+    if (!isFocusedOnDesc) throw new Error('雙擊卡片後焦點未自動置於說明欄位 #editDesc');
+    console.log('  ✅ 雙擊縮圖卡片成功展開單張編輯面板並聚焦至說明欄位');
+
     if (pageErrors.length > 0) {
         console.warn('⚠️ 頁面出現 Uncaught Error:', pageErrors);
     }
