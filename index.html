@@ -447,6 +447,49 @@
             background: #FDE68A;
             color: #78350F;
         }
+
+        /* 鑑識級大圖燈箱 (PaperSwitch 規格：雙層舞台、游標縮放與抓手平移) */
+        #lightboxViewport {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            min-height: 420px;
+            overflow: hidden;
+            touch-action: none;
+            user-select: none;
+            cursor: default;
+        }
+        #lightboxViewport.is-zoomed {
+            cursor: grab;
+        }
+        #lightboxViewport.is-panning {
+            cursor: grabbing !important;
+        }
+        #lightboxStage {
+            transform-origin: center center;
+            will-change: transform;
+            transition: transform 0.12s ease-out;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        #lightboxStage.panning-active {
+            transition: none !important;
+        }
+        #lightboxImg {
+            transition: transform 0.2s ease-out;
+            max-width: 100%;
+            max-height: calc(88vh - 5.5rem);
+            width: auto;
+            height: auto;
+            object-fit: contain;
+            pointer-events: none;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+            border-radius: 6px;
+        }
     </style>
 </head>
 <body class="p-3 md:p-6 flex flex-col items-center">
@@ -1017,10 +1060,13 @@
 
                 <div class="p-3 bg-slate-50 rounded-xl border border-slate-200/60 flex flex-col gap-2">
                     <span class="font-bold text-[#20242B] flex items-center gap-1.5">
-                        <i class="fa-solid fa-magnifying-glass-plus text-[#5B5CE2]"></i> 縮放與檢視
+                        <i class="fa-solid fa-magnifying-glass-plus text-[#5B5CE2]"></i> 縮放與大圖燈箱
                     </span>
-                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">調整縮圖尺寸</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">Ctrl + 滾輪</kbd></div>
-                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">燈箱放大照片</span><span class="text-[#4B5563] font-medium">點擊照片「放大」圖示</span></div>
+                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">開啟大圖燈箱</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">Space / Enter</kbd></div>
+                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">燈箱縮放檢視</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">滾輪 / ＋ －</kbd></div>
+                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">燈箱平移拖曳</span><span class="text-[#4B5563] font-medium">放大時按住左鍵拖曳</span></div>
+                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">燈箱旋轉照片</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">R / Shift+R</kbd></div>
+                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">適合視窗還原</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">0</kbd></div>
                     <div class="flex items-center justify-between"><span class="text-[#6B7280]">關閉任何彈窗</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">ESC</kbd></div>
                 </div>
             </div>
@@ -1066,18 +1112,47 @@
         </div>
     </div>
 
-    <!-- 圖片點擊放大燈箱 Modal -->
+    <!-- 鑑識級大圖燈箱 Modal (PaperSwitch 規格) -->
     <div id="imageLightboxModal" class="fixed inset-0 z-50 flex items-center justify-center p-2 md:p-4 modal-backdrop hidden" onclick="window.app.closeModal('imageLightboxModal')">
-        <div class="w-[96vw] max-w-6xl max-h-[92vh] bg-white rounded-2xl overflow-hidden shadow-2xl p-2 flex flex-col" onclick="event.stopPropagation()">
-            <div class="flex items-center justify-between gap-2 px-2 pb-1 text-xs">
-                <span id="lightboxCaption" class="font-bold text-[#20242B] truncate"></span>
-                <span id="lightboxPosition" class="text-[#6B7280] whitespace-nowrap"></span>
-                <button type="button" onclick="window.app.closeModal('imageLightboxModal')" class="btn-secondary px-3 py-1 rounded text-xs font-bold whitespace-nowrap">關閉 (ESC)</button>
+        <div class="w-[96vw] max-w-6xl h-[92vh] max-h-[92vh] bg-white rounded-2xl overflow-hidden shadow-2xl p-2.5 flex flex-col" onclick="event.stopPropagation()">
+            <!-- 燈箱頂部資訊與控制列 -->
+            <div class="flex items-center justify-between gap-2 px-2 pb-2 text-xs border-b border-gray-100 flex-shrink-0">
+                <div class="flex items-center gap-2 min-w-0">
+                    <span id="lightboxCaption" class="font-bold text-[#20242B] truncate text-sm"></span>
+                    <span id="lightboxPosition" class="text-xs px-2 py-0.5 bg-gray-100 text-[#6B7280] rounded-full whitespace-nowrap font-medium"></span>
+                </div>
+                <div class="flex items-center gap-1.5 flex-shrink-0">
+                    <span id="lightboxZoomBadge" class="px-2 py-1 bg-slate-100 border border-slate-200 text-slate-700 font-mono font-bold rounded-lg text-xs" title="目前縮放比例">100%</span>
+                    <button type="button" id="btnLightboxResetZoom" onclick="window.app.resetLightboxZoom()" class="btn-secondary px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1" title="適合視窗 (快速鍵: 0)">
+                        <i class="fa-solid fa-compress"></i> 適合視窗
+                    </button>
+                    <button type="button" id="btnLightboxRotateCCW" onclick="window.app.rotateLightboxPhoto(-90)" class="btn-secondary px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1" title="逆時針旋轉 90° (Shift + R)">
+                        <i class="fa-solid fa-rotate-left"></i> 逆旋
+                    </button>
+                    <button type="button" id="btnLightboxRotateCW" onclick="window.app.rotateLightboxPhoto(90)" class="btn-secondary px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1" title="順時針旋轉 90° (R)">
+                        <i class="fa-solid fa-rotate-right"></i> 順旋
+                    </button>
+                    <button type="button" id="btnLightboxClose" onclick="window.app.closeModal('imageLightboxModal')" class="btn-secondary px-3 py-1 rounded-lg text-xs font-bold whitespace-nowrap text-red-600 hover:text-red-700 hover:bg-red-50" title="關閉燈箱 (ESC)">
+                        關閉 (ESC)
+                    </button>
+                </div>
             </div>
-            <div class="relative min-h-0 flex-1 flex items-center justify-center bg-[#EEF0F3] rounded-xl overflow-hidden">
-                <button type="button" id="btnLightboxPrev" onclick="window.app.navigateLightbox(-1)" class="absolute left-2 z-10 w-9 h-9 rounded-full bg-white/90 border border-[#C7CBD3]/30 text-[#5B5CE2] shadow hover:bg-white disabled:opacity-40" title="上一張（←）"><i class="fa-solid fa-chevron-left"></i></button>
-                <img id="lightboxImg" src="" alt="放大預覽" class="max-w-full max-h-[calc(90vh-5rem)] w-auto h-auto object-contain">
-                <button type="button" id="btnLightboxNext" onclick="window.app.navigateLightbox(1)" class="absolute right-2 z-10 w-9 h-9 rounded-full bg-white/90 border border-[#C7CBD3]/30 text-[#5B5CE2] shadow hover:bg-white disabled:opacity-40" title="下一張（→）"><i class="fa-solid fa-chevron-right"></i></button>
+
+            <!-- 燈箱舞台主體：雙層容器隔離 Pan/Zoom 與 Rotation 座標軸 -->
+            <div class="relative min-h-0 flex-1 bg-[#EEF0F3] rounded-xl overflow-hidden flex items-center justify-center">
+                <button type="button" id="btnLightboxPrev" onclick="window.app.navigateLightbox(-1)" style="position: absolute; left: 14px; z-index: 30;" class="w-10 h-10 rounded-full bg-white/90 border border-[#C7CBD3]/30 text-[#5B5CE2] shadow-lg hover:bg-white hover:scale-105 active:scale-95 transition disabled:opacity-30 disabled:pointer-events-none flex items-center justify-center" title="上一張（←）">
+                    <i class="fa-solid fa-chevron-left text-sm pointer-events-none"></i>
+                </button>
+
+                <div id="lightboxViewport" class="w-full h-full flex items-center justify-center relative overflow-hidden select-none">
+                    <div id="lightboxStage" class="flex items-center justify-center">
+                        <img id="lightboxImg" src="" alt="放大預覽" draggable="false">
+                    </div>
+                </div>
+
+                <button type="button" id="btnLightboxNext" onclick="window.app.navigateLightbox(1)" style="position: absolute; right: 14px; z-index: 30;" class="w-10 h-10 rounded-full bg-white/90 border border-[#C7CBD3]/30 text-[#5B5CE2] shadow-lg hover:bg-white hover:scale-105 active:scale-95 transition disabled:opacity-30 disabled:pointer-events-none flex items-center justify-center" title="下一張（→）">
+                    <i class="fa-solid fa-chevron-right text-sm pointer-events-none"></i>
+                </button>
             </div>
         </div>
     </div>
@@ -1353,9 +1428,33 @@
                 this.exportAuditList = document.getElementById('exportAuditList');
                 this.btnAuditViewIssues = document.getElementById('btnAuditViewIssues');
                 this.btnAuditProceedExport = document.getElementById('btnAuditProceedExport');
+
+                // 大圖燈箱元件 (鑑識級規格)
+                this.imageLightboxModal = document.getElementById('imageLightboxModal');
+                this.lightboxViewport = document.getElementById('lightboxViewport');
+                this.lightboxStage = document.getElementById('lightboxStage');
+                this.lightboxImg = document.getElementById('lightboxImg');
+                this.lightboxCaption = document.getElementById('lightboxCaption');
+                this.lightboxPosition = document.getElementById('lightboxPosition');
+                this.lightboxZoomBadge = document.getElementById('lightboxZoomBadge');
+                this.btnLightboxResetZoom = document.getElementById('btnLightboxResetZoom');
+                this.btnLightboxRotateCCW = document.getElementById('btnLightboxRotateCCW');
+                this.btnLightboxRotateCW = document.getElementById('btnLightboxRotateCW');
+                this.btnLightboxPrev = document.getElementById('btnLightboxPrev');
+                this.btnLightboxNext = document.getElementById('btnLightboxNext');
+
+                this.lightboxZoom = 1.0;
+                this.lightboxPanX = 0;
+                this.lightboxPanY = 0;
+                this.lightboxIsPanning = false;
+                this.lightboxPanStart = { x: 0, y: 0 };
+                this.lightboxHasRotated = false;
             }
 
             initEvents() {
+                // 大圖燈箱縮放、平移與滾輪互動
+                this.initLightboxInteractions();
+
                 // 外部檔案拖入空白狀態或照片舞台；既有卡片拖曳排序不含 Files，不會被攔截。
                 this.bindExternalFileDropTarget(this.emptyState);
                 this.bindExternalFileDropTarget(this.thumbGrid);
@@ -1509,12 +1608,38 @@
                     }
                     const lightboxOpen = !document.getElementById('imageLightboxModal').classList.contains('hidden');
                     if (lightboxOpen) {
-                        if (e.key === 'Escape') this.closeModal('imageLightboxModal');
-                        else if (e.key === 'ArrowLeft') this.navigateLightbox(-1);
-                        else if (e.key === 'ArrowRight') this.navigateLightbox(1);
-                        else return;
+                        if (e.key === 'Escape') {
+                            this.closeModal('imageLightboxModal');
+                        } else if (e.key === 'ArrowLeft') {
+                            this.navigateLightbox(-1);
+                        } else if (e.key === 'ArrowRight') {
+                            this.navigateLightbox(1);
+                        } else if (e.key === 'r' || e.key === 'R') {
+                            if (e.shiftKey) {
+                                this.rotateLightboxPhoto(-90);
+                            } else {
+                                this.rotateLightboxPhoto(90);
+                            }
+                        } else if (e.key === '0') {
+                            this.resetLightboxZoom();
+                        } else if (e.key === '+' || e.key === '=') {
+                            this.zoomLightboxBy(0.2);
+                        } else if (e.key === '-' || e.key === '_') {
+                            this.zoomLightboxBy(-0.2);
+                        } else {
+                            return;
+                        }
                         e.preventDefault();
                         return;
+                    }
+
+                    // 主畫布快捷鍵：按空白鍵或 Enter 鍵開啟大圖燈箱
+                    if ((e.key === ' ' || e.key === 'Enter') && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+                        if (!e.target.closest('button, a, input, select, textarea') && this.currentIndex >= 0 && this.photos[this.currentIndex]) {
+                            e.preventDefault();
+                            this.openLightboxByIndex(this.currentIndex);
+                            return;
+                        }
                     }
                     if (e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'z') {
                         e.preventDefault();
@@ -3855,8 +3980,21 @@
                 this.scheduleHistory('修改照片欄位');
             }
 
+            initLightboxInteractions() {
+                if (!this.lightboxViewport) return;
+                this.lightboxViewport.addEventListener('wheel', (e) => this.handleLightboxWheel(e), { passive: false });
+                this.lightboxViewport.addEventListener('pointerdown', (e) => this.handleLightboxPointerDown(e));
+                this.lightboxViewport.addEventListener('mousedown', (e) => this.handleLightboxPointerDown(e));
+                window.addEventListener('pointermove', (e) => this.handleLightboxPointerMove(e));
+                window.addEventListener('mousemove', (e) => this.handleLightboxPointerMove(e));
+                window.addEventListener('pointerup', (e) => this.handleLightboxPointerUp(e));
+                window.addEventListener('mouseup', (e) => this.handleLightboxPointerUp(e));
+                window.addEventListener('pointercancel', (e) => this.handleLightboxPointerUp(e));
+            }
+
             openLightboxByIndex(index) {
                 if (!this.photos[index]) return;
+                this.commitLightboxHistoryIfNeeded();
                 this.lightboxIndex = index;
                 this.updateLightbox();
                 this.openModal('imageLightboxModal');
@@ -3864,18 +4002,193 @@
 
             navigateLightbox(delta) {
                 if (!this.photos.length || this.lightboxIndex === null) return;
-                this.lightboxIndex = Math.max(0, Math.min(this.photos.length - 1, this.lightboxIndex + delta));
+                this.commitLightboxHistoryIfNeeded();
+                const newIndex = Math.max(0, Math.min(this.photos.length - 1, this.lightboxIndex + delta));
+                if (newIndex === this.lightboxIndex) return;
+                this.lightboxIndex = newIndex;
                 this.updateLightbox();
             }
 
             updateLightbox() {
                 const photo = this.photos[this.lightboxIndex];
                 if (!photo) return;
-                document.getElementById('lightboxImg').src = photo.src;
-                document.getElementById('lightboxCaption').textContent = `#${photo.seq}　${photo.name}`;
-                document.getElementById('lightboxPosition').textContent = `${this.lightboxIndex + 1} / ${this.photos.length}`;
-                document.getElementById('btnLightboxPrev').disabled = this.lightboxIndex === 0;
-                document.getElementById('btnLightboxNext').disabled = this.lightboxIndex === this.photos.length - 1;
+                this.resetLightboxZoom();
+
+                if (this.lightboxImg) {
+                    this.lightboxImg.style.transform = `rotate(${photo.rotation || 0}deg)`;
+                    // 平滑降級：若已具備縮圖先以縮圖即時呈現，避免空白；背景非同步載入原圖無縫置換
+                    this.lightboxImg.src = photo.thumbnailSrc || photo.src;
+                    if (photo.src && photo.src !== photo.thumbnailSrc) {
+                        const targetIndex = this.lightboxIndex;
+                        const fullImg = new Image();
+                        fullImg.onload = () => {
+                            if (this.lightboxIndex === targetIndex && this.lightboxImg) {
+                                this.lightboxImg.src = photo.src;
+                            }
+                        };
+                        fullImg.src = photo.src;
+                    }
+                }
+
+                if (this.lightboxCaption) {
+                    this.lightboxCaption.textContent = `#${photo.seq}　${photo.name}`;
+                }
+                if (this.lightboxPosition) {
+                    this.lightboxPosition.textContent = `${this.lightboxIndex + 1} / ${this.photos.length}`;
+                }
+                if (this.btnLightboxPrev) {
+                    this.btnLightboxPrev.disabled = this.lightboxIndex === 0;
+                }
+                if (this.btnLightboxNext) {
+                    this.btnLightboxNext.disabled = this.lightboxIndex === this.photos.length - 1;
+                }
+            }
+
+            applyLightboxTransform() {
+                if (this.lightboxStage) {
+                    this.lightboxStage.style.transform = `translate(${this.lightboxPanX}px, ${this.lightboxPanY}px) scale(${this.lightboxZoom})`;
+                }
+                if (this.lightboxZoomBadge) {
+                    this.lightboxZoomBadge.textContent = `${Math.round(this.lightboxZoom * 100)}%`;
+                }
+                if (this.lightboxViewport) {
+                    if (this.lightboxZoom > 1.01) {
+                        this.lightboxViewport.classList.add('is-zoomed');
+                    } else {
+                        this.lightboxViewport.classList.remove('is-zoomed');
+                    }
+                }
+            }
+
+            resetLightboxZoom() {
+                this.lightboxZoom = 1.0;
+                this.lightboxPanX = 0;
+                this.lightboxPanY = 0;
+                this.applyLightboxTransform();
+            }
+
+            zoomLightboxBy(step, clientX = null, clientY = null) {
+                const oldZoom = this.lightboxZoom;
+                let newZoom = Math.max(0.35, Math.min(4.0, Math.round((oldZoom + step) * 100) / 100));
+                if (newZoom === oldZoom) return;
+
+                if (clientX !== null && clientY !== null && this.lightboxViewport) {
+                    const rect = this.lightboxViewport.getBoundingClientRect();
+                    const cursorX = clientX - (rect.left + rect.width / 2);
+                    const cursorY = clientY - (rect.top + rect.height / 2);
+                    const ratio = newZoom / oldZoom;
+                    this.lightboxPanX = cursorX - (cursorX - this.lightboxPanX) * ratio;
+                    this.lightboxPanY = cursorY - (cursorY - this.lightboxPanY) * ratio;
+                } else {
+                    const ratio = newZoom / oldZoom;
+                    this.lightboxPanX = this.lightboxPanX * ratio;
+                    this.lightboxPanY = this.lightboxPanY * ratio;
+                }
+
+                this.lightboxZoom = newZoom;
+                if (newZoom <= 1.0) {
+                    this.lightboxPanX = 0;
+                    this.lightboxPanY = 0;
+                }
+                this.applyLightboxTransform();
+            }
+
+            handleLightboxWheel(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const deltaSign = Math.sign(e.deltaY);
+                const step = deltaSign < 0 ? 0.15 : -0.15;
+                this.zoomLightboxBy(step, e.clientX, e.clientY);
+            }
+
+            handleLightboxPointerDown(e) {
+                if (e.button !== 0 || this.lightboxZoom <= 1.0) return;
+                this.lightboxIsPanning = true;
+                this.lightboxPanStart = {
+                    x: e.clientX - this.lightboxPanX,
+                    y: e.clientY - this.lightboxPanY
+                };
+                if (this.lightboxViewport) {
+                    this.lightboxViewport.classList.add('is-panning');
+                    try {
+                        this.lightboxViewport.setPointerCapture(e.pointerId);
+                    } catch (_) {}
+                }
+                if (this.lightboxStage) {
+                    this.lightboxStage.classList.add('panning-active');
+                }
+                e.preventDefault();
+            }
+
+            handleLightboxPointerMove(e) {
+                if (!this.lightboxIsPanning) return;
+                this.lightboxPanX = e.clientX - this.lightboxPanStart.x;
+                this.lightboxPanY = e.clientY - this.lightboxPanStart.y;
+
+                if (this.lightboxViewport) {
+                    const maxPanX = (this.lightboxViewport.clientWidth * (this.lightboxZoom - 0.4)) / 2 + 100;
+                    const maxPanY = (this.lightboxViewport.clientHeight * (this.lightboxZoom - 0.4)) / 2 + 100;
+                    this.lightboxPanX = Math.max(-maxPanX, Math.min(maxPanX, this.lightboxPanX));
+                    this.lightboxPanY = Math.max(-maxPanY, Math.min(maxPanY, this.lightboxPanY));
+                }
+                this.applyLightboxTransform();
+            }
+
+            handleLightboxPointerUp(e) {
+                if (!this.lightboxIsPanning) return;
+                this.lightboxIsPanning = false;
+                if (this.lightboxViewport) {
+                    this.lightboxViewport.classList.remove('is-panning');
+                    try {
+                        if (e && e.pointerId && this.lightboxViewport.hasPointerCapture(e.pointerId)) {
+                            this.lightboxViewport.releasePointerCapture(e.pointerId);
+                        }
+                    } catch (_) {}
+                }
+                if (this.lightboxStage) {
+                    this.lightboxStage.classList.remove('panning-active');
+                }
+            }
+
+            rotateLightboxPhoto(deltaDegrees) {
+                if (this.lightboxIndex === null || !this.photos[this.lightboxIndex]) return;
+                const photo = this.photos[this.lightboxIndex];
+                photo.rotation = ((photo.rotation || 0) + deltaDegrees) % 360;
+                if (photo.rotation < 0) photo.rotation += 360;
+                if (this.lightboxImg) {
+                    this.lightboxImg.style.transform = `rotate(${photo.rotation}deg)`;
+                }
+                this.syncPhotoRotationToCanvas(this.lightboxIndex, photo.rotation);
+                this.lightboxHasRotated = true;
+            }
+
+            syncPhotoRotationToCanvas(index, rotation) {
+                const photo = this.photos[index];
+                if (!photo) return;
+                // 更新主畫布卡片縮圖視覺
+                const thumbCard = document.getElementById(`thumb_${photo.uid}`);
+                if (thumbCard) {
+                    const img = thumbCard.querySelector('.thumbnail-stage img');
+                    if (img) {
+                        const layout = this.getPhotoDisplayLayout(photo);
+                        img.style.cssText = layout.imageStyle;
+                    }
+                }
+                // 更新試算表 DataGrid 縮圖
+                if (this.gridTbody && this.gridTbody.children[index]) {
+                    const row = this.gridTbody.children[index];
+                    const rowImg = row.querySelector('td:nth-child(2) img');
+                    if (rowImg) {
+                        rowImg.style.transform = `rotate(${rotation}deg)`;
+                    }
+                }
+            }
+
+            commitLightboxHistoryIfNeeded() {
+                if (this.lightboxHasRotated) {
+                    this.recordHistory('燈箱旋轉照片');
+                    this.lightboxHasRotated = false;
+                }
             }
 
             openModal(id) {
@@ -3888,6 +4201,9 @@
             }
 
             closeModal(id) {
+                if (id === 'imageLightboxModal') {
+                    this.commitLightboxHistoryIfNeeded();
+                }
                 if (typeof PhotoReportModalUi !== 'undefined') {
                     PhotoReportModalUi.closeModal(id);
                     return;

@@ -239,8 +239,8 @@ async function runE2eTests() {
     if (!dataActions.projectOpened) throw new Error('專案開啟流程未完成');
     console.log('  ✅ 專案開啟／儲存、Excel 匯入與 ZIP 匯出皆正常');
 
-    // [7/5] 驗證縮圖「放大」圖示開啟燈箱與雙擊卡片展開編輯
-    console.log('[7/5] 驗證縮圖「放大」圖示開啟燈箱與雙擊卡片展開編輯...');
+    // [7/5] 驗證鑑識級大圖燈箱 (PaperSwitch 規格) 與雙擊卡片展開編輯
+    console.log('[7/5] 驗證鑑識級大圖燈箱 (縮放/平移/旋轉/快速鍵) 與雙擊卡片展開編輯...');
     // 1. 測試點擊放大按鈕
     await page.hover('.photo-thumb-card .thumbnail-stage');
     const firstZoomBtn = await page.$('.photo-thumb-card .btn-zoom-preview');
@@ -250,11 +250,81 @@ async function runE2eTests() {
     if (!isLightboxVisible) throw new Error('點擊放大按鈕後，燈箱 Modal 未正常顯示 (仍有 hidden 類別)');
     console.log('  ✅ 點擊縮圖放大圖示成功開啟燈箱');
 
+    // 檢查初始縮放比例徽章
+    const initialBadge = await page.$eval('#lightboxZoomBadge', el => el.textContent.trim());
+    if (initialBadge !== '100%') throw new Error(`初始縮放比率應為 100%，實際為: ${initialBadge}`);
+    console.log('  ✅ 初始縮放比例為 100%');
+
+    // 測試鍵盤 + 縮放放大
+    await page.keyboard.press('+');
+    const zoomedBadge = await page.$eval('#lightboxZoomBadge', el => el.textContent.trim());
+    const isZoomedClass = await page.$eval('#lightboxViewport', el => el.classList.contains('is-zoomed'));
+    if (!isZoomedClass || zoomedBadge === '100%') throw new Error(`按 + 鍵放大失敗，Badge: ${zoomedBadge}, is-zoomed: ${isZoomedClass}`);
+    console.log(`  ✅ 燈箱放大成功 (縮放比例: ${zoomedBadge})`);
+
+    // 測試抓手平移拖曳
+    const vpBox = await page.$eval('#lightboxViewport', el => {
+        const r = el.getBoundingClientRect();
+        return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    });
+    await page.mouse.move(vpBox.x, vpBox.y);
+    await page.mouse.down();
+    await page.mouse.move(vpBox.x + 50, vpBox.y + 30);
+    const panState = await page.evaluate(() => ({
+        panX: window.app.lightboxPanX,
+        panY: window.app.lightboxPanY
+    }));
+    await page.mouse.up();
+    if (panState.panX === 0 && panState.panY === 0) throw new Error('拖曳平移失敗，Pan 座標未改變');
+    console.log(`  ✅ 燈箱抓手平移成功 (PanX: ${panState.panX}, PanY: ${panState.panY})`);
+
+    // 測試按 0 還原適合視窗
+    await page.keyboard.press('0');
+    const resetBadge = await page.$eval('#lightboxZoomBadge', el => el.textContent.trim());
+    const resetPan = await page.evaluate(() => ({ panX: window.app.lightboxPanX, panY: window.app.lightboxPanY }));
+    if (resetBadge !== '100%' || resetPan.panX !== 0 || resetPan.panY !== 0) throw new Error(`按 0 還原失敗: Badge=${resetBadge}, panX=${resetPan.panX}`);
+    console.log('  ✅ 按快速鍵 0 成功還原適合視窗 (100% 置中)');
+
+    // 測試按 R 順時針旋轉 90 度
+    const rotBefore = await page.evaluate(() => window.app.photos[window.app.lightboxIndex].rotation || 0);
+    await page.keyboard.press('r');
+    const rotAfterR = await page.evaluate(() => window.app.photos[window.app.lightboxIndex].rotation);
+    if (rotAfterR !== (rotBefore + 90) % 360) throw new Error(`按 R 旋轉失敗: 前=${rotBefore}, 後=${rotAfterR}`);
+    console.log(`  ✅ 按 R 鍵順時針旋轉 90° 成功 (目前角度: ${rotAfterR}°)`);
+
+    // 測試按 Shift + R 逆時針旋轉 90 度
+    await page.keyboard.press('Shift+R');
+    const rotAfterShiftR = await page.evaluate(() => window.app.photos[window.app.lightboxIndex].rotation);
+    if (rotAfterShiftR !== rotBefore) throw new Error(`按 Shift+R 逆旋失敗: 預期=${rotBefore}, 實際=${rotAfterShiftR}`);
+    console.log(`  ✅ 按 Shift+R 逆時針旋轉 90° 成功 (還原角度: ${rotAfterShiftR}°)`);
+
+    // 再次按 R 旋轉，以便測試關閉燈箱時的 Lazy Commit 歷史記錄
+    await page.keyboard.press('r');
+
     // 關閉燈箱 (按 ESC)
     await page.keyboard.press('Escape');
     const isLightboxClosed = await page.$eval('#imageLightboxModal', el => el.classList.contains('hidden'));
     if (!isLightboxClosed) throw new Error('按 ESC 鍵後燈箱未能成功關閉');
     console.log('  ✅ ESC 鍵成功關閉燈箱');
+
+    // 檢查 Lazy Commit 是否成功記錄歷史
+    const lastHistoryAction = await page.evaluate(() => {
+        const hist = window.app.history[window.app.historyIndex];
+        return hist ? (hist.label || hist.action) : '';
+    });
+    if (lastHistoryAction !== '燈箱旋轉照片') throw new Error(`燈箱關閉後未觸發延遲提交歷史，最後動作: ${lastHistoryAction}`);
+    console.log('  ✅ 燈箱旋轉延遲歷史提交 (Lazy Commit) 驗證成功');
+
+    // 測試主畫布 Space 鍵開啟燈箱
+    const firstCard = await page.$('.photo-thumb-card');
+    if (!firstCard) throw new Error('找不到照片卡片以測試 Space 快速鍵');
+    await firstCard.click();
+    await page.keyboard.press('Space');
+    const isLightboxReopened = await page.$eval('#imageLightboxModal', el => !el.classList.contains('hidden'));
+    if (!isLightboxReopened) throw new Error('在主畫布選取照片後按 Space 鍵未能開啟大圖燈箱');
+    console.log('  ✅ 主畫布選取照片按 Space 鍵成功開啟燈箱');
+    await page.keyboard.press('Escape');
+
 
     // 2. 測試雙擊卡片展開單張編輯
     // 先確保編輯面板為收合狀態
