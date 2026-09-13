@@ -125,14 +125,15 @@
             display: inline-flex;
             align-items: center;
             gap: 0.375rem;
-            padding: 0.25rem;
-            border: 1px solid rgba(226, 229, 234, 0.98);
-            border-radius: 0.7rem;
-            background: rgba(255, 255, 255, 0.62);
+            padding: 0.25rem 0.375rem;
+            border: 1px solid rgba(209, 213, 219, 0.6);
+            border-radius: 0.75rem;
+            background: rgba(255, 255, 255, 0.8);
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
         }
         .toolbar-group--danger {
-            border-color: rgba(220, 38, 38, 0.28);
-            background: rgba(254, 242, 242, 0.68);
+            border-color: rgba(239, 68, 68, 0.25);
+            background: rgba(254, 242, 242, 0.7);
         }
         .btn-single-edit {
             background: #6366F1;
@@ -464,9 +465,9 @@
     <main id="appMainLayout" class="w-full max-w-7xl grid grid-cols-1 gap-4 items-start">
 
         <!-- 左側固定操作欄：不受右側照片高度影響 -->
-        <aside id="sidePanel" class="flex flex-col gap-4 lg:sticky lg:top-4 self-start">
+        <aside id="sidePanel" class="flex flex-col gap-3 lg:sticky lg:top-4 self-start">
         <!-- 專案管理：與案件資料及輸出操作分開，避免誤認為匯出步驟 -->
-        <section class="morandi-card px-4 py-3 flex flex-wrap items-center justify-between gap-2">
+        <section class="morandi-card px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 shadow-xs">
             <div class="flex items-center gap-2">
                 <i class="fa-solid fa-folder-tree text-[#5B5CE2]"></i>
                 <div>
@@ -475,104 +476,113 @@
                 </div>
             </div>
             <div class="flex items-center gap-2">
-                <label class="btn-secondary px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer" title="開啟先前儲存的專案檔">
+                <label class="btn-secondary px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer hover:border-[#5B5CE2]" title="開啟先前儲存的專案檔">
                     <i class="fa-solid fa-folder-open text-[#5B5CE2]"></i> 開啟
                     <input type="file" id="importProjectInput" accept=".photo-report,application/zip" class="hidden">
                 </label>
-                <button type="button" id="btnSaveProject" class="btn-secondary px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5" title="將照片與編輯資料儲存成單一專案檔">
+                <button type="button" id="btnSaveProject" class="btn-secondary px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 hover:border-[#5B5CE2]" title="將照片與編輯資料儲存成單一專案檔">
                     <i class="fa-solid fa-floppy-disk text-[#5B5CE2]"></i> 儲存
                 </button>
             </div>
         </section>
 
         <!-- 1. 全域案件表頭資訊 -->
-        <section class="morandi-card p-4 md:p-5">
-            <div class="border-b border-[#C7CBD3]/20 pb-2.5 mb-3">
+        <section class="morandi-card p-3.5 md:p-4 shadow-xs">
+            <div class="border-b border-[#C7CBD3]/20 pb-2 mb-2.5">
                 <div>
                     <h2 class="text-sm font-bold text-[#20242B] flex items-center gap-2">
                         <i class="fa-solid fa-clipboard-list text-[#5B5CE2]"></i> 案件資料與清冊預設
                     </h2>
-                    <p class="text-[10px] text-[#6B7280] mt-1">清冊預設會用於尚未設定本張覆寫資料的照片。</p>
+                    <p class="text-[10px] text-[#6B7280] mt-0.5">清冊預設會用於尚未設定本張覆寫資料的照片。</p>
                 </div>
             </div>
 
-            <div class="grid grid-cols-1 gap-3">
+            <div class="grid grid-cols-1 gap-2.5">
                 <div>
-                    <label class="block text-xs font-bold text-[#6B7280] mb-1">案由 / 案件名稱</label>
-                    <input type="text" id="caseTitle" class="input-field w-full text-xs font-semibold" placeholder="例如：詐欺案、現場勘查案" value="詐欺案">
+                    <label class="block text-xs font-bold text-[#6B7280] mb-0.5">案由 / 案件名稱</label>
+                    <input type="text" id="caseTitle" class="input-field w-full text-xs font-semibold py-1.5 px-2.5" placeholder="例如：詐欺案、現場勘查案" value="詐欺案">
                 </div>
                 <div>
-                    <label class="block text-xs font-bold text-[#6B7280] mb-1">清冊預設採證日期 (民國年)</label>
+                    <label class="block text-xs font-bold text-[#6B7280] mb-0.5">清冊預設採證日期 (民國年)</label>
                     <div class="flex gap-1">
-                        <input type="text" id="caseDate" class="input-field w-full text-xs font-mono" placeholder="輸入 7 碼：1150901">
-                        <button type="button" id="btnTodayDate" title="填入今天民國日期" class="btn-secondary px-2 py-1 rounded text-xs whitespace-nowrap">今日</button>
+                        <input type="text" id="caseDate" class="input-field w-full text-xs font-mono py-1.5 px-2.5" placeholder="輸入 7 碼：1150901">
+                        <button type="button" id="btnTodayDate" title="填入今天民國日期" class="btn-secondary px-2.5 py-1 rounded text-xs whitespace-nowrap">今日</button>
                     </div>
                 </div>
                 <div>
-                    <label class="block text-xs font-bold text-[#6B7280] mb-1">清冊預設採證地點</label>
+                    <label class="block text-xs font-bold text-[#6B7280] mb-0.5">清冊預設採證地點</label>
                     <div class="flex gap-1">
-                        <input type="text" id="defaultLocation" class="input-field min-w-0 flex-1 text-xs" placeholder="例如：現場、新化分局" value="現場">
+                        <input type="text" id="defaultLocation" class="input-field min-w-0 flex-1 text-xs py-1.5 px-2.5" placeholder="例如：現場、新化分局" value="現場">
                         <button type="button" id="btnApplyDefaultsToSelected" class="btn-secondary px-2 py-1 rounded text-xs font-bold whitespace-nowrap" title="將清冊預設日期與地點複製為已選照片的個別覆寫資料">
-                            <i class="fa-solid fa-check-double"></i> 套用至選取
+                            <i class="fa-solid fa-check-double text-[#5B5CE2]"></i> 套用至選取
                         </button>
                     </div>
                 </div>
                 <div>
-                    <label class="block text-xs font-bold text-[#6B7280] mb-1">製作單位 (頁首抬頭)</label>
-                    <input type="text" id="deptName" class="input-field w-full text-xs font-semibold" placeholder="例如：臺南市政府警察局新化分局" value="臺南市政府警察局新化分局">
+                    <label class="block text-xs font-bold text-[#6B7280] mb-0.5">製作單位 (頁首抬頭)</label>
+                    <input type="text" id="deptName" class="input-field w-full text-xs font-semibold py-1.5 px-2.5" placeholder="例如：臺南市政府警察局新化分局" value="臺南市政府警察局新化分局">
                 </div>
                 <div>
-                    <label class="block text-xs font-bold text-[#6B7280] mb-1">製作人 (全冊通用)</label>
-                    <input type="text" id="officerName" class="input-field w-full text-xs font-semibold text-[#5B5CE2]" placeholder="例如：巡官梁家豪" value="巡官梁家豪">
+                    <label class="block text-xs font-bold text-[#6B7280] mb-0.5">製作人 (全冊通用)</label>
+                    <input type="text" id="officerName" class="input-field w-full text-xs font-semibold text-[#5B5CE2] py-1.5 px-2.5" placeholder="例如：巡官梁家豪" value="巡官梁家豪">
                 </div>
             </div>
         </section>
 
         <!-- 3. 版型與匯出：保留既有控制項 ID 與匯出行為 -->
-        <section class="morandi-card p-4 md:p-5 shadow-xl bg-white/95 border-2 border-[#5B5CE2]/30">
-            <div class="flex flex-col gap-3">
+        <section class="morandi-card p-3.5 md:p-4 shadow-xl bg-white/95 border-2 border-[#5B5CE2]/30">
+            <div class="flex flex-col gap-2.5">
                 <div>
                     <div class="text-sm font-bold text-[#20242B] flex items-center gap-2">
                         <i class="fa-solid fa-file-word text-[#5B5CE2] text-base"></i>
                         版型與匯出
                     </div>
-                    <p class="text-[11px] text-[#6B7280]">選擇版型後匯出 Word 或 PDF 清冊。</p>
+                    <p class="text-[11px] text-[#6B7280] mt-0.5">選擇版型後匯出 Word 或 PDF 清冊。</p>
                 </div>
 
                 <div class="flex flex-col gap-2">
-                    <div>
-                        <label for="layoutSelect" class="block text-xs font-bold text-[#6B7280] mb-1">清冊版型</label>
-                        <select id="layoutSelect" class="input-field w-full text-xs font-bold text-[#5B5CE2] bg-[#EEF0F3] py-2 px-2.5">
-                            <option value="up_down_2">上下兩張</option>
-                            <option value="left_right_2">左右兩張</option>
-                            <option value="landscape_3">橫式三張</option>
-                        </select>
+                    <div class="bg-slate-50 p-2 rounded-xl border border-slate-200/70">
+                        <div class="flex items-center gap-2.5">
+                            <div class="flex-1 min-w-0">
+                                <label for="layoutSelect" class="block text-xs font-bold text-[#6B7280] mb-1">清冊版型</label>
+                                <select id="layoutSelect" class="input-field w-full text-xs font-bold text-[#5B5CE2] bg-white py-1.5 px-2">
+                                    <option value="up_down_2">上下兩張</option>
+                                    <option value="left_right_2">左右兩張</option>
+                                    <option value="landscape_3">橫式三張</option>
+                                </select>
+                            </div>
+                            <div id="layoutMiniPreview" class="shrink-0 w-10 h-13 bg-white rounded border border-slate-200 p-0.5 flex flex-col justify-center items-center shadow-2xs" title="版型架構示意圖" aria-hidden="true">
+                                <!-- 動態繪製微縮版型示意 -->
+                            </div>
+                        </div>
                         <p id="layoutDescription" class="text-[11px] text-[#6B7280] mt-1.5" aria-live="polite">上下兩張・A4 直式・每頁 2 張</p>
                     </div>
 
-                    <div class="border-t border-[#C7CBD3]/25 pt-3 flex flex-col gap-2">
-                        <button type="button" id="btnExportDocx" class="btn-primary w-full px-5 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-lg hover:shadow-blue-500/20">
+                    <div class="border-t border-[#C7CBD3]/25 pt-2 flex flex-col gap-1.5">
+                        <button type="button" id="btnExportDocx" class="btn-primary w-full px-4 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-md hover:shadow-indigo-500/20 transition">
                             <i class="fa-solid fa-download"></i> 匯出 Word 清冊 (.docx)
                         </button>
-                        <button type="button" id="btnExportPdf" class="btn-secondary w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-start gap-1.5">
+                        <button type="button" id="btnExportPdf" class="btn-secondary w-full px-3 py-1.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 hover:border-red-300 transition">
                             <i class="fa-regular fa-file-pdf text-red-600 text-sm"></i> 匯出 PDF 清冊
                         </button>
                     </div>
 
-                    <div class="border-t border-[#C7CBD3]/25 pt-3 flex flex-col gap-2">
-                        <p class="text-[11px] font-bold text-[#6B7280]">資料交換</p>
-                        <label class="btn-secondary w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer">
-                            <i class="fa-solid fa-file-import text-blue-600 text-sm"></i> 匯入 Excel 說明
-                            <input type="file" id="importExcelInput" accept=".xlsx, .xls" class="hidden">
-                        </label>
-                        <button type="button" id="btnExportExcel" class="btn-secondary w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-start gap-1.5">
-                            <i class="fa-regular fa-file-excel text-emerald-600 text-sm"></i> 匯出 Excel
-                        </button>
+                    <div class="border-t border-[#C7CBD3]/25 pt-2 flex flex-col gap-1.5">
+                        <p class="text-[10px] font-bold text-[#6B7280] uppercase tracking-wider">資料交換</p>
+                        <div class="grid grid-cols-2 gap-1.5">
+                            <label class="btn-secondary w-full px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer hover:border-blue-300 transition">
+                                <i class="fa-solid fa-file-import text-blue-600 text-sm"></i> 匯入 Excel 說明
+                                <input type="file" id="importExcelInput" accept=".xlsx, .xls" class="hidden">
+                            </label>
+                            <button type="button" id="btnExportExcel" class="btn-secondary w-full px-3 py-1.5 rounded-lg text-xs font-bold flex items-center justify-start gap-1.5 hover:border-emerald-300 transition">
+                                <i class="fa-regular fa-file-excel text-emerald-600 text-sm"></i> 匯出 Excel
+                            </button>
+                        </div>
                     </div>
 
-                    <div class="border-t border-[#C7CBD3]/25 pt-3 flex flex-col gap-2">
-                        <p class="text-[11px] font-bold text-[#6B7280]">其他輸出</p>
-                        <button type="button" id="btnExportZip" class="btn-secondary w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-start gap-1.5">
+                    <div class="border-t border-[#C7CBD3]/25 pt-2 flex flex-col gap-1.5">
+                        <p class="text-[10px] font-bold text-[#6B7280] uppercase tracking-wider">其他輸出</p>
+                        <button type="button" id="btnExportZip" class="btn-secondary w-full px-3 py-1.5 rounded-lg text-xs font-bold flex items-center justify-start gap-1.5 text-[#4B5563] hover:border-amber-300 transition">
                             <i class="fa-regular fa-file-zipper text-amber-600 text-sm"></i> 最佳化照片 ZIP
                         </button>
                     </div>
@@ -606,42 +616,46 @@
             <input type="file" id="folderInput" webkitdirectory directory multiple class="hidden">
 
             <!-- 工作台操作工具列：依工作目的分群，按鈕 ID 與既有事件維持不變 -->
-            <div class="flex flex-wrap items-center gap-2 bg-[#EEF0F3]/80 p-2.5 rounded-xl border border-[#C7CBD3]/20" aria-label="照片工作台操作工具列">
-                <div class="toolbar-group" role="group" aria-label="選取與整理">
-                    <button type="button" id="btnToggleSelectAll" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1">
-                        <i class="fa-regular fa-square-check"></i> <span id="selectAllText">全選</span>
+            <div class="flex flex-wrap items-center gap-2 bg-[#EEF0F3]/80 p-2 rounded-xl border border-[#C7CBD3]/30 shadow-2xs" aria-label="照片工作台操作工具列">
+                <div class="toolbar-group" role="group" aria-label="選取與流水號">
+                    <button type="button" id="btnToggleSelectAll" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5">
+                        <i class="fa-regular fa-square-check text-[#5B5CE2]"></i> <span id="selectAllText">全選</span>
                     </button>
-                    <button type="button" id="btnOpenSequenceModal" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1">
+                    <button type="button" id="btnOpenSequenceModal" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5" title="重排照片流水號">
                         <i class="fa-solid fa-arrow-down-1-9 text-[#5B5CE2]"></i> 重排流水號
                     </button>
-                    <button type="button" id="btnParseFilenameTime" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1" title="自動從檔名提取日期與時間（如 YYYYMMDD_HHMMSS、Screenshot）">
+                    <button type="button" id="btnParseFilenameTime" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5" title="自動從檔名提取日期與時間（如 YYYYMMDD_HHMMSS、Screenshot）">
                         <i class="fa-solid fa-wand-magic-sparkles text-[#5B5CE2]"></i> 解析檔名時間
                     </button>
                 </div>
 
-                <div class="toolbar-group" role="group" aria-label="復原與重做">
-                    <button type="button" id="btnUndo" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed" title="復原（Ctrl+Z）" disabled>
-                        <i class="fa-solid fa-rotate-left text-[#5B5CE2]"></i> 復原
+                <div class="inline-flex rounded-lg border border-[#C7CBD3]/40 bg-white p-0.5 shadow-2xs" role="group" aria-label="復原與重做">
+                    <button type="button" id="btnUndo" class="p-1.5 px-2 rounded-md text-xs font-bold text-[#4B5563] hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed flex items-center gap-1 transition" title="復原（Ctrl+Z）" disabled>
+                        <i class="fa-solid fa-rotate-left text-[#5B5CE2]"></i> <span class="hidden xl:inline text-[11px]">復原</span>
                     </button>
-                    <button type="button" id="btnRedo" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed" title="重做（Ctrl+Y 或 Ctrl+Shift+Z）" disabled>
-                        <i class="fa-solid fa-rotate-right text-[#5B5CE2]"></i> 重做
+                    <div class="w-[1px] bg-[#C7CBD3]/30 my-1"></div>
+                    <button type="button" id="btnRedo" class="p-1.5 px-2 rounded-md text-xs font-bold text-[#4B5563] hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed flex items-center gap-1 transition" title="重做（Ctrl+Y 或 Ctrl+Shift+Z）" disabled>
+                        <i class="fa-solid fa-rotate-right text-[#5B5CE2]"></i> <span class="hidden xl:inline text-[11px]">重做</span>
                     </button>
                 </div>
 
                 <div class="toolbar-group" role="group" aria-label="照片操作">
-                    <button type="button" id="btnBatchRotate" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1" title="選取或全部照片旋轉 90°">
+                    <button type="button" id="btnBatchRotate" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5" title="選取或全部照片旋轉 90°">
                         <i class="fa-solid fa-rotate-right text-[#5B5CE2]"></i> 旋轉 90°
                     </button>
-                    <button type="button" id="btnMoveSelectedBackward" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1" title="將已選照片向前移動一格">
-                        <i class="fa-solid fa-arrow-left text-[#5B5CE2]"></i> 前移
-                    </button>
-                    <button type="button" id="btnMoveSelectedForward" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1" title="將已選照片向後移動一格">
-                        後移 <i class="fa-solid fa-arrow-right text-[#5B5CE2]"></i>
-                    </button>
+                    <div class="inline-flex rounded-md border border-[#C7CBD3]/40 bg-white p-0.5">
+                        <button type="button" id="btnMoveSelectedBackward" class="px-2 py-1 rounded text-xs font-bold text-[#4B5563] hover:bg-slate-100 flex items-center gap-1" title="將已選照片向前移動一格 (Ctrl+←)">
+                            <i class="fa-solid fa-arrow-left text-[#5B5CE2]"></i> <span class="hidden sm:inline">前移</span>
+                        </button>
+                        <div class="w-[1px] bg-[#C7CBD3]/30 my-0.5"></div>
+                        <button type="button" id="btnMoveSelectedForward" class="px-2 py-1 rounded text-xs font-bold text-[#4B5563] hover:bg-slate-100 flex items-center gap-1" title="將已選照片向後移動一格 (Ctrl+→)">
+                            <span class="hidden sm:inline">後移</span> <i class="fa-solid fa-arrow-right text-[#5B5CE2]"></i>
+                        </button>
+                    </div>
                 </div>
 
                 <div class="toolbar-group" role="group" aria-label="檢視與照片詳情">
-                    <div class="bg-white p-0.5 rounded-lg border border-[#C7CBD3]/30 flex items-center">
+                    <div class="bg-white p-0.5 rounded-lg border border-[#C7CBD3]/30 flex items-center shadow-2xs">
                         <button type="button" id="btnViewWorkspace" class="px-2.5 py-1 rounded text-xs font-bold bg-[#5B5CE2] text-white flex items-center gap-1">
                             <i class="fa-solid fa-table-columns"></i> 工作台視圖
                         </button>
@@ -653,14 +667,14 @@
                         </button>
                     </div>
 
-                    <div id="workspaceLayoutControls" class="bg-white px-2 py-1 rounded-lg border border-[#C7CBD3]/30 flex items-center gap-1.5" aria-label="縮圖尺寸設定">
+                    <div id="workspaceLayoutControls" class="bg-white px-2 py-1 rounded-lg border border-[#C7CBD3]/30 flex items-center gap-1.5 shadow-2xs" aria-label="縮圖尺寸設定">
                         <i class="fa-solid fa-magnifying-glass text-[#5B5CE2] text-xs"></i>
-                        <input type="range" id="thumbnailSizeRange" min="90" max="480" step="5" value="135" class="w-24 accent-[#5B5CE2]" aria-label="縮圖尺寸，90 至 480 像素">
-                        <span id="thumbnailSizeLabel" class="text-xs font-bold text-[#5B5CE2] whitespace-nowrap">135px</span>
-                        <button type="button" id="btnResetThumbnailSize" class="text-[10px] text-[#6B7280] hover:text-[#5B5CE2] hover:underline" title="重設為 135px">重設</button>
+                        <input type="range" id="thumbnailSizeRange" min="90" max="480" step="5" value="135" class="w-20 accent-[#5B5CE2] cursor-pointer" aria-label="縮圖尺寸，90 至 480 像素">
+                        <span id="thumbnailSizeLabel" class="text-xs font-mono font-bold text-[#5B5CE2] whitespace-nowrap min-w-[38px] text-right">135px</span>
+                        <button type="button" id="btnResetThumbnailSize" class="text-[10px] text-[#6B7280] hover:text-[#5B5CE2] hover:underline ml-0.5" title="重設為 135px">重設</button>
                     </div>
                     <button type="button" id="btnAutoArrangeStage" class="btn-secondary px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1" title="依檔名重新排序全部照片；會覆蓋手動拖曳順序">
-                        <i class="fa-solid fa-arrow-down-a-z"></i> 依檔名排序
+                        <i class="fa-solid fa-arrow-down-a-z text-[#5B5CE2]"></i> 依檔名排序
                     </button>
                     <button type="button" id="btnToggleEditor" class="btn-single-edit px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1" title="顯示或收合右側單張照片編輯面板" aria-controls="editorPanel">
                         <i class="fa-solid fa-pen-to-square"></i> <span>收合單張編輯</span>
@@ -668,10 +682,10 @@
                 </div>
 
                 <div class="toolbar-group toolbar-group--danger ml-auto" role="group" aria-label="危險操作">
-                    <button type="button" id="btnRemoveSelected" class="px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 text-red-600 hover:bg-red-50 border border-red-200" title="刪除已選照片">
+                    <button type="button" id="btnRemoveSelected" class="px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 text-red-600 hover:bg-red-50 border border-red-200 transition" title="刪除已選照片">
                         <i class="fa-regular fa-trash-can"></i> 移除選取
                     </button>
-                    <button type="button" id="btnClearAll" class="px-2 py-1 rounded-lg text-xs font-bold text-red-600 hover:bg-red-50 transition border border-red-200">
+                    <button type="button" id="btnClearAll" class="px-2 py-1 rounded-lg text-xs font-bold text-red-600 hover:bg-red-50 transition border border-transparent hover:border-red-200" title="清空全部照片">
                         <i class="fa-regular fa-trash-can"></i> 清空
                     </button>
                 </div>
@@ -680,12 +694,17 @@
             <!-- 照片數量統計與批次選取狀態列 -->
             <div class="flex flex-wrap items-center justify-between text-xs text-[#6B7280] px-1 gap-2">
                 <div class="flex items-center gap-2">
-                    <span>已載入 <b id="photoCount" class="text-[#5B5CE2]">0</b> 張照片</span>
-                    <span id="pageEstimate" class="font-medium text-[#6B7280]">（約 0 頁 Word 報表）</span>
-                    <span id="selectedCountBadge" class="hidden font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">已選取 0 張</span>
+                    <span class="inline-flex items-center gap-1.5 bg-white/70 px-2.5 py-1 rounded-lg border border-[#C7CBD3]/20 shadow-2xs">
+                        <i class="fa-regular fa-images text-[#5B5CE2]"></i>
+                        <span>已載入 <b id="photoCount" class="text-[#5B5CE2]">0</b> 張照片</span>
+                        <span id="pageEstimate" class="font-medium text-[#6B7280]">（約 0 頁 Word 報表）</span>
+                    </span>
+                    <span id="selectedCountBadge" class="hidden font-bold px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200/60 shadow-2xs">已選取 0 張</span>
                 </div>
-                <div class="text-[#5B5CE2] flex items-center gap-2">
-                    <span>💡 方向鍵切換；Ctrl＋方向鍵或上方工具列排序；Ctrl＋滾輪／滑桿調整縮圖；空白處可框選</span>
+                <div class="flex items-center gap-2">
+                    <button type="button" id="btnOpenShortcutsModal" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold text-[#5B5CE2] bg-[#5B5CE2]/10 hover:bg-[#5B5CE2]/15 border border-[#5B5CE2]/20 transition cursor-pointer" title="查看鍵盤快速鍵與操作指南">
+                        <i class="fa-solid fa-keyboard"></i> <span>快速鍵指南</span>
+                    </button>
                 </div>
             </div>
 
@@ -725,14 +744,26 @@
                 </div>
             </div>
 
-            <!-- 空狀態提示 -->
-            <div id="emptyState" class="file-drop-target relative py-12 text-center text-[#6B7280] flex flex-col items-center gap-3 rounded-xl border-2 border-dashed border-[#C7CBD3]/25 bg-white/45">
-                <div class="text-4xl text-[#C7CBD3]/40"><i class="fa-regular fa-images"></i></div>
-                <div class="text-sm font-semibold">尚未載入任何照片</div>
-                <div class="text-xs">拖曳照片至此處，或使用下方按鈕加入</div>
-                <div class="flex flex-wrap justify-center gap-2">
-                    <button type="button" class="btn-secondary px-3 py-1.5 rounded-lg text-xs font-bold" onclick="document.getElementById('fileInput').click()"><i class="fa-solid fa-plus"></i> 加入照片</button>
-                    <button type="button" class="btn-secondary px-3 py-1.5 rounded-lg text-xs font-bold" onclick="document.getElementById('folderInput').click()"><i class="fa-solid fa-folder-plus"></i> 加入資料夾</button>
+            <!-- 空狀態提示：商用軟體級 Hero 拖曳區 -->
+            <div id="emptyState" class="file-drop-target relative py-14 px-6 text-center text-[#6B7280] flex flex-col items-center gap-3.5 rounded-2xl border-2 border-dashed border-[#818CF8]/40 bg-gradient-to-b from-white/95 via-[#EEF0FF]/35 to-white/95 shadow-xs transition hover:border-[#5B5CE2] hover:bg-[#EEF0FF]/50">
+                <div class="w-16 h-16 rounded-2xl bg-gradient-to-tr from-[#5B5CE2]/15 to-[#818CF8]/25 text-[#5B5CE2] flex items-center justify-center text-3xl shadow-xs">
+                    <i class="fa-solid fa-cloud-arrow-up"></i>
+                </div>
+                <div class="max-w-md">
+                    <h3 class="text-base font-bold text-[#20242B]">將照片或資料夾拖曳至此處</h3>
+                    <p class="text-xs text-[#6B7280] mt-1 leading-relaxed">支援 JPG、PNG、WEBP 等常見格式，系統自動解析 EXIF 拍照時間與拍照方向</p>
+                </div>
+                <div class="flex flex-wrap justify-center gap-2.5 mt-1">
+                    <button type="button" class="btn-primary px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 shadow-md hover:shadow-indigo-500/20" onclick="document.getElementById('fileInput').click()">
+                        <i class="fa-solid fa-images"></i> 加入照片
+                    </button>
+                    <button type="button" class="btn-secondary px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 shadow-xs" onclick="document.getElementById('folderInput').click()">
+                        <i class="fa-solid fa-folder-plus text-[#5B5CE2]"></i> 加入資料夾
+                    </button>
+                </div>
+                <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100/90 text-[11px] text-[#6B7280] border border-slate-200/80 mt-2">
+                    <i class="fa-solid fa-shield-halved text-emerald-600"></i>
+                    <span>純本機運算：照片 100% 不會上傳至任何雲端伺服器，嚴格保護公務隱私</span>
                 </div>
             </div>
 
@@ -894,6 +925,71 @@
         <p>© <span id="year"></span> LiangHao (梁巡官) | 現況照片清冊生成工具 v2.0</p>
         <p class="mt-0.5 opacity-75">全域開發憲法 v8.1 規範標準 | 100% 瀏覽器離線安全運作</p>
     </footer>
+
+    <!-- 快捷鍵與操作指南 Modal -->
+    <div id="shortcutsModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop hidden" onclick="window.app.closeModal('shortcutsModal')">
+        <div class="morandi-card w-full max-w-xl p-5 bg-white border-2 border-[#5B5CE2]/30 shadow-2xl flex flex-col gap-4 rounded-2xl" onclick="event.stopPropagation()">
+            <div class="flex items-center justify-between border-b border-[#C7CBD3]/20 pb-2.5">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-[#5B5CE2] to-[#8B8CF7] flex items-center justify-center text-white text-sm shadow">
+                        <i class="fa-solid fa-keyboard"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-bold text-[#20242B]">鍵盤快速鍵與操作指南</h3>
+                        <p class="text-[11px] text-[#6B7280]">專業工作台高效排版與檢視快捷操作</p>
+                    </div>
+                </div>
+                <button type="button" onclick="window.app.closeModal('shortcutsModal')" class="text-[#6B7280] hover:text-[#20242B] p-1 transition" title="關閉 (ESC)">
+                    <i class="fa-solid fa-xmark text-base"></i>
+                </button>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <div class="p-3 bg-slate-50 rounded-xl border border-slate-200/60 flex flex-col gap-2">
+                    <span class="font-bold text-[#20242B] flex items-center gap-1.5">
+                        <i class="fa-solid fa-arrow-pointer text-[#5B5CE2]"></i> 選取操作
+                    </span>
+                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">多選照片</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">Ctrl + 點選</kbd></div>
+                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">連續範圍選取</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">Shift + 點選</kbd></div>
+                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">矩形框選</span><span class="text-[#4B5563] font-medium">舞台空白處拖曳</span></div>
+                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">全選 / 全不選</span><span class="text-[#4B5563] font-medium">點擊工具列「全選」</span></div>
+                </div>
+
+                <div class="p-3 bg-slate-50 rounded-xl border border-slate-200/60 flex flex-col gap-2">
+                    <span class="font-bold text-[#20242B] flex items-center gap-1.5">
+                        <i class="fa-solid fa-arrows-up-down-left-right text-[#5B5CE2]"></i> 移動與換序
+                    </span>
+                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">切換目前照片</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">↑ ↓ ← →</kbd></div>
+                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">前後換序移動</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">Ctrl + ← / →</kbd></div>
+                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">跨列上下移動</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">Ctrl + ↑ / ↓</kbd></div>
+                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">移至開頭 / 結尾</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">Ctrl + Home / End</kbd></div>
+                </div>
+
+                <div class="p-3 bg-slate-50 rounded-xl border border-slate-200/60 flex flex-col gap-2">
+                    <span class="font-bold text-[#20242B] flex items-center gap-1.5">
+                        <i class="fa-solid fa-clock-rotate-left text-[#5B5CE2]"></i> 歷史復原
+                    </span>
+                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">復原動作</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">Ctrl + Z</kbd></div>
+                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">重做動作</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">Ctrl + Y</kbd></div>
+                </div>
+
+                <div class="p-3 bg-slate-50 rounded-xl border border-slate-200/60 flex flex-col gap-2">
+                    <span class="font-bold text-[#20242B] flex items-center gap-1.5">
+                        <i class="fa-solid fa-magnifying-glass-plus text-[#5B5CE2]"></i> 縮放與檢視
+                    </span>
+                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">調整縮圖尺寸</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">Ctrl + 滾輪</kbd></div>
+                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">燈箱放大照片</span><span class="text-[#4B5563] font-medium">點擊照片放大圖示</span></div>
+                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">關閉任何彈窗</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">ESC</kbd></div>
+                </div>
+            </div>
+
+            <div class="flex justify-end pt-2 border-t border-[#C7CBD3]/20">
+                <button type="button" onclick="window.app.closeModal('shortcutsModal')" class="btn-primary px-4 py-1.5 rounded-lg text-xs font-bold shadow">
+                    了解
+                </button>
+            </div>
+        </div>
+    </div>
 
     <!-- 彈窗 1：智慧流水號設定 Modal -->
     <div id="sequenceModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop hidden">
@@ -1170,6 +1266,8 @@
                 this.selectedCountBadge = document.getElementById('selectedCountBadge');
                 this.layoutSelect = document.getElementById('layoutSelect');
                 this.layoutDescription = document.getElementById('layoutDescription');
+                this.layoutMiniPreview = document.getElementById('layoutMiniPreview');
+                this.shortcutsModal = document.getElementById('shortcutsModal');
                 this.processingStatus = document.getElementById('processingStatus');
                 this.processingMessage = document.getElementById('processingMessage');
                 this.processingCount = document.getElementById('processingCount');
@@ -1280,6 +1378,7 @@
                 document.getElementById('btnOpenSequenceModal').addEventListener('click', () => this.openModal('sequenceModal'));
                 document.getElementById('btnApplySequence').addEventListener('click', () => this.applySequence());
                 document.getElementById('btnParseFilenameTime').addEventListener('click', () => this.parseFilenameTime());
+                document.getElementById('btnOpenShortcutsModal')?.addEventListener('click', () => this.openModal('shortcutsModal'));
                 document.getElementById('btnExportDocx').addEventListener('click', () => this.confirmExportWithAudit(() => this.exportDocx().catch(e => this.handleExportError(e)), 'Word 清冊'));
                 document.getElementById('btnSaveProject').addEventListener('click', () => this.saveProject().catch(error => this.handleProjectError(error)));
                 document.getElementById('importProjectInput').addEventListener('change', (e) => this.openProject(e));
@@ -1360,6 +1459,11 @@
                 // 鍵盤快速鍵：方向鍵切換單張選取；Ctrl＋方向鍵與 Ctrl＋Home／End 重排已選照片。
                 window.addEventListener('keydown', (e) => {
                     if (this.isTypingTarget(e.target)) return;
+                    if (e.key === 'Escape') {
+                        ['shortcutsModal', 'sequenceModal', 'updateModal', 'upToDateModal', 'updateErrorModal', 'exportAuditModal', 'imageLightboxModal'].forEach(id => {
+                            this.closeModal(id);
+                        });
+                    }
                     const lightboxOpen = !document.getElementById('imageLightboxModal').classList.contains('hidden');
                     if (lightboxOpen) {
                         if (e.key === 'Escape') this.closeModal('imageLightboxModal');
@@ -2070,8 +2174,8 @@
                 this.workspaceContainer.classList.toggle('hidden', view !== 'workspace');
                 this.gridContainer.classList.toggle('hidden', view !== 'grid');
                 this.previewContainer.classList.toggle('hidden', view !== 'preview');
-                const activeClass = "px-2.5 py-1 rounded text-xs font-bold bg-[#5B5CE2] text-white flex items-center gap-1";
-                const idleClass = "px-2.5 py-1 rounded text-xs font-bold text-[#6B7280] flex items-center gap-1";
+                const activeClass = "px-2.5 py-1 rounded text-xs font-bold bg-[#5B5CE2] text-white flex items-center gap-1 shadow-2xs";
+                const idleClass = "px-2.5 py-1 rounded text-xs font-bold text-[#6B7280] hover:text-[#20242B] flex items-center gap-1";
                 document.getElementById('btnViewWorkspace').className = view === 'workspace' ? activeClass : idleClass;
                 document.getElementById('btnViewGrid').className = view === 'grid' ? activeClass : idleClass;
                 document.getElementById('btnViewPreview').className = view === 'preview' ? activeClass : idleClass;
@@ -2697,6 +2801,22 @@
                     landscape_3: '橫式三張・A4 橫式・每頁 3 張'
                 };
                 this.layoutDescription.textContent = descriptions[this.layoutSelect.value] || descriptions.up_down_2;
+                this.updateLayoutMiniPreview();
+            }
+
+            updateLayoutMiniPreview() {
+                const previewEl = this.layoutMiniPreview || document.getElementById('layoutMiniPreview');
+                if (!previewEl) return;
+                const layout = this.layoutSelect?.value || 'up_down_2';
+                let svg = '';
+                if (layout === 'up_down_2') {
+                    svg = '<svg viewBox="0 0 32 44" class="w-full h-full text-[#5B5CE2]" aria-hidden="true"><rect x="1" y="1" width="30" height="42" rx="2" fill="#FFFFFF" stroke="#C7CBD3" stroke-width="1.2"/><rect x="3.5" y="4" width="25" height="15" rx="1.5" fill="#EEF0FF" stroke="#818CF8" stroke-width="0.8"/><rect x="3.5" y="23" width="25" height="15" rx="1.5" fill="#EEF0FF" stroke="#818CF8" stroke-width="0.8"/><line x1="6" y1="16" x2="26" y2="16" stroke="#A5B4FC" stroke-width="0.8"/><line x1="6" y1="35" x2="26" y2="35" stroke="#A5B4FC" stroke-width="0.8"/></svg>';
+                } else if (layout === 'left_right_2') {
+                    svg = '<svg viewBox="0 0 32 44" class="w-full h-full text-[#5B5CE2]" aria-hidden="true"><rect x="1" y="1" width="30" height="42" rx="2" fill="#FFFFFF" stroke="#C7CBD3" stroke-width="1.2"/><rect x="3.5" y="4" width="11.5" height="34" rx="1.5" fill="#EEF0FF" stroke="#818CF8" stroke-width="0.8"/><rect x="17" y="4" width="11.5" height="34" rx="1.5" fill="#EEF0FF" stroke="#818CF8" stroke-width="0.8"/></svg>';
+                } else if (layout === 'landscape_3') {
+                    svg = '<svg viewBox="0 0 44 32" class="w-full h-full text-[#5B5CE2]" aria-hidden="true"><rect x="1" y="1" width="42" height="30" rx="2" fill="#FFFFFF" stroke="#C7CBD3" stroke-width="1.2"/><rect x="3.5" y="4.5" width="11" height="21" rx="1.5" fill="#EEF0FF" stroke="#818CF8" stroke-width="0.8"/><rect x="16.5" y="4.5" width="11" height="21" rx="1.5" fill="#EEF0FF" stroke="#818CF8" stroke-width="0.8"/><rect x="29.5" y="4.5" width="11" height="21" rx="1.5" fill="#EEF0FF" stroke="#818CF8" stroke-width="0.8"/></svg>';
+                }
+                previewEl.innerHTML = svg;
             }
 
             // ============================================================
