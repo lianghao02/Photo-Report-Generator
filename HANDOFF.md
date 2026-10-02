@@ -3,7 +3,7 @@
 ## 核心元資料 (Metadata)
 - **Repository**：lianghao02/Photo-Report-Generator
 - **Branch**：main
-- **Commit SHA**：`edda75f`
+- **最新 Commit**：以 Repository 即時狀態為準
 - **Skill Version**：v1.0.0
 - **Task Type**：MAINTENANCE-CONVERGENCE
 
@@ -73,10 +73,10 @@
 無新增風險。
 
 ## Git 狀態
-- Commit：`edda75f`
-- Push：是
-- Working Tree：Clean
 - Branch：main
+- Push：已完成
+- Working Tree：Clean
+- 最新 Commit：以 Repository 即時狀態為準
 
 ## 下一步
 僅在有已重現 Bug、實際業務需求或準備下一次正式 Release 時再開新任務。
