@@ -7,10 +7,10 @@
 - **Skill Version**：v1.0.0
 - **Task Type**：MAINTENANCE-CONVERGENCE
 
-> **目前實際 Git 狀態（2026-10-02）**：已完成 Phase A（發布與產品表面一致性）與 Phase B（文件治理與歷史計畫歸檔）收斂；所有既有單元測試、E2E 測試、Golden Baseline 及桌面版建置全數通過。
+> **目前實際 Git 狀態（2026-10-02）**：已完成 Phase A/B 收斂與正式發布 v2.3.1；所有既有單元測試、E2E 測試、Golden Baseline 及桌面版建置全數通過。
 
 ## 目前狀態
-可交付／Stable Maintenance
+可交付／Stable Maintenance (v2.3.1)
 
 ## 本輪目標
 1. **Phase A：發布／版本／產品表面一致性收斂**：
