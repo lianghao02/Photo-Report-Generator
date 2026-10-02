@@ -1,4 +1,4 @@
-﻿# build-portable.ps1
+# build-portable.ps1
 # Usage: .\scripts\build-portable.ps1
 
 Set-StrictMode -Version Latest
@@ -42,11 +42,12 @@ if (-not (Test-Path $RawExe)) {
 $conf    = Get-Content (Join-Path $Root "src-tauri\tauri.conf.json") -Encoding UTF8 | ConvertFrom-Json
 $ver     = $conf.version
 $appName = $conf.productName
+$artifactBaseName = "Photo-Report-Generator-$ver"
 
 Write-Host ">> Step 3: build portable folder" -ForegroundColor Cyan
-$folderName  = $appName + "_" + $ver + "_x64_portable"
+$folderName  = "$artifactBaseName-Portable"
 $portableDir = Join-Path $BundleDir $folderName
-$portableZip = Join-Path $BundleDir ($folderName + ".zip")
+$portableZip = Join-Path $BundleDir "$artifactBaseName-Portable.zip"
 
 if (Test-Path $portableDir) { Remove-Item $portableDir -Recurse -Force }
 New-Item -ItemType Directory -Path $portableDir | Out-Null
@@ -72,13 +73,22 @@ Write-Host ">> Step 4: compress to ZIP" -ForegroundColor Cyan
 if (Test-Path $portableZip) { Remove-Item $portableZip -Force }
 Compress-Archive -Path $portableDir -DestinationPath $portableZip -CompressionLevel Optimal
 
-$setupExe = Join-Path $BundleDir ($appName + "_" + $ver + "_x64-setup.exe")
+$targetSetupExe = Join-Path $BundleDir "$artifactBaseName-Setup.exe"
+$rawSetupExe = Get-ChildItem -Path $BundleDir -Filter "*setup.exe" -File -ErrorAction SilentlyContinue |
+    Where-Object { $_.FullName -ne $targetSetupExe } |
+    Sort-Object LastWriteTime -Descending |
+    Select-Object -First 1
+
+if ($rawSetupExe) {
+    Copy-Item -LiteralPath $rawSetupExe.FullName -Destination $targetSetupExe -Force
+}
+
 Write-Host ""
 Write-Host "Build Complete!" -ForegroundColor Green
 
-if (Test-Path $setupExe) {
-    $mb = [math]::Round((Get-Item $setupExe).Length / 1MB, 2)
-    Write-Host "  [Installer] $((Get-Item $setupExe).Name)  ($mb MB)"
+if (Test-Path $targetSetupExe) {
+    $mb = [math]::Round((Get-Item $targetSetupExe).Length / 1MB, 2)
+    Write-Host "  [Installer] $((Get-Item $targetSetupExe).Name)  ($mb MB)"
 }
 if (Test-Path $portableZip) {
     $mb = [math]::Round((Get-Item $portableZip).Length / 1MB, 2)
