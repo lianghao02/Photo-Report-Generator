@@ -11,7 +11,7 @@
 ---
 
 ## 目前狀態
-本輪完成 v2.3.2 空白工作台操作密度修訂與桌面產物建置，尚待 Commit／Push／GitHub Release；以下待驗證事項維持。舊交接原文保留於下方，屬歷史，不代表本輪 Git 或測試狀態。
+本輪已發布 v2.3.2 空白工作台操作密度修訂與桌面產物；以下待驗證事項維持。舊交接原文保留於下方，屬歷史，不代表本輪 Git 或測試狀態。
 
 ## 本輪目標
 依已授權目錄配置與舊產物清理要求，保留現有功能。
@@ -22,7 +22,7 @@
 ## 已完成 (Completed)
 2026-10-08 UI/UX 微調：空白狀態隱藏僅適用於已載入照片的批次工具列；保留檢視模式與縮圖大小設定。版型微縮圖新增可見「預覽」標示，並在沒有照片時停用單張編輯。未變更照片載入後的工具列行為、匯出邏輯或資料模型。
 
-2026-10-08 v2.3.2 發布準備：版本號已同步至 Web、Node 與 Tauri 設定；`Photo-Report-Generator-2.3.2-Setup.exe` 與 `Photo-Report-Generator-2.3.2-Portable.zip` 已建置並完成 SHA-256 與 ZIP 內容核對。GitHub CLI 目前授權失效，需重新登入後才能建立遠端 Release。
+2026-10-08 v2.3.2 發布完成：版本號已同步至 Web、Node 與 Tauri 設定；`Photo-Report-Generator-2.3.2-Setup.exe` 與 `Photo-Report-Generator-2.3.2-Portable.zip` 已建置並完成 SHA-256 與 ZIP 內容核對。正式 Release：https://github.com/lianghao02/Photo-Report-Generator/releases/tag/v2.3.2
 
 2026-10-06 GitHub 同步交接：使用者已授權提交與推送前輪成果；本輪只提交已核對範圍。最新 Commit SHA、遠端同步與 CI 結果統一見控制中心 `docs/github-sync/RESULTS.md`，不將提交本身的 SHA 寫入同一份提交。
 
@@ -55,14 +55,14 @@
 - Commit：上述 SHA 為提交前基準；最新 SHA 見 `git log -1` 與中央同步報告。
 - Push：實際推送及遠端核對結果見中央 `docs/github-sync/RESULTS.md`。
 - Working Tree：最終狀態見中央同步報告；不含被忽略的環境、成品與使用者資料。
-- Working Tree（2026-10-08）：v2.3.2 程式、版本、文件與交接檔已修改，尚未 Commit／Push。
+- Working Tree（2026-10-08）：v2.3.2 程式、版本與文件已提交、推送；本交接狀態更新待提交。
 - Branch：main。
 
 ## 下一步建議動作 (Next Recommended Action)
 本輪停止擴大修改；日後提交前核對工作範圍並另取得授權。
 
 ## 發布狀態 (Release Status)
-本輪未發布，保留現行成品。
+v2.3.2 已發布，含 Windows 安裝版與免安裝綠色版。
 
 ---
 
