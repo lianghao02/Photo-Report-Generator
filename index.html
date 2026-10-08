@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="mobile-web-app-capable" content="yes">
-    <title>現場照片清冊生成工具 v2.3.1</title>
+    <title>現場照片清冊生成工具 v2.3.2</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📷</text></svg>">
 
     <link rel="stylesheet" href="vendor/tailwind.css">
@@ -520,7 +520,7 @@
             <!-- 內嵌版本徽章：version.txt 於建置時一致性檢核，避免 file:// 執行期 CORS 限制 -->
             <span id="appVersionBadge" class="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-[#5B5CE2]/15 text-[#5B5CE2] border border-[#5B5CE2]/30 flex items-center gap-1.5 shadow-sm select-none" title="目前版本（離線可用）">
                 <i class="fa-solid fa-tag text-[11px]"></i>
-                <span id="appVersionText">v2.3.1</span>
+                <span id="appVersionText">v2.3.2</span>
             </span>
 
             <!-- 檢查更新按鈕 -->
@@ -627,8 +627,11 @@
                                     <option value="landscape_3">橫式三張</option>
                                 </select>
                             </div>
-                            <div id="layoutMiniPreview" class="shrink-0 w-8 h-11 bg-white rounded border border-slate-200 p-0.5 flex flex-col justify-center items-center shadow-2xs" title="版型架構示意圖" aria-hidden="true">
-                                <!-- 動態繪製微縮版型示意 -->
+                            <div class="shrink-0 flex flex-col items-center gap-0.5" aria-label="目前清冊版型預覽">
+                                <div id="layoutMiniPreview" class="w-8 h-11 bg-white rounded border border-slate-200 p-0.5 flex flex-col justify-center items-center shadow-2xs" title="目前清冊版型預覽" aria-hidden="true">
+                                    <!-- 動態繪製微縮版型示意 -->
+                                </div>
+                                <span class="text-[9px] leading-none font-medium text-[#6B7280]">預覽</span>
                             </div>
                         </div>
                         <p id="layoutDescription" class="text-[10px] text-[#6B7280] mt-1" aria-live="polite">上下兩張・A4 直式・每頁 2 張</p>
@@ -694,7 +697,7 @@
             <!-- 工作台操作工具列：嚴謹雙層結構，徹底根除第三行孤立破版 -->
             <div class="flex flex-col gap-2 bg-[#EEF0F3]/80 p-2 rounded-xl border border-[#C7CBD3]/30 shadow-2xs" aria-label="照片工作台操作工具列">
                 <!-- 第一列：批次照片操作條（左右對齊） -->
-                <div class="flex items-center justify-between gap-2 flex-wrap">
+                <div id="photoActionToolbar" class="flex items-center justify-between gap-2 flex-wrap">
                     <div class="flex items-center gap-1.5 flex-wrap">
                         <div class="toolbar-group" role="group" aria-label="選取與流水號">
                             <button type="button" id="btnToggleSelectAll" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5">
@@ -745,7 +748,7 @@
                 </div>
 
                 <!-- 第二列：檢視模式與畫布控制列 -->
-                <div class="flex items-center justify-between gap-2 flex-wrap pt-1.5 border-t border-[#C7CBD3]/30">
+                <div id="workspaceToolbar" class="flex items-center justify-between gap-2 flex-wrap pt-1.5 border-t border-[#C7CBD3]/30">
                     <div class="bg-white p-0.5 rounded-lg border border-[#C7CBD3]/30 flex items-center shadow-2xs" role="group" aria-label="檢視模式切換">
                         <button type="button" id="btnViewWorkspace" class="px-2.5 py-1 rounded text-xs font-bold bg-[#5B5CE2] text-white flex items-center gap-1 shadow-2xs">
                             <i class="fa-solid fa-table-columns"></i> 工作台視圖
@@ -1179,7 +1182,7 @@
             <div class="grid grid-cols-3 gap-2 bg-[#EEF0FF] p-3 rounded-xl border border-[#C7CBD3]/20 text-xs">
                 <div class="flex flex-col">
                     <span class="text-[#6B7280] text-[10px] font-bold">目前使用版本</span>
-                    <span id="updateCurrentVer" class="font-bold text-[#20242B] mt-0.5">v2.3.1</span>
+                    <span id="updateCurrentVer" class="font-bold text-[#20242B] mt-0.5">v2.3.2</span>
                 </div>
                 <div class="flex flex-col items-center justify-center border-x border-[#C7CBD3]/20">
                     <span class="text-emerald-600 text-[10px] font-bold">GitHub 最新版本</span>
@@ -1224,7 +1227,7 @@
             <div>
                 <h3 class="text-sm font-black text-[#20242B]">目前已是最新版本！</h3>
                 <p class="text-xs text-[#6B7280] mt-1.5 leading-relaxed">
-                    您目前使用的版本為 <span id="upToDateVer" class="font-bold text-[#5B5CE2]">v2.3.1</span>，各項功能皆為最新，無需進行更新。
+                    您目前使用的版本為 <span id="upToDateVer" class="font-bold text-[#5B5CE2]">v2.3.2</span>，各項功能皆為最新，無需進行更新。
                 </p>
             </div>
             <button type="button" onclick="window.app.closeModal('upToDateModal')" class="btn-primary w-full py-2 rounded-lg text-xs font-bold mt-2 shadow">
@@ -3783,10 +3786,20 @@
                 setBtnState('btnBatchRotate', hasPhotos);
                 setBtnState('btnAutoArrangeStage', hasPhotos);
                 setBtnState('btnClearAll', hasPhotos);
+                setBtnState('btnToggleEditor', hasPhotos);
 
                 setBtnState('btnRemoveSelected', hasSelection);
                 setBtnState('btnMoveSelectedBackward', hasSelection);
                 setBtnState('btnMoveSelectedForward', hasSelection);
+
+                // 空白狀態只保留匯入後才需要設定的檢視控制，避免停用按鈕佔滿操作區。
+                const photoActionToolbar = document.getElementById('photoActionToolbar');
+                const workspaceToolbar = document.getElementById('workspaceToolbar');
+                if (photoActionToolbar) photoActionToolbar.classList.toggle('hidden', !hasPhotos);
+                if (workspaceToolbar) {
+                    workspaceToolbar.classList.toggle('pt-1.5', hasPhotos);
+                    workspaceToolbar.classList.toggle('border-t', hasPhotos);
+                }
 
                 const stageImportBar = document.getElementById('stageImportBar');
                 if (stageImportBar) {
