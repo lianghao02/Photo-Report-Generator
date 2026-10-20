@@ -522,7 +522,6 @@
             font-weight: 900 !important;
             line-height: 1.2;
         }
-        #workspaceLayoutControls,
         #workspaceToolbar > div:first-child,
         #photoActionToolbar [aria-label="復原與重做"] {
             border: 2px solid var(--border) !important;
@@ -614,6 +613,50 @@
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
             border-radius: 6px;
         }
+
+        /* 下拉選單（檔案／說明／更多）：少用功能收在這裡，不佔版面 */
+        .app-menu { position: relative; }
+        .app-menu > summary { list-style: none; cursor: pointer; user-select: none; }
+        .app-menu > summary::-webkit-details-marker { display: none; }
+        .app-menu-panel {
+            position: absolute; right: 0; top: calc(100% + 6px); z-index: 40;
+            min-width: 220px; padding: 6px;
+            background: #FFFFFF; border: 2px solid var(--border); border-radius: 12px;
+            box-shadow: 0 4px 0 var(--border);
+            display: flex; flex-direction: column; gap: 2px;
+        }
+        .app-menu-group {
+            font-size: 11px; font-weight: 800; color: #334155;
+            padding: 6px 8px 2px; margin: 0;
+        }
+        .app-menu-group:not(:first-child) { border-top: 1.5px dashed #CBD5E1; margin-top: 4px; padding-top: 8px; }
+        .app-menu-item {
+            display: flex; align-items: center; gap: 8px; width: 100%;
+            padding: 7px 10px; border-radius: 8px;
+            font-size: 13px; font-weight: 700; color: var(--text); text-align: left;
+            background: transparent; cursor: pointer; text-decoration: none;
+        }
+        .app-menu-item:hover, .app-menu-item:focus-visible { background: var(--game-gold-bg); outline: none; }
+        .app-menu-item i { width: 16px; text-align: center; color: #1D4ED8; }
+        .app-menu-item--danger, .app-menu-item--danger i { color: #B91C1C; }
+        .app-menu-item--danger { margin-top: 4px; border-top: 1.5px dashed #CBD5E1; border-radius: 0 0 8px 8px; }
+        .app-menu-item:disabled { opacity: 0.62; cursor: not-allowed; }
+        .app-menu-note { font-size: 11px; color: #334155; padding: 6px 10px 2px; margin: 4px 0 0; border-top: 1.5px dashed #CBD5E1; }
+        .toolbar-divider { width: 1.5px; height: 22px; background: #CBD5E1; margin: 0 2px; }
+
+        /* 漏填檢查：預設收合 */
+        #auditFilterBar.audit-collapsed { display: none !important; }
+        #btnToggleAudit.has-issues { background: #FEF3C7 !important; color: #78350F !important; }
+
+        /* 匯出列：固定在照片區底部，隨時可匯出 */
+        .export-bar {
+            position: sticky; bottom: 0.75rem; z-index: 20;
+            display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px;
+            margin-top: 4px; padding: 10px 12px;
+            background: #FFFDF7; border: 2.5px solid var(--border); border-radius: 14px;
+            box-shadow: 0 4px 0 var(--border);
+        }
+        .export-bar #layoutSelect { width: auto; min-width: 7.5rem; }
     </style>
 </head>
 <body class="p-2 md:p-3.5 flex flex-col items-center">
@@ -625,357 +668,267 @@
     </div>
     <div id="dragInsertOverlay" class="hidden" aria-hidden="true"><i class="fa-solid fa-plus"></i></div>
 
-    <!-- 頂部 2D HUD 緊湊導覽列 -->
+    <!-- 頂部：只放工具名稱、檔案選單與說明選單 -->
     <header class="w-full max-w-[1440px] mb-2.5 morandi-card px-3.5 py-2 flex flex-wrap items-center justify-between gap-2">
         <div class="flex items-center gap-2.5">
             <div class="game-icon-box w-10 h-10 rounded-xl flex items-center justify-center text-lg">
                 <i class="fa-solid fa-camera-retro"></i>
             </div>
             <div>
-                <div class="flex items-center gap-2 flex-wrap">
-                    <h1 class="text-xl font-black tracking-tight text-[#20242B]">現場照片清冊生成工具</h1>
-                    <span class="game-badge-pill text-xs px-2.5 py-0.5 rounded-full">🎮 2D 鑑識工作台</span>
-                </div>
-                <p class="text-xs font-bold text-[#6B7280] mt-0.5">瀏覽器即開即用．純正標楷體．頁首頁尾．100% 精準對齊公務 Word 範本</p>
+                <h1 class="text-xl font-black tracking-tight text-[#20242B]">現場照片清冊</h1>
+                <p class="text-xs font-bold text-[#6B7280] mt-0.5">加入照片、填好說明，就能匯出 Word 或 PDF 清冊</p>
             </div>
         </div>
 
         <div class="flex items-center gap-2">
-            <!-- 內嵌版本徽章：version.txt 於建置時一致性檢核，避免 file:// 執行期 CORS 限制 -->
-            <span id="appVersionBadge" class="game-badge-pill px-2.5 py-1.5 rounded-lg text-xs flex items-center gap-1.5 select-none" title="目前版本（離線可用）">
-                <i class="fa-solid fa-tag text-[11px]"></i>
-                <span id="appVersionText">v2.3.2</span>
-            </span>
+            <!-- 檔案選單：專案檔、Excel、照片 ZIP 等少用功能 -->
+            <details class="app-menu">
+                <summary class="btn-secondary px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5">
+                    <i class="fa-regular fa-folder-open"></i> 檔案 <i class="fa-solid fa-chevron-down text-[10px]"></i>
+                </summary>
+                <div class="app-menu-panel">
+                    <p class="app-menu-group">工作進度</p>
+                    <label class="app-menu-item" title="開啟之前儲存的工作進度">
+                        <i class="fa-solid fa-folder-open"></i> 開啟工作進度…
+                        <input type="file" id="importProjectInput" accept=".photo-report,application/zip" class="hidden">
+                    </label>
+                    <button type="button" id="btnSaveProject" class="app-menu-item" title="把照片與已填資料存成一個檔案，之後可繼續編輯">
+                        <i class="fa-solid fa-floppy-disk"></i> 儲存工作進度
+                    </button>
+                    <p class="app-menu-group">Excel</p>
+                    <label class="app-menu-item" title="用 Excel 填好的說明，依編號或檔名帶回照片">
+                        <i class="fa-solid fa-file-import"></i> 從 Excel 匯入說明…
+                        <input type="file" id="importExcelInput" accept=".xlsx, .xls" class="hidden">
+                    </label>
+                    <button type="button" id="btnExportExcel" class="app-menu-item" title="把編號、日期、時間、地點、說明輸出成 Excel">
+                        <i class="fa-regular fa-file-excel"></i> 匯出 Excel 清單
+                    </button>
+                    <p class="app-menu-group">照片</p>
+                    <button type="button" id="btnExportZip" class="app-menu-item" title="下載已轉正、壓縮後的照片（ZIP）">
+                        <i class="fa-regular fa-file-zipper"></i> 下載處理後照片（ZIP）
+                    </button>
+                </div>
+            </details>
 
-            <!-- 檢查更新按鈕 -->
-            <button type="button" id="btnCheckUpdate" class="px-3 py-1.5 rounded-lg text-xs font-semibold btn-secondary flex items-center gap-1.5 hover:border-[#5B5CE2] transition" title="檢查 GitHub 最新發行版本">
-                <i class="fa-solid fa-rotate" id="checkUpdateIcon"></i>
-                <span id="checkUpdateText">檢查更新</span>
-            </button>
-
-            <a href="https://github.com/lianghao02/Photo-Report-Generator" target="_blank" class="px-3 py-1.5 rounded-lg text-xs font-semibold btn-secondary flex items-center gap-1.5">
-                <i class="fa-brands fa-github"></i> GitHub 專案
-            </a>
+            <!-- 說明選單：操作說明、版本與更新 -->
+            <details class="app-menu">
+                <summary class="btn-secondary px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5">
+                    <i class="fa-regular fa-circle-question"></i> 說明 <i class="fa-solid fa-chevron-down text-[10px]"></i>
+                </summary>
+                <div class="app-menu-panel">
+                    <button type="button" id="btnOpenShortcutsModal" class="app-menu-item" title="鍵盤快速鍵與操作方式">
+                        <i class="fa-solid fa-keyboard"></i> 操作說明與快速鍵
+                    </button>
+                    <button type="button" id="btnCheckUpdate" class="app-menu-item" title="檢查是否有新版本">
+                        <i class="fa-solid fa-rotate" id="checkUpdateIcon"></i>
+                        <span id="checkUpdateText">檢查更新</span>
+                    </button>
+                    <a href="https://github.com/lianghao02/Photo-Report-Generator" target="_blank" class="app-menu-item">
+                        <i class="fa-brands fa-github"></i> GitHub 專案頁
+                    </a>
+                    <p class="app-menu-note">
+                        <!-- 內嵌版本：version.txt 於建置時一致性檢核，避免 file:// 執行期 CORS 限制 -->
+                        <span id="appVersionBadge">目前版本 <span id="appVersionText">v2.3.2</span></span>
+                    </p>
+                </div>
+            </details>
         </div>
     </header>
 
     <!-- 主要工作區域 -->
     <main id="appMainLayout" class="w-full max-w-[1440px] grid grid-cols-1 gap-3 items-start">
 
-        <!-- 左側固定操作欄：不受右側照片高度影響，並以自適應最大高度防止裁切 -->
+        <!-- 左側：只放整本清冊共用的案件資料 -->
         <aside id="sidePanel" class="flex flex-col gap-2 lg:sticky lg:top-3 self-start lg:max-h-[calc(100vh-1.5rem)] lg:overflow-y-auto pr-0.5">
-        <!-- 專案管理：精簡常駐操作，與案件資料及輸出操作分開 -->
-        <section class="morandi-card px-3.5 py-2 flex items-center justify-between gap-2 shadow-2xs">
-            <div class="flex items-center gap-2">
-                <i class="fa-solid fa-folder-tree text-[#5B5CE2] text-xs"></i>
-                <div>
-                    <h2 class="text-xs font-bold text-[#20242B]">專案檔</h2>
-                    <p class="text-[10px] text-[#6B7280]">開啟或儲存工作進度</p>
-                </div>
-            </div>
-            <div class="flex items-center gap-1.5">
-                <label class="btn-secondary px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer hover:border-[#5B5CE2]" title="開啟先前儲存的專案檔">
-                    <i class="fa-solid fa-folder-open text-[#5B5CE2]"></i> 開啟
-                    <input type="file" id="importProjectInput" accept=".photo-report,application/zip" class="hidden">
-                </label>
-                <button type="button" id="btnSaveProject" class="btn-secondary px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 hover:border-[#5B5CE2]" title="將照片與編輯資料儲存成單一專案檔">
-                    <i class="fa-solid fa-floppy-disk text-[#5B5CE2]"></i> 儲存
-                </button>
-            </div>
-        </section>
-
-        <!-- 1. 全域案件表頭資訊 -->
         <section class="morandi-card p-3 shadow-xs">
             <div class="border-b border-[#C7CBD3]/20 pb-1.5 mb-2">
-                <div>
-                    <h2 class="text-xs font-bold text-[#20242B] flex items-center gap-1.5">
-                        <i class="fa-solid fa-clipboard-list text-[#5B5CE2]"></i> 案件資料與清冊預設
-                    </h2>
-                    <p class="text-[10px] text-[#6B7280] mt-0.5">清冊預設會用於尚未設定本張覆寫資料的照片。</p>
-                </div>
+                <h2 class="text-sm font-bold text-[#20242B] flex items-center gap-1.5">
+                    <i class="fa-solid fa-clipboard-list text-[#5B5CE2]"></i> 案件資料
+                </h2>
+                <p class="text-[11px] text-[#6B7280] mt-0.5">整本清冊共用。照片沒有另外填日期或地點時，就用這裡的資料。</p>
             </div>
 
             <div class="grid grid-cols-1 gap-2">
                 <div>
-                    <label class="block text-[11px] font-bold text-[#6B7280] mb-0.5">案由 / 案件名稱</label>
-                    <input type="text" id="caseTitle" class="input-field w-full text-xs font-semibold py-1 px-2.5" placeholder="例如：詐欺案、現場勘查案" value="詐欺案">
+                    <label for="caseTitle" class="block text-[11px] font-bold text-[#6B7280] mb-0.5">案由</label>
+                    <input type="text" id="caseTitle" class="input-field w-full text-xs font-semibold py-1 px-2.5" placeholder="例：詐欺案" value="詐欺案">
                 </div>
-                <div class="grid grid-cols-2 gap-2">
-                    <div>
-                        <label class="block text-[11px] font-bold text-[#6B7280] mb-0.5">預設採證日期 (民國)</label>
-                        <div class="flex gap-1">
-                            <input type="text" id="caseDate" class="input-field w-full text-xs font-mono py-1 px-2" placeholder="1150901">
-                            <button type="button" id="btnTodayDate" title="填入今天民國日期" class="btn-secondary px-2 py-1 rounded text-xs whitespace-nowrap">今日</button>
-                        </div>
-                    </div>
-                    <div>
-                        <label class="block text-[11px] font-bold text-[#6B7280] mb-0.5">預設採證地點</label>
-                        <div class="flex gap-1">
-                            <input type="text" id="defaultLocation" class="input-field min-w-0 flex-1 text-xs py-1 px-2" placeholder="例如：現場" value="現場">
-                            <button type="button" id="btnApplyDefaultsToSelected" class="btn-secondary px-1.5 py-1 rounded text-xs font-bold whitespace-nowrap" title="將清冊預設日期與地點複製為已選照片的個別覆寫資料">套用</button>
-                        </div>
-                    </div>
-                </div>
-                <div class="grid grid-cols-2 gap-2">
-                    <div>
-                        <label class="block text-[11px] font-bold text-[#6B7280] mb-0.5">製作單位 (頁首抬頭)</label>
-                        <input type="text" id="deptName" class="input-field w-full text-xs font-semibold py-1 px-2" placeholder="例如：臺南市政府警察局新化分局" value="臺南市政府警察局新化分局">
-                    </div>
-                    <div>
-                        <label class="block text-[11px] font-bold text-[#6B7280] mb-0.5">製作人 (全冊通用)</label>
-                        <input type="text" id="officerName" class="input-field w-full text-xs font-semibold text-[#5B5CE2] py-1 px-2" placeholder="例如：巡官梁家豪" value="巡官梁家豪">
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- 3. 版型與匯出：保留既有控制項 ID 與匯出行為 -->
-        <section class="morandi-card p-3 shadow-xl bg-white/95 border-2 border-[#5B5CE2]/30">
-            <div class="flex flex-col gap-2">
                 <div>
-                    <div class="text-sm font-bold text-[#20242B] flex items-center gap-1.5">
-                        <i class="fa-solid fa-file-word text-[#5B5CE2] text-base"></i>
-                        版型與匯出
-                    </div>
-                    <p class="text-[10px] text-[#6B7280] mt-0.5">選擇版型後匯出 Word 或 PDF 清冊。</p>
-                </div>
-
-                <div class="flex flex-col gap-1.5">
-                    <div class="bg-slate-50 p-1.5 rounded-xl border border-slate-200/70">
-                        <div class="flex items-center gap-2">
-                            <div class="flex-1 min-w-0">
-                                <label for="layoutSelect" class="block text-[11px] font-bold text-[#6B7280] mb-0.5">清冊版型</label>
-                                <select id="layoutSelect" class="input-field w-full text-xs font-bold text-[#5B5CE2] bg-white py-1 px-2">
-                                    <option value="up_down_2">上下兩張</option>
-                                    <option value="left_right_2">左右兩張</option>
-                                    <option value="landscape_3">橫式三張</option>
-                                </select>
-                            </div>
-                            <div class="shrink-0 flex flex-col items-center gap-0.5" aria-label="目前清冊版型預覽">
-                                <div id="layoutMiniPreview" class="w-8 h-11 bg-white rounded border border-slate-200 p-0.5 flex flex-col justify-center items-center shadow-2xs" title="目前清冊版型預覽" aria-hidden="true">
-                                    <!-- 動態繪製微縮版型示意 -->
-                                </div>
-                                <span class="text-[9px] leading-none font-medium text-[#6B7280]">預覽</span>
-                            </div>
-                        </div>
-                        <p id="layoutDescription" class="text-[10px] text-[#6B7280] mt-1" aria-live="polite">上下兩張・A4 直式・每頁 2 張</p>
-                    </div>
-
-                    <div class="border-t border-[#C7CBD3]/25 pt-1.5 flex flex-col gap-1.5">
-                        <button type="button" id="btnExportDocx" class="btn-primary w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-md hover:shadow-indigo-500/20 transition">
-                            <i class="fa-solid fa-download"></i> 匯出 Word 清冊 (.docx)
-                        </button>
-                        <button type="button" id="btnExportPdf" class="btn-secondary w-full px-3 py-1.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 hover:border-red-300 transition">
-                            <i class="fa-regular fa-file-pdf text-red-600 text-sm"></i> 匯出 PDF 清冊
-                        </button>
-                    </div>
-
-                    <div class="border-t border-[#C7CBD3]/25 pt-1.5 flex flex-col gap-1">
-                        <p class="text-[10px] font-bold text-[#6B7280] uppercase tracking-wider">資料交換</p>
-                        <div class="grid grid-cols-2 gap-1.5">
-                            <label class="btn-secondary w-full px-2 py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1 cursor-pointer hover:border-blue-300 transition" title="匯入 Excel 照片說明清單">
-                                <i class="fa-solid fa-file-import text-blue-600 text-xs"></i> 匯入 Excel 說明
-                                <input type="file" id="importExcelInput" accept=".xlsx, .xls" class="hidden">
-                            </label>
-                            <button type="button" id="btnExportExcel" class="btn-secondary w-full px-2 py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1 hover:border-emerald-300 transition" title="匯出 Excel 清單">
-                                <i class="fa-regular fa-file-excel text-emerald-600 text-xs"></i> 匯出 Excel
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="border-t border-[#C7CBD3]/25 pt-1 flex flex-col gap-1">
-                        <p class="text-[10px] font-bold text-[#6B7280] uppercase tracking-wider">其他輸出</p>
-                        <button type="button" id="btnExportZip" class="btn-secondary w-full px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1 text-[#4B5563] hover:border-amber-300 transition" title="打包輸出壓縮處理過的照片 ZIP">
-                            <i class="fa-regular fa-file-zipper text-amber-600 text-xs"></i> 最佳化照片 ZIP
-                        </button>
+                    <label for="caseDate" class="block text-[11px] font-bold text-[#6B7280] mb-0.5">採證日期（民國）</label>
+                    <div class="flex gap-1">
+                        <input type="text" id="caseDate" class="input-field w-full text-xs font-mono py-1 px-2" placeholder="輸入 1150901">
+                        <button type="button" id="btnTodayDate" title="填入今天的民國日期" class="btn-secondary px-2 py-1 rounded text-xs whitespace-nowrap">今天</button>
                     </div>
                 </div>
+                <div>
+                    <label for="defaultLocation" class="block text-[11px] font-bold text-[#6B7280] mb-0.5">採證地點</label>
+                    <input type="text" id="defaultLocation" class="input-field w-full text-xs py-1 px-2" placeholder="例：現場" value="現場">
+                </div>
+                <div>
+                    <label for="deptName" class="block text-[11px] font-bold text-[#6B7280] mb-0.5">製作單位（印在頁首）</label>
+                    <input type="text" id="deptName" class="input-field w-full text-xs font-semibold py-1 px-2" placeholder="例：臺南市政府警察局新化分局" value="臺南市政府警察局新化分局">
+                </div>
+                <div>
+                    <label for="officerName" class="block text-[11px] font-bold text-[#6B7280] mb-0.5">製作人</label>
+                    <input type="text" id="officerName" class="input-field w-full text-xs font-semibold py-1 px-2" placeholder="例：巡官梁家豪" value="巡官梁家豪">
+                </div>
+                <button type="button" id="btnApplyDefaultsToSelected" class="btn-secondary w-full px-2 py-1.5 rounded-lg text-xs font-bold" title="把上方日期與地點寫進已選照片（之後改案件資料，這些照片不會跟著變）">把日期與地點寫進已選照片</button>
             </div>
         </section>
         </aside>
 
-        <div id="mainPanelSplitter" role="separator" aria-orientation="vertical" aria-label="調整基本資料欄與照片工作區寬度" title="左右拖曳調整欄位寬度"></div>
+        <div id="mainPanelSplitter" role="separator" aria-orientation="vertical" aria-label="調整左右欄寬度" title="左右拖曳調整欄寬"></div>
 
-        <!-- 2. 照片批次載入與智慧工具列 -->
+        <!-- 照片工作區 -->
         <section id="stagePanel" class="morandi-card p-3 md:p-4 flex flex-col gap-2.5">
+            <input type="file" id="fileInput" multiple accept="image/*" class="hidden">
+            <input type="file" id="folderInput" webkitdirectory directory multiple class="hidden">
 
-            <!-- 精簡匯入列：已有照片時可直接拖入舞台追加照片 -->
-            <div id="stageImportBar" class="hidden flex flex-wrap items-center justify-between gap-2 px-1">
-                <div class="flex items-center gap-2 text-xs text-[#6B7280]">
-                    <i class="fa-solid fa-images text-[#5B5CE2]"></i>
-                    <span>照片匯入</span>
-                    <span class="text-[10px] text-[#C7CBD3]">也可直接拖曳到照片舞台</span>
-                </div>
-                <div class="flex items-center gap-2">
+            <!-- 常用工具列：一排；少用功能收在「更多」 -->
+            <div id="photoActionToolbar" class="flex items-center justify-between gap-2 flex-wrap" aria-label="照片工具列">
+                <div class="flex items-center gap-1.5 flex-wrap">
                     <button type="button" id="btnAddPhotos" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1">
                         <i class="fa-solid fa-plus"></i> 加入照片
                     </button>
                     <button type="button" id="btnAddFolder" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1">
                         <i class="fa-solid fa-folder-plus"></i> 加入資料夾
                     </button>
-                </div>
-            </div>
-            <input type="file" id="fileInput" multiple accept="image/*" class="hidden">
-            <input type="file" id="folderInput" webkitdirectory directory multiple class="hidden">
-
-            <!-- 工作台操作工具列：嚴謹雙層結構，徹底根除第三行孤立破版 -->
-            <div class="flex flex-col gap-2 bg-[#EEF0F3]/80 p-2 rounded-xl border border-[#C7CBD3]/30 shadow-2xs" aria-label="照片工作台操作工具列">
-                <!-- 第一列：批次照片操作條（左右對齊） -->
-                <div id="photoActionToolbar" class="flex items-center justify-between gap-2 flex-wrap">
-                    <div class="flex items-center gap-1.5 flex-wrap">
-                        <div class="toolbar-group" role="group" aria-label="選取與流水號">
-                            <button type="button" id="btnToggleSelectAll" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5">
-                                <i class="fa-regular fa-square-check text-[#5B5CE2]"></i> <span id="selectAllText">全選</span>
-                            </button>
-                            <button type="button" id="btnOpenSequenceModal" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5" title="重排照片流水號">
-                                <i class="fa-solid fa-arrow-down-1-9 text-[#5B5CE2]"></i> 重排流水號
-                            </button>
-                            <button type="button" id="btnParseFilenameTime" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5" title="自動從檔名提取日期與時間（如 YYYYMMDD_HHMMSS、Screenshot）">
-                                <i class="fa-solid fa-wand-magic-sparkles text-[#5B5CE2]"></i> 解析檔名時間
-                            </button>
-                        </div>
-
-                        <div class="inline-flex rounded-lg border border-[#C7CBD3]/40 bg-white p-0.5 shadow-2xs" role="group" aria-label="復原與重做">
-                            <button type="button" id="btnUndo" class="p-1.5 px-2 rounded-md text-xs font-bold text-[#4B5563] hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed flex items-center gap-1 transition" title="復原（Ctrl+Z）" disabled>
-                                <i class="fa-solid fa-rotate-left text-[#5B5CE2]"></i> <span class="hidden xl:inline text-[11px]">復原</span>
-                            </button>
-                            <div class="w-[1px] bg-[#C7CBD3]/30 my-1"></div>
-                            <button type="button" id="btnRedo" class="p-1.5 px-2 rounded-md text-xs font-bold text-[#4B5563] hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed flex items-center gap-1 transition" title="重做（Ctrl+Y 或 Ctrl+Shift+Z）" disabled>
-                                <i class="fa-solid fa-rotate-right text-[#5B5CE2]"></i> <span class="hidden xl:inline text-[11px]">重做</span>
-                            </button>
-                        </div>
-
-                        <div class="toolbar-group" role="group" aria-label="照片操作">
-                            <button type="button" id="btnBatchRotate" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5" title="選取或全部照片旋轉 90°">
-                                <i class="fa-solid fa-rotate-right text-[#5B5CE2]"></i> 旋轉 90°
-                            </button>
-                            <div class="inline-flex rounded-md border border-[#C7CBD3]/40 bg-white p-0.5">
-                                <button type="button" id="btnMoveSelectedBackward" class="px-2 py-1 rounded text-xs font-bold text-[#4B5563] hover:bg-slate-100 flex items-center gap-1" title="將已選照片向前移動一格 (Ctrl+←)">
-                                    <i class="fa-solid fa-arrow-left text-[#5B5CE2]"></i> <span class="hidden sm:inline">前移</span>
-                                </button>
-                                <div class="w-[1px] bg-[#C7CBD3]/30 my-0.5"></div>
-                                <button type="button" id="btnMoveSelectedForward" class="px-2 py-1 rounded text-xs font-bold text-[#4B5563] hover:bg-slate-100 flex items-center gap-1" title="將已選照片向後移動一格 (Ctrl+→)">
-                                    <span class="hidden sm:inline">後移</span> <i class="fa-solid fa-arrow-right text-[#5B5CE2]"></i>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="toolbar-group toolbar-group--danger shrink-0 ml-auto sm:ml-0" role="group" aria-label="危險操作">
-                        <button type="button" id="btnRemoveSelected" class="px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 text-red-700 hover:bg-red-50 border border-red-200 transition" title="刪除已選照片">
-                            <i class="fa-regular fa-trash-can"></i> 移除選取
+                    <span class="toolbar-divider" aria-hidden="true"></span>
+                    <button type="button" id="btnToggleSelectAll" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5">
+                        <i class="fa-regular fa-square-check"></i> <span id="selectAllText">全選</span>
+                    </button>
+                    <button type="button" id="btnBatchRotate" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5" title="把已選照片（沒選就是全部）順時針轉 90°">
+                        <i class="fa-solid fa-rotate-right"></i> 旋轉
+                    </button>
+                    <button type="button" id="btnMoveSelectedBackward" class="btn-secondary px-2 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1" title="已選照片往前一格（Ctrl+←）">
+                        <i class="fa-solid fa-arrow-left"></i> 往前
+                    </button>
+                    <button type="button" id="btnMoveSelectedForward" class="btn-secondary px-2 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1" title="已選照片往後一格（Ctrl+→）">
+                        往後 <i class="fa-solid fa-arrow-right"></i>
+                    </button>
+                    <button type="button" id="btnRemoveSelected" class="px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 text-red-700 hover:bg-red-50 border border-red-200 transition" title="從清冊移除已選照片（不會刪除電腦裡的原檔）">
+                        <i class="fa-regular fa-trash-can"></i> 移除
+                    </button>
+                    <span class="toolbar-divider" aria-hidden="true"></span>
+                    <div class="inline-flex rounded-lg border border-[#C7CBD3]/40 bg-white p-0.5" role="group" aria-label="復原與重做">
+                        <button type="button" id="btnUndo" class="p-1.5 px-2 rounded-md text-xs font-bold text-[#4B5563] hover:bg-slate-100 disabled:cursor-not-allowed flex items-center gap-1 transition" title="復原（Ctrl+Z）" disabled>
+                            <i class="fa-solid fa-rotate-left"></i> <span class="text-[11px]">復原</span>
                         </button>
-                        <button type="button" id="btnClearAll" class="px-2 py-1 rounded-lg text-xs font-bold text-red-700 hover:bg-red-50 transition border border-transparent hover:border-red-200" title="清空全部照片">
-                            <i class="fa-regular fa-trash-can"></i> 清空
+                        <button type="button" id="btnRedo" class="p-1.5 px-2 rounded-md text-xs font-bold text-[#4B5563] hover:bg-slate-100 disabled:cursor-not-allowed flex items-center gap-1 transition" title="重做（Ctrl+Y）" disabled>
+                            <i class="fa-solid fa-rotate-right"></i> <span class="text-[11px]">重做</span>
                         </button>
                     </div>
                 </div>
 
-                <!-- 第二列：檢視模式與畫布控制列 -->
-                <div id="workspaceToolbar" class="flex items-center justify-between gap-2 flex-wrap pt-1.5 border-t border-[#C7CBD3]/30">
-                    <div class="bg-white p-0.5 rounded-lg border border-[#C7CBD3]/30 flex items-center shadow-2xs" role="group" aria-label="檢視模式切換">
-                        <button type="button" id="btnViewWorkspace" class="px-2.5 py-1 rounded text-xs font-bold bg-[#5B5CE2] text-white flex items-center gap-1 shadow-2xs">
-                            <i class="fa-solid fa-table-columns"></i> 工作台視圖
+                <div id="workspaceToolbar" class="flex items-center gap-1.5 flex-wrap">
+                    <div class="view-switch bg-white p-0.5 rounded-lg border border-[#C7CBD3]/30 flex items-center" role="group" aria-label="切換顯示方式">
+                        <button type="button" id="btnViewWorkspace" class="px-2.5 py-1 rounded text-xs font-bold bg-[#5B5CE2] text-white flex items-center gap-1">
+                            <i class="fa-solid fa-table-cells-large"></i> 照片
                         </button>
                         <button type="button" id="btnViewGrid" class="px-2.5 py-1 rounded text-xs font-bold text-[#6B7280] hover:text-[#20242B] flex items-center gap-1">
-                            <i class="fa-solid fa-table"></i> 試算表視圖
-                        </button>
-                        <button type="button" id="btnViewPreview" class="px-2.5 py-1 rounded text-xs font-bold text-[#6B7280] hover:text-[#20242B] flex items-center gap-1">
-                            <i class="fa-solid fa-table-cells-large"></i> 分頁預覽
+                            <i class="fa-solid fa-table"></i> 表格
                         </button>
                     </div>
-
-                    <div class="flex items-center gap-2 flex-wrap">
-                        <div id="workspaceLayoutControls" class="bg-white px-2 py-1 rounded-lg border border-[#C7CBD3]/30 flex items-center gap-1.5 shadow-2xs" aria-label="縮圖尺寸設定">
-                            <i class="fa-solid fa-magnifying-glass text-[#5B5CE2] text-xs"></i>
-                            <input type="range" id="thumbnailSizeRange" min="90" max="480" step="5" value="135" class="w-20 accent-[#5B5CE2] cursor-pointer" aria-label="縮圖尺寸，90 至 480 像素">
-                            <span id="thumbnailSizeLabel" class="text-xs font-mono font-bold text-[#5B5CE2] whitespace-nowrap min-w-[38px] text-right">135px</span>
-                            <button type="button" id="btnResetThumbnailSize" class="text-[10px] text-[#6B7280] hover:text-[#5B5CE2] hover:underline ml-0.5" title="重設為 135px">重設</button>
+                    <button type="button" id="btnToggleEditor" class="btn-single-edit px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1" title="顯示或隱藏右側編輯欄" aria-controls="editorPanel">
+                        <i class="fa-solid fa-pen-to-square"></i> <span>編輯欄</span>
+                    </button>
+                    <details class="app-menu app-menu--right">
+                        <summary class="btn-secondary px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1">
+                            更多 <i class="fa-solid fa-chevron-down text-[10px]"></i>
+                        </summary>
+                        <div class="app-menu-panel">
+                            <p class="app-menu-group">排序與編號</p>
+                            <button type="button" id="btnAutoArrangeStage" class="app-menu-item" title="依檔名重新排列全部照片（會取代手動排好的順序）">
+                                <i class="fa-solid fa-arrow-down-a-z"></i> 依檔名排序
+                            </button>
+                            <button type="button" id="btnOpenSequenceModal" class="app-menu-item" title="從指定號碼開始重新編號">
+                                <i class="fa-solid fa-arrow-down-1-9"></i> 重新編號…
+                            </button>
+                            <p class="app-menu-group">自動填寫</p>
+                            <button type="button" id="btnParseFilenameTime" class="app-menu-item" title="檔名像 20240826_143210 時，自動帶入日期與時間">
+                                <i class="fa-solid fa-wand-magic-sparkles"></i> 從檔名讀取日期時間
+                            </button>
+                            <p class="app-menu-group">檢視</p>
+                            <button type="button" id="btnViewPreview" class="app-menu-item" title="依目前版型預覽每一頁會放哪幾張">
+                                <i class="fa-regular fa-file-lines"></i> 分頁預覽
+                            </button>
+                            <button type="button" id="btnClearAll" class="app-menu-item app-menu-item--danger" title="移除清冊中的全部照片（不會刪除電腦裡的原檔）">
+                                <i class="fa-regular fa-trash-can"></i> 清空全部照片
+                            </button>
                         </div>
-                        <button type="button" id="btnAutoArrangeStage" class="btn-secondary px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1" title="依檔名重新排序全部照片；會覆蓋手動拖曳順序">
-                            <i class="fa-solid fa-arrow-down-a-z text-[#5B5CE2]"></i> 依檔名排序
-                        </button>
-                        <button type="button" id="btnToggleEditor" class="btn-single-edit px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1" title="顯示或收合右側單張照片編輯面板" aria-controls="editorPanel">
-                            <i class="fa-solid fa-pen-to-square"></i> <span>單張編輯</span>
-                        </button>
-                    </div>
+                    </details>
                 </div>
             </div>
 
-            <!-- 照片數量統計與批次選取狀態列 -->
-            <div class="flex flex-wrap items-center justify-between text-xs text-[#6B7280] px-1 gap-2">
-                <div class="flex items-center gap-2">
-                    <span class="inline-flex items-center gap-1.5 bg-white/70 px-2.5 py-1 rounded-lg border border-[#C7CBD3]/20 shadow-2xs">
-                        <i class="fa-regular fa-images text-[#5B5CE2]"></i>
-                        <span>已載入 <b id="photoCount" class="text-[#5B5CE2]">0</b> 張照片</span>
-                        <span id="pageEstimate" class="font-medium text-[#6B7280]">（約 0 頁 Word 報表）</span>
-                    </span>
-                    <span id="selectedCountBadge" class="hidden font-bold px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200/60 shadow-2xs">已選取 0 張</span>
-                </div>
-                <div class="flex items-center gap-2">
-                    <button type="button" id="btnOpenShortcutsModal" class="btn-secondary inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold cursor-pointer" title="查看鍵盤快速鍵與操作指南">
-                        <i class="fa-solid fa-keyboard"></i> <span>快速鍵指南</span>
+            <!-- 狀態列：張數、已選、漏填檢查、縮圖大小 -->
+            <div id="stageStatusBar" class="flex flex-wrap items-center justify-between text-xs text-[#6B7280] px-1 gap-2">
+                <div class="flex items-center gap-2 flex-wrap">
+                    <span class="font-bold text-[#20242B]">共 <b id="photoCount" class="text-[#5B5CE2]">0</b> 張<span id="pageEstimate" class="font-medium text-[#6B7280]">（約 0 頁）</span></span>
+                    <span id="selectedCountBadge" class="hidden font-bold px-2.5 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200/60">已選 0 張</span>
+                    <button type="button" id="btnToggleAudit" class="btn-secondary px-2.5 py-0.5 rounded-lg text-xs font-bold flex items-center gap-1" aria-controls="auditFilterBar" aria-expanded="false" title="找出還沒填地點、說明，或日期時間有問題的照片">
+                        <i class="fa-solid fa-list-check"></i> 檢查漏填
                     </button>
                 </div>
+                <div id="workspaceLayoutControls" class="flex items-center gap-1.5" aria-label="縮圖大小">
+                    <span class="text-[11px] font-bold">縮圖大小</span>
+                    <input type="range" id="thumbnailSizeRange" min="90" max="480" step="5" value="135" class="w-20 accent-[#5B5CE2] cursor-pointer" aria-label="縮圖大小，90 至 480 像素">
+                    <span id="thumbnailSizeLabel" class="text-xs font-mono font-bold text-[#5B5CE2] whitespace-nowrap min-w-[38px] text-right">135px</span>
+                    <button type="button" id="btnResetThumbnailSize" class="text-[11px] text-[#6B7280] hover:text-[#5B5CE2] hover:underline" title="恢復預設大小">還原</button>
+                </div>
             </div>
 
-            <!-- 大量照片資料完整度工作台與問題照片篩選列 -->
+            <!-- 漏填檢查（預設收合；有篩選或從匯出提醒進入時自動展開） -->
             <div id="auditFilterBar" class="hidden flex flex-wrap items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl bg-slate-50 border border-[#C7CBD3]/30">
                 <div class="flex flex-wrap items-center gap-1.5">
-                    <span class="text-[11px] font-bold text-[#4B5563] flex items-center gap-1 mr-1">
-                        <i class="fa-solid fa-list-check text-[#5B5CE2]"></i> 完整度檢視：
-                    </span>
+                    <span class="text-[11px] font-bold text-[#4B5563] mr-1">只看：</span>
                     <button type="button" id="filterBtn_all" class="audit-filter-btn active">
                         <span>全部</span> <span id="auditBadge_all" class="audit-filter-badge">0</span>
                     </button>
                     <button type="button" id="filterBtn_missingLocation" class="audit-filter-btn">
-                        <i class="fa-solid fa-location-dot text-amber-500 text-[10px]"></i> <span>未填地點</span> <span id="auditBadge_missingLocation" class="audit-filter-badge">0</span>
+                        <span>沒填地點</span> <span id="auditBadge_missingLocation" class="audit-filter-badge">0</span>
                     </button>
                     <button type="button" id="filterBtn_missingDesc" class="audit-filter-btn">
-                        <i class="fa-solid fa-align-left text-amber-500 text-[10px]"></i> <span>未填說明</span> <span id="auditBadge_missingDesc" class="audit-filter-badge">0</span>
+                        <span>沒填說明</span> <span id="auditBadge_missingDesc" class="audit-filter-badge">0</span>
                     </button>
                     <button type="button" id="filterBtn_invalidDateTime" class="audit-filter-btn">
-                        <i class="fa-regular fa-clock text-amber-500 text-[10px]"></i> <span>日期時間待確認</span> <span id="auditBadge_invalidDateTime" class="audit-filter-badge">0</span>
+                        <span>日期時間有誤</span> <span id="auditBadge_invalidDateTime" class="audit-filter-badge">0</span>
                     </button>
                     <button type="button" id="filterBtn_duplicatePhotos" class="audit-filter-btn">
-                        <i class="fa-solid fa-copy text-amber-500 text-[10px]"></i> <span>同名照片</span> <span id="auditBadge_duplicatePhotos" class="audit-filter-badge">0</span>
+                        <span>檔名重複</span> <span id="auditBadge_duplicatePhotos" class="audit-filter-badge">0</span>
                     </button>
                 </div>
                 <div id="filterNoticeText" class="text-[11px] text-[#6B7280] hidden sm:flex items-center gap-1">
-                    <i class="fa-solid fa-filter text-[#5B5CE2]"></i> <span>顯示全部照片</span>
+                    <span>顯示全部照片</span>
                 </div>
             </div>
             <div id="processingStatus" class="hidden px-1 text-xs text-[#5B5CE2]" role="status" aria-live="polite">
                 <div class="flex items-center justify-between gap-2 mb-1">
                     <span id="processingMessage" class="font-semibold">準備處理照片…</span>
-                    <div class="flex items-center gap-2"><span id="processingCount">0 / 0</span><button type="button" id="btnCancelProcessing" class="hidden text-red-600 font-bold hover:underline">取消</button></div>
+                    <div class="flex items-center gap-2"><span id="processingCount">0 / 0</span><button type="button" id="btnCancelProcessing" class="hidden text-red-700 font-bold hover:underline">取消</button></div>
                 </div>
                 <div class="h-1.5 rounded-full bg-[#C7CBD3]/20 overflow-hidden">
                     <div id="processingBar" class="h-full bg-[#5B5CE2] transition-all duration-150" style="width: 0%"></div>
                 </div>
             </div>
 
-            <!-- 空狀態提示：2D 遊戲寶箱級緊湊拖曳區 -->
-            <div id="emptyState" class="file-drop-target drop-zone relative py-8 px-5 text-center text-slate-800 flex flex-col items-center gap-2.5 rounded-2xl transition">
+            <!-- 還沒有照片時的拖曳區 -->
+            <div id="emptyState" class="file-drop-target drop-zone relative py-10 px-5 text-center text-slate-800 flex flex-col items-center gap-2.5 rounded-2xl transition">
                 <div class="game-icon-box--lg w-14 h-14 rounded-2xl flex items-center justify-center text-2xl">
                     <i class="fa-solid fa-cloud-arrow-up"></i>
                 </div>
                 <div class="max-w-md">
-                    <h3 class="text-base font-black text-slate-900">將照片或資料夾拖曳至此處</h3>
-                    <p class="text-xs font-bold text-slate-700 mt-0.5 leading-relaxed">支援 JPG、PNG、WEBP 等常見格式，系統自動解析 EXIF 拍照時間與拍照方向</p>
+                    <h3 class="text-base font-black text-slate-900">把照片或整個資料夾拖到這裡</h3>
+                    <p class="text-xs font-bold text-slate-700 mt-0.5 leading-relaxed">支援 JPG、PNG、WEBP。會自動轉正，並讀取拍攝時間。</p>
                 </div>
                 <div class="flex flex-wrap justify-center gap-2.5 mt-1">
                     <button type="button" class="btn-primary px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2" onclick="document.getElementById('fileInput').click()">
                         <i class="fa-solid fa-images"></i> 加入照片
                     </button>
                     <button type="button" class="btn-secondary px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2" onclick="document.getElementById('folderInput').click()">
-                        <i class="fa-solid fa-folder-plus text-blue-600"></i> 加入資料夾
+                        <i class="fa-solid fa-folder-plus"></i> 加入資料夾
                     </button>
                 </div>
-                <div class="game-badge-pill--green inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] mt-1">
-                    <i class="fa-solid fa-shield-halved text-emerald-600"></i>
-                    <span>純本機運算：照片 100% 不會上傳至任何雲端伺服器，嚴格保護公務隱私</span>
-                </div>
+                <p class="text-[11px] font-bold text-emerald-800 mt-1"><i class="fa-solid fa-shield-halved"></i> 照片只在這台電腦處理，不會上傳。</p>
             </div>
 
             <!-- 3. 工作台核心主視圖（左側緊湊畫布 + 右側快捷/批次編輯器） -->
@@ -984,8 +937,8 @@
                 <!-- 左側：照片縮圖畫布排版區 (佔 8 欄，照片一覽無遺不拖長) -->
                 <div id="photoPanel" class="lg:col-span-8 flex flex-col gap-2">
                     <div class="flex items-center justify-between text-xs font-bold text-[#6B7280] px-1">
-                        <span>📸 照片排版清單（精簡縮圖：拖曳調整順序）</span>
-                        <span class="text-[11px] text-[#C7CBD3]">Ctrl 點選多選・Shift 連續選取・空白處框選・拖曳插入換序</span>
+                        <span>拖曳照片可調整順序</span>
+                        <span class="text-[11px] text-[#C7CBD3]">Ctrl 點選＝多選　Shift＝連選　空白處拖曳＝框選</span>
                     </div>
 
                     <div id="thumbGrid" class="file-drop-target grid relative gap-2.5 max-h-[600px] overflow-y-auto p-2 bg-[#EEF0F3]/50 rounded-xl border border-[#C7CBD3]/20">
@@ -994,7 +947,7 @@
                     </div>
                 </div>
 
-                <!-- 右側：獨立照片詳情面板（單張覆寫與批次套用） -->
+                <!-- 右側：編輯選取的照片（單張修改或多張一起套用） -->
                 <div id="editorPanel" class="lg:col-span-4 flex flex-col gap-3">
                     <div class="morandi-card p-4 sticky top-4 flex flex-col gap-3 bg-white border-2 border-[#C7CBD3]/30 shadow-md">
 
@@ -1002,10 +955,10 @@
                         <div class="flex items-center justify-between border-b border-[#C7CBD3]/20 pb-2">
                             <h3 id="editorTitle" class="text-xs font-bold text-[#20242B] flex items-center gap-1.5">
                                 <i class="fa-solid fa-pen-to-square text-[#5B5CE2]"></i>
-                                <span>照片詳情</span>
+                                <span>編輯照片</span>
                             </h3>
-                            <span id="editorModeBadge" class="text-[10px] font-bold px-2 py-0.5 rounded bg-[#5B5CE2]/10 text-[#5B5CE2]">
-                                單張覆寫
+                            <span id="editorModeBadge" class="text-[10px] font-bold px-2 py-0.5 rounded bg-[#5B5CE2]/10 text-[#3730A3] whitespace-nowrap">
+                                單張編輯
                             </span>
                         </div>
 
@@ -1018,57 +971,57 @@
 
                             <div>
                                 <div class="flex items-center justify-between mb-0.5">
-                                    <label class="font-bold text-[#6B7280]">本張採證日期（覆寫，民國年）</label>
-                                    <button type="button" id="btnFillDownDate" title="將此日期向下填滿" class="text-[10px] text-[#5B5CE2] hover:underline flex items-center gap-0.5">
+                                    <label for="editDate" class="font-bold text-[#6B7280]">採證日期（民國）</label>
+                                    <button type="button" id="btnFillDownDate" title="把這個日期填到後面的照片" class="text-[10px] text-[#5B5CE2] hover:underline flex items-center gap-0.5">
                                         <i class="fa-solid fa-arrow-down"></i> 向下填滿
                                     </button>
                                 </div>
-                                <input type="text" id="editDate" class="input-field w-full text-xs font-mono tracking-widest" placeholder="留空＝使用清冊預設　輸入 7 碼：1150901">
-                                <p id="editDateInheritedHint" class="text-[10px] text-[#9CA3AF] mt-0.5">格式 YYY/MM/DD；留空時使用清冊預設。</p>
+                                <input type="text" id="editDate" class="input-field w-full text-xs font-mono tracking-widest" placeholder="例：1150901">
+                                <p id="editDateInheritedHint" class="text-[10px] text-[#9CA3AF] mt-0.5">空白時使用案件日期。</p>
                             </div>
 
                             <div>
                                 <div class="flex items-center justify-between mb-0.5">
-                                    <label class="font-bold text-[#6B7280]">採證 / 監視器時間</label>
-                                    <button type="button" id="btnFillDownTime" title="將此時間向下填滿" class="text-[10px] text-[#5B5CE2] hover:underline flex items-center gap-0.5">
+                                    <label for="editTime" class="font-bold text-[#6B7280]">時間</label>
+                                    <button type="button" id="btnFillDownTime" title="把這個時間填到後面的照片" class="text-[10px] text-[#5B5CE2] hover:underline flex items-center gap-0.5">
                                         <i class="fa-solid fa-arrow-down"></i> 向下填滿
                                     </button>
                                 </div>
-                                <input type="text" id="editTime" class="input-field w-full text-xs font-mono tracking-widest" placeholder="輸入4碼=HH:MM，6碼=HH:MM:SS">
+                                <input type="text" id="editTime" class="input-field w-full text-xs font-mono tracking-widest" placeholder="輸入 1432 → 14:32">
                             </div>
 
                             <div>
                                 <div class="flex items-center justify-between mb-0.5">
-                                    <label class="font-bold text-[#6B7280]">本張採證地點（覆寫）</label>
-                                    <button type="button" id="btnFillDownLocation" title="將此地點向下填滿" class="text-[10px] text-[#5B5CE2] hover:underline flex items-center gap-0.5">
+                                    <label for="editLocation" class="font-bold text-[#6B7280]">地點</label>
+                                    <button type="button" id="btnFillDownLocation" title="把這個地點填到後面的照片" class="text-[10px] text-[#5B5CE2] hover:underline flex items-center gap-0.5">
                                         <i class="fa-solid fa-arrow-down"></i> 向下填滿
                                     </button>
                                 </div>
-                                <input type="text" id="editLocation" class="input-field w-full text-xs" placeholder="留空＝使用清冊預設，例如：現場客廳">
-                                <p id="editLocationInheritedHint" class="text-[10px] text-[#9CA3AF] mt-0.5">留空時使用清冊預設地點。</p>
+                                <input type="text" id="editLocation" class="input-field w-full text-xs" placeholder="例：客廳">
+                                <p id="editLocationInheritedHint" class="text-[10px] text-[#9CA3AF] mt-0.5">空白時使用案件地點。</p>
                             </div>
 
                             <div>
                                 <div class="flex items-center justify-between mb-0.5">
-                                    <label class="font-bold text-[#6B7280]">現場跡證說明</label>
-                                    <button type="button" id="btnFillDownDescAll" title="向下填滿至所有照片" class="text-[10px] text-[#5B5CE2] font-semibold hover:underline flex items-center gap-0.5">
+                                    <label for="editDesc" class="font-bold text-[#6B7280]">說明</label>
+                                    <button type="button" id="btnFillDownDescAll" title="把這段說明填到後面還沒寫說明的照片" class="text-[10px] text-[#5B5CE2] font-semibold hover:underline flex items-center gap-0.5">
                                         <i class="fa-solid fa-arrows-down-to-line"></i> 向下填滿
                                     </button>
                                 </div>
-                                <textarea id="editDesc" rows="3" class="input-field w-full text-xs leading-relaxed" placeholder="請填寫現場跡證、查扣物或狀況說明..."></textarea>
+                                <textarea id="editDesc" rows="3" class="input-field w-full text-xs leading-relaxed" placeholder="例：客廳桌上查扣手機一支"></textarea>
                             </div>
 
                             <!-- 已選照片的明確批次套用流程 -->
                             <div id="batchApplyBox" class="pt-2 border-t border-[#C7CBD3]/20 hidden flex flex-col gap-2">
-                                <p class="text-[11px] font-semibold text-[#5B5CE2] text-center">已選取 <span id="batchCountNum">0</span> 張：修改上方欄位後，再明確套用</p>
+                                <p class="text-[11px] font-semibold text-[#5B5CE2] text-center">已選 <span id="batchCountNum">0</span> 張。改好上方欄位後，按下方按鈕一次套用。</p>
                                 <label class="flex items-center justify-center gap-1.5 text-[10px] text-[#6B7280] cursor-pointer">
                                     <input type="checkbox" id="batchApplyEmptyValues" class="rounded text-[#5B5CE2]">
-                                    空白欄位也覆寫（用於清除原有資料）
+                                    空白欄位也套用（會清掉原本內容）
                                 </label>
                                 <button type="button" id="btnApplyToSelected" class="w-full btn-primary py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 shadow">
-                                    <i class="fa-solid fa-check-double"></i> 將已填欄位套用至已選照片
+                                    <i class="fa-solid fa-check-double"></i> 套用到已選照片
                                 </button>
-                                <p class="text-[10px] text-[#6B7280] text-center">可同步時間、地點與說明；照片編號不會批次覆寫。</p>
+                                <p class="text-[10px] text-[#6B7280] text-center">只改日期、時間、地點、說明；照片編號不會變。</p>
                             </div>
                         </div>
 
@@ -1078,8 +1031,8 @@
                                 <button type="button" id="btnPrevPhoto" class="btn-secondary px-2.5 py-1 rounded text-xs" title="上一張 (Alt+Left)"><i class="fa-solid fa-chevron-left"></i> 上一張</button>
                                 <button type="button" id="btnNextPhoto" class="btn-secondary px-2.5 py-1 rounded text-xs" title="下一張 (Alt+Right)">下一張 <i class="fa-solid fa-chevron-right"></i></button>
                             </div>
-                            <button type="button" id="btnDeleteCurrent" class="text-red-700 hover:text-red-800 text-xs font-semibold flex items-center gap-1">
-                                <i class="fa-regular fa-trash-can"></i> 刪除此張
+                            <button type="button" id="btnDeleteCurrent" class="text-red-700 hover:text-red-800 text-xs font-semibold flex items-center gap-1" title="從清冊移除這張（不會刪除電腦裡的原檔）">
+                                <i class="fa-regular fa-trash-can"></i> 移除這張
                             </button>
                         </div>
 
@@ -1127,6 +1080,30 @@
                 </table>
             </div>
 
+            <!-- 匯出列：版型與匯出固定在照片區底部 -->
+            <div id="exportBar" class="export-bar">
+                <div class="flex items-center gap-2 min-w-0 flex-wrap">
+                    <label for="layoutSelect" class="text-xs font-bold text-[#20242B] whitespace-nowrap">版型</label>
+                    <select id="layoutSelect" class="input-field text-xs font-bold bg-white py-1 px-2">
+                        <option value="up_down_2">上下兩張</option>
+                        <option value="left_right_2">左右兩張</option>
+                        <option value="landscape_3">橫式三張</option>
+                    </select>
+                    <div id="layoutMiniPreview" class="w-8 h-11 bg-white rounded border border-slate-200 p-0.5 flex flex-col justify-center items-center" title="目前版型示意" aria-hidden="true">
+                        <!-- 動態繪製微縮版型示意 -->
+                    </div>
+                    <p id="layoutDescription" class="text-[11px] text-[#6B7280]" aria-live="polite">上下兩張・A4 直式・每頁 2 張</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button type="button" id="btnExportPdf" class="btn-secondary px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5">
+                        <i class="fa-regular fa-file-pdf"></i> 匯出 PDF
+                    </button>
+                    <button type="button" id="btnExportDocx" class="btn-primary px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5">
+                        <i class="fa-solid fa-download"></i> 匯出 Word
+                    </button>
+                </div>
+            </div>
+
         </section>
 
     </main>
@@ -1146,8 +1123,8 @@
                         <i class="fa-solid fa-keyboard"></i>
                     </div>
                     <div>
-                        <h3 class="text-sm font-bold text-[#20242B]">鍵盤快速鍵與操作指南</h3>
-                        <p class="text-[11px] text-[#6B7280]">專業工作台高效排版與檢視快捷操作</p>
+                        <h3 class="text-sm font-bold text-[#20242B]">操作說明與快速鍵</h3>
+                        <p class="text-[11px] text-[#6B7280]">用鍵盤可以更快排序與檢視照片</p>
                     </div>
                 </div>
                 <button type="button" onclick="window.app.closeModal('shortcutsModal')" class="text-[#6B7280] hover:text-[#20242B] p-1 transition" title="關閉 (ESC)">
@@ -1161,40 +1138,40 @@
                         <i class="fa-solid fa-arrow-pointer text-[#5B5CE2]"></i> 選取操作
                     </span>
                     <div class="flex items-center justify-between"><span class="text-[#6B7280]">多選照片</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">Ctrl + 點選</kbd></div>
-                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">連續範圍選取</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">Shift + 點選</kbd></div>
-                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">矩形框選</span><span class="text-[#4B5563] font-medium">舞台空白處拖曳</span></div>
+                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">連續選取</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">Shift + 點選</kbd></div>
+                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">框選多張</span><span class="text-[#4B5563] font-medium">照片區空白處拖曳</span></div>
                     <div class="flex items-center justify-between"><span class="text-[#6B7280]">全選 / 全不選</span><span class="text-[#4B5563] font-medium">點擊工具列「全選」</span></div>
-                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">單張編輯</span><span class="text-[#4B5563] font-medium">雙擊縮圖展開</span></div>
+                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">編輯照片</span><span class="text-[#4B5563] font-medium">雙擊縮圖</span></div>
                 </div>
 
                 <div class="p-3 bg-slate-50 rounded-xl border border-slate-200/60 flex flex-col gap-2">
                     <span class="font-bold text-[#20242B] flex items-center gap-1.5">
                         <i class="fa-solid fa-arrows-up-down-left-right text-[#5B5CE2]"></i> 移動與換序
                     </span>
-                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">切換目前照片</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">↑ ↓ ← →</kbd></div>
-                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">前後換序移動</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">Ctrl + ← / →</kbd></div>
-                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">跨列上下移動</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">Ctrl + ↑ / ↓</kbd></div>
-                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">移至開頭 / 結尾</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">Ctrl + Home / End</kbd></div>
+                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">換到上／下一張</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">↑ ↓ ← →</kbd></div>
+                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">往前／往後移一格</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">Ctrl + ← / →</kbd></div>
+                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">往上／往下移一列</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">Ctrl + ↑ / ↓</kbd></div>
+                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">移到最前／最後</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">Ctrl + Home / End</kbd></div>
                 </div>
 
                 <div class="p-3 bg-slate-50 rounded-xl border border-slate-200/60 flex flex-col gap-2">
                     <span class="font-bold text-[#20242B] flex items-center gap-1.5">
-                        <i class="fa-solid fa-clock-rotate-left text-[#5B5CE2]"></i> 歷史復原
+                        <i class="fa-solid fa-clock-rotate-left text-[#5B5CE2]"></i> 復原
                     </span>
-                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">復原動作</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">Ctrl + Z</kbd></div>
-                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">重做動作</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">Ctrl + Y</kbd></div>
+                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">復原</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">Ctrl + Z</kbd></div>
+                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">重做</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">Ctrl + Y</kbd></div>
                 </div>
 
                 <div class="p-3 bg-slate-50 rounded-xl border border-slate-200/60 flex flex-col gap-2">
                     <span class="font-bold text-[#20242B] flex items-center gap-1.5">
-                        <i class="fa-solid fa-magnifying-glass-plus text-[#5B5CE2]"></i> 縮放與大圖燈箱
+                        <i class="fa-solid fa-magnifying-glass-plus text-[#5B5CE2]"></i> 放大檢視
                     </span>
-                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">開啟大圖燈箱</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">Space / Enter</kbd></div>
-                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">燈箱縮放檢視</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">滾輪 / ＋ －</kbd></div>
-                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">燈箱平移拖曳</span><span class="text-[#4B5563] font-medium">放大時按住左鍵拖曳</span></div>
-                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">燈箱旋轉照片</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">R / Shift+R</kbd></div>
-                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">適合視窗還原</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">0</kbd></div>
-                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">關閉任何彈窗</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">ESC</kbd></div>
+                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">放大檢視照片</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">Space / Enter</kbd></div>
+                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">放大／縮小</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">滾輪 / ＋ －</kbd></div>
+                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">移動畫面</span><span class="text-[#4B5563] font-medium">放大時按住左鍵拖曳</span></div>
+                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">旋轉照片</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">R / Shift+R</kbd></div>
+                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">符合視窗大小</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">0</kbd></div>
+                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">關閉視窗</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">ESC</kbd></div>
                 </div>
             </div>
 
@@ -1210,11 +1187,11 @@
     <div id="sequenceModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop hidden">
         <div class="bg-white rounded-2xl p-5 max-w-sm w-full shadow-2xl border border-[#C7CBD3]/30">
             <h3 class="text-sm font-bold text-[#20242B] mb-3 flex items-center gap-2">
-                <i class="fa-solid fa-arrow-down-1-9 text-[#5B5CE2]"></i> 重排照片流水編號
+                <i class="fa-solid fa-arrow-down-1-9 text-[#5B5CE2]"></i> 重新編號
             </h3>
             <div class="space-y-2.5 text-xs">
                 <div>
-                    <label class="block font-bold text-[#6B7280] mb-1">編號前綴文字 (可留空)</label>
+                    <label class="block font-bold text-[#6B7280] mb-1">編號前面加的字（可空白）</label>
                     <input type="text" id="seqPrefix" class="input-field w-full text-xs" placeholder="例如：照片-、證物、圖" value="">
                 </div>
                 <div class="grid grid-cols-2 gap-2">
@@ -1223,11 +1200,11 @@
                         <input type="number" id="seqStart" class="input-field w-full text-xs" value="1" min="1">
                     </div>
                     <div>
-                        <label class="block font-bold text-[#6B7280] mb-1">位數補零</label>
+                        <label class="block font-bold text-[#6B7280] mb-1">位數</label>
                         <select id="seqDigits" class="input-field w-full text-xs">
-                            <option value="1">不補零 (1, 2, 3)</option>
-                            <option value="2">2 位數 (01, 02, 03)</option>
-                            <option value="3">3 位數 (001, 002, 003)</option>
+                            <option value="1">1、2、3</option>
+                            <option value="2">01、02、03</option>
+                            <option value="3">001、002、003</option>
                         </select>
                     </div>
                 </div>
@@ -1254,10 +1231,10 @@
                         <i class="fa-solid fa-compress"></i> 適合視窗
                     </button>
                     <button type="button" id="btnLightboxRotateCCW" onclick="window.app.rotateLightboxPhoto(-90)" class="btn-secondary px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1" title="逆時針旋轉 90° (Shift + R)">
-                        <i class="fa-solid fa-rotate-left"></i> 逆旋
+                        <i class="fa-solid fa-rotate-left"></i> 向左轉
                     </button>
                     <button type="button" id="btnLightboxRotateCW" onclick="window.app.rotateLightboxPhoto(90)" class="btn-secondary px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1" title="順時針旋轉 90° (R)">
-                        <i class="fa-solid fa-rotate-right"></i> 順旋
+                        <i class="fa-solid fa-rotate-right"></i> 向右轉
                     </button>
                     <button type="button" id="btnLightboxClose" onclick="window.app.closeModal('imageLightboxModal')" class="btn-secondary px-3 py-1 rounded-lg text-xs font-bold whitespace-nowrap text-red-600 hover:text-red-700 hover:bg-red-50" title="關閉燈箱 (ESC)">
                         關閉 (ESC)
@@ -1293,8 +1270,8 @@
                         <i class="fa-solid fa-gift"></i>
                     </div>
                     <div>
-                        <h3 class="text-sm font-bold text-[#20242B]">發現新版本釋出！</h3>
-                        <p class="text-[11px] text-[#6B7280]">建議更新至最新版本以獲得最佳公務體驗與功能優化</p>
+                        <h3 class="text-sm font-bold text-[#20242B]">有新版本</h3>
+                        <p class="text-[11px] text-[#6B7280]">建議下載新版，修正與新功能都在裡面。</p>
                     </div>
                 </div>
                 <button type="button" onclick="window.app.closeModal('updateModal')" class="text-[#6B7280] hover:text-[#20242B] p-1 transition" title="關閉">
@@ -1309,7 +1286,7 @@
                     <span id="updateCurrentVer" class="font-bold text-[#20242B] mt-0.5">v2.3.2</span>
                 </div>
                 <div class="flex flex-col items-center justify-center border-x border-[#C7CBD3]/20">
-                    <span class="text-emerald-600 text-[10px] font-bold">GitHub 最新版本</span>
+                    <span class="text-emerald-600 text-[10px] font-bold">最新版本</span>
                     <span id="updateLatestVer" class="font-black text-emerald-700 text-sm mt-0.5">--</span>
                 </div>
                 <div class="flex flex-col text-right">
@@ -1320,14 +1297,14 @@
 
             <!-- 更新日誌內容 -->
             <div class="flex flex-col gap-1">
-                <label class="text-xs font-bold text-[#6B7280]">更新說明 (Release Notes)：</label>
+                <label class="text-xs font-bold text-[#6B7280]">更新內容：</label>
                 <div id="updateReleaseBody" class="max-h-44 overflow-y-auto bg-[#F8F8F7] border border-[#C7CBD3]/20 rounded-xl p-3 text-xs leading-relaxed text-[#20242B] whitespace-pre-wrap font-sans">
                 </div>
             </div>
 
             <!-- 下載連結與按鈕 -->
             <div id="updateAssetsContainer" class="flex flex-col gap-1.5 hidden">
-                <span class="text-xs font-bold text-[#6B7280]">安裝檔案直接下載：</span>
+                <span class="text-xs font-bold text-[#6B7280]">下載：</span>
                 <div id="updateAssetsList" class="flex flex-wrap gap-2"></div>
             </div>
 
@@ -1349,9 +1326,9 @@
                 <i class="fa-solid fa-circle-check"></i>
             </div>
             <div>
-                <h3 class="text-sm font-black text-[#20242B]">目前已是最新版本！</h3>
+                <h3 class="text-sm font-black text-[#20242B]">已是最新版本</h3>
                 <p class="text-xs text-[#6B7280] mt-1.5 leading-relaxed">
-                    您目前使用的版本為 <span id="upToDateVer" class="font-bold text-[#5B5CE2]">v2.3.2</span>，各項功能皆為最新，無需進行更新。
+                    您目前使用的版本為 <span id="upToDateVer" class="font-bold text-[#5B5CE2]">v2.3.2</span>，不需要更新。
                 </p>
             </div>
             <button type="button" onclick="window.app.closeModal('upToDateModal')" class="btn-primary w-full py-2 rounded-lg text-xs font-bold mt-2 shadow">
@@ -1369,7 +1346,7 @@
             <div>
                 <h3 class="text-sm font-black text-[#20242B]">無法檢查更新</h3>
                 <p id="updateErrorDetail" class="text-xs text-[#6B7280] mt-1.5 leading-relaxed">
-                    請確認您的網路連線是否正常，或直接前往 GitHub 發行頁面查看最新版本。
+                    請確認網路連線，或直接到 GitHub 下載頁查看。
                 </p>
             </div>
             <div class="flex w-full gap-2 mt-2">
@@ -1377,7 +1354,7 @@
                     關閉
                 </button>
                 <a href="https://github.com/lianghao02/Photo-Report-Generator/releases" target="_blank" class="btn-primary flex-1 py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1 shadow">
-                    <i class="fa-solid fa-arrow-up-right-from-square"></i> 開啟 Releases
+                    <i class="fa-solid fa-arrow-up-right-from-square"></i> 開啟下載頁
                 </a>
             </div>
         </div>
@@ -1391,8 +1368,8 @@
                     <i class="fa-solid fa-triangle-exclamation"></i>
                 </div>
                 <div class="flex-1 min-w-0">
-                    <h3 class="text-sm font-black text-[#20242B]" id="exportAuditModalTitle">匯出前資料完整度提示</h3>
-                    <p class="text-xs text-[#6B7280] mt-0.5">系統偵測到部分照片資料尚未填寫完整，建議確認後再行匯出：</p>
+                    <h3 class="text-sm font-black text-[#20242B]" id="exportAuditModalTitle">匯出前提醒</h3>
+                    <p class="text-xs text-[#6B7280] mt-0.5">有些照片的資料還沒填完：</p>
                 </div>
             </div>
 
@@ -1402,7 +1379,7 @@
             </div>
 
             <p class="text-[11px] text-[#6B7280]">
-                💡 您可以點擊「查看問題照片」由系統自動切換篩選視圖補填，或點擊「仍要匯出」直接產生報表。
+                按「查看問題照片」會只顯示這些照片，方便補填；也可以按「仍要匯出」直接產生清冊。
             </p>
 
             <div class="flex items-center justify-end gap-2 pt-2 border-t border-[#C7CBD3]/20">
@@ -1462,8 +1439,8 @@
                 this.maxRecommendedPhotos = 500;
                 this.maxRecommendedBytes = 2 * 1024 * 1024 * 1024;
                 this.thumbnailSize = Math.max(90, Math.min(480, this.loadWorkspacePreference('thumbnailSize', 135)));
-                this.editorCollapsed = this.loadWorkspacePreference('editorCollapsed', true);
-                this.sidePanelWidth = Math.max(320, Math.min(560, this.loadWorkspacePreference('sidePanelWidth', 380)));
+                this.editorCollapsed = this.loadWorkspacePreference('editorCollapsed', false);
+                this.sidePanelWidth = Math.max(280, Math.min(560, this.loadWorkspacePreference('sidePanelWidth', 300)));
                 this.panelResizeState = null;
                 this.marqueeState = null;
                 this.history = [];
@@ -1542,6 +1519,8 @@
 
                 // 完整度稽核篩選列
                 this.auditFilterBar = document.getElementById('auditFilterBar');
+                this.btnToggleAudit = document.getElementById('btnToggleAudit');
+                this.auditPanelOpen = false;
                 this.auditBadge_all = document.getElementById('auditBadge_all');
                 this.auditBadge_missingLocation = document.getElementById('auditBadge_missingLocation');
                 this.auditBadge_missingDesc = document.getElementById('auditBadge_missingDesc');
@@ -1638,6 +1617,12 @@
                 this.thumbGrid.addEventListener('drop', (event) => this.handleStageGridDrop(event));
                 document.getElementById('btnAutoArrangeStage').addEventListener('click', () => this.sortPhotosByNaturalFilename({ confirmBeforeSort: true }));
                 this.btnToggleEditor.addEventListener('click', () => this.toggleEditor());
+                this.btnToggleAudit?.addEventListener('click', () => {
+                    this.auditPanelOpen = !this.auditPanelOpen;
+                    if (!this.auditPanelOpen && this.activeFilter !== 'all') this.setActiveFilter('all');
+                    else this.updateAuditBarUi();
+                });
+                this.setupMenus();
                 document.getElementById('btnClearAll').addEventListener('click', () => this.clearAll());
                 document.getElementById('btnBatchRotate').addEventListener('click', () => this.batchRotate(90));
                 document.getElementById('btnMoveSelectedBackward').addEventListener('click', () => this.moveSelectedBy(-1));
@@ -1760,7 +1745,7 @@
                         return;
                     }
 
-                    // 主畫布快捷鍵：按空白鍵或 Enter 鍵開啟大圖燈箱
+                    // 主畫布快捷鍵：按空白鍵或 Enter 鍵放大檢視照片
                     if ((e.key === ' ' || e.key === 'Enter') && !e.ctrlKey && !e.altKey && !e.shiftKey) {
                         if (!e.target.closest('button, a, input, select, textarea') && this.currentIndex >= 0 && this.photos[this.currentIndex]) {
                             e.preventDefault();
@@ -2039,7 +2024,7 @@
 
                 if ((totalPhotos > this.maxRecommendedPhotos || totalBytes > this.maxRecommendedBytes) && !confirm(
                     `即將載入 ${totalPhotos} 張照片（約 ${this.formatBytes(totalBytes)}）。\n` +
-                    '大量照片會需要較長處理與匯出時間，建議分冊處理。是否仍要繼續？'
+                    '照片很多時，處理和匯出會比較久，建議分成幾冊。要繼續嗎？'
                 )) return;
 
                 let failedCount = 0;
@@ -2228,7 +2213,7 @@
             }
 
             parseFilenameTime() {
-                if (!this.photos.length) return alert('請先載入照片！');
+                if (!this.photos.length) return alert('請先加入照片。');
                 let count = 0;
                 this.photos.forEach(p => {
                     const t = this.extractTimeFromFilename(p.name);
@@ -2239,12 +2224,12 @@
                 });
                 this.render();
                 this.recordHistory('解析檔名時間');
-                alert(`已成功從檔名解析 ${count} 張照片之時間！`);
+                alert(`已從檔名讀到 ${count} 張照片的日期時間。`);
             }
 
             applyDefaultsToSelected() {
                 const selectedPhotos = this.photos.filter(photo => photo.selected);
-                if (!selectedPhotos.length) return alert('請先勾選要套用清冊預設的照片。');
+                if (!selectedPhotos.length) return alert('請先選取照片。');
                 const defaultDate = document.getElementById('caseDate').value.trim();
                 const defaultLocation = document.getElementById('defaultLocation').value.trim();
                 selectedPhotos.forEach(photo => {
@@ -2253,7 +2238,7 @@
                 });
                 this.render();
                 this.recordHistory('套用清冊預設至已選照片');
-                alert(`已將清冊預設日期與地點套用至 ${selectedPhotos.length} 張已選照片。`);
+                alert(`已把案件日期與地點寫進 ${selectedPhotos.length} 張照片。`);
             }
 
             batchRotate(degree) {
@@ -2299,9 +2284,9 @@
                 this.render();
                 this.recordHistory(`向下填滿${field}`);
                 if (field === 'desc' && skipped > 0) {
-                    alert(`已向下填滿說明內容，跳過 ${skipped} 張已有說明的照片。`);
+                    alert(`已填入說明；${skipped} 張原本就有說明，沒有更動。`);
                 } else {
-                    alert(`已將第 ${index + 1} 張照片的內容向下填滿至所有照片！`);
+                    alert(`已把第 ${index + 1} 張的內容填到後面的照片。`);
                 }
             }
 
@@ -2440,7 +2425,7 @@
             // 批次套用右側編輯器內容至已選取照片
             applyEditorToSelected() {
                 const selectedList = this.photos.filter(p => p.selected);
-                if (selectedList.length === 0) return alert('請先在左側勾選要套用的照片！');
+                if (selectedList.length === 0) return alert('請先選取要套用的照片。');
 
                 const dateVal = this.editDate.value.trim();
                 const timeVal = this.editTime.value.trim();
@@ -2449,7 +2434,7 @@
                 const applyEmptyValues = this.batchApplyEmptyValues.checked;
 
                 if (!applyEmptyValues && !dateVal && !timeVal && !locVal && !descVal) {
-                    return alert('請先填寫要套用的日期、時間、地點或說明；若要清除資料，請勾選「空白欄位也覆寫」。');
+                    return alert('請先填寫要套用的日期、時間、地點或說明；若要清空，請勾選「空白欄位也套用」。');
                 }
 
                 selectedList.forEach(p => {
@@ -2461,7 +2446,7 @@
 
                 this.render();
                 this.recordHistory('批次套用編輯欄位');
-                alert(`已成功套用至勾選的 ${selectedList.length} 張照片！`);
+                alert(`已套用到 ${selectedList.length} 張照片。`);
             }
 
             switchView(view) {
@@ -2636,7 +2621,7 @@
             }
 
             async saveProject() {
-                if (!this.photos.length) return alert('請先載入照片再儲存專案！');
+                if (!this.photos.length) return alert('還沒有照片，不需要儲存。');
                 if (typeof JSZip === 'undefined') throw new Error('JSZip 尚未載入，無法儲存專案。');
                 const zip = new JSZip();
                 const manifestPhotos = [];
@@ -2672,7 +2657,7 @@
                 event.target.value = '';
                 if (!file) return;
                 if (typeof JSZip === 'undefined') return this.handleProjectError(new Error('JSZip 尚未載入，無法開啟專案。'));
-                if (this.photos.length && !confirm('開啟專案會取代目前工作內容；尚未儲存的修改將遺失。確定繼續嗎？')) return;
+                if (this.photos.length && !confirm('開啟後會取代目前的照片與資料，沒存的修改會不見。要繼續嗎？')) return;
                 try {
                     const zip = await JSZip.loadAsync(file);
                     const manifestFile = zip.file('manifest.json');
@@ -2722,7 +2707,7 @@
                     this.markProjectSaved();
                     this.clearProgress();
                     this.render();
-                    alert(`已開啟專案，共還原 ${restored.length} 張照片。`);
+                    alert(`已開啟工作進度，共 ${restored.length} 張照片。`);
                 } catch (error) {
                     this.clearProgress();
                     this.handleProjectError(error);
@@ -2731,7 +2716,7 @@
 
             handleProjectError(error) {
                 console.error(error);
-                alert(`專案檔處理失敗：${error?.message || error}`);
+                alert(`工作進度檔無法開啟：${error?.message || error}`);
             }
 
             setThumbnailSize(size) {
@@ -2775,7 +2760,7 @@
 
                 const label = this.btnToggleEditor.querySelector('span');
                 const icon = this.btnToggleEditor.querySelector('i');
-                label.textContent = this.editorCollapsed ? '單張編輯' : '收合單張編輯';
+                label.textContent = this.editorCollapsed ? '顯示編輯欄' : '隱藏編輯欄';
                 icon.className = this.editorCollapsed ? 'fa-solid fa-pen-to-square' : 'fa-solid fa-panel-right';
                 this.btnToggleEditor.setAttribute('aria-pressed', String(this.editorCollapsed));
             }
@@ -2796,7 +2781,7 @@
                 if (!this.panelResizeState || this.panelResizeState.pointerId !== event.pointerId) return;
                 const rect = this.appMainLayout.getBoundingClientRect();
                 const maxWidth = Math.min(560, Math.max(320, rect.width - 420));
-                this.sidePanelWidth = Math.max(320, Math.min(maxWidth, Math.round(event.clientX - rect.left)));
+                this.sidePanelWidth = Math.max(280, Math.min(maxWidth, Math.round(event.clientX - rect.left)));
                 this.applyMainPanelWidth();
                 event.preventDefault();
             }
@@ -2879,7 +2864,7 @@
 
             sortPhotosByNaturalFilename({ confirmBeforeSort = false } = {}) {
                 if (this.photos.length < 2) return;
-                if (confirmBeforeSort && !confirm('將依檔名重新排序全部照片，手動拖曳調整的順序會被覆蓋。確定繼續？')) return;
+                if (confirmBeforeSort && !confirm('要依檔名重新排列全部照片嗎？手動排好的順序會被取代。')) return;
                 const currentPhoto = this.photos[this.currentIndex];
                 this.photos.sort((a, b) => this.comparePhotoFileOrder(a, b));
                 this.syncPlainNumericSequence();
@@ -3032,7 +3017,7 @@
                 const selectedIndices = this.getSelectedIndicesOrCurrent();
                 if (!selectedIndices.length) return;
                 const noun = selectedIndices.length === 1 ? '這張照片' : `已選取的 ${selectedIndices.length} 張照片`;
-                if (!confirm(`確定要移除${noun}嗎？可用 Ctrl＋Z 復原。`)) return;
+                if (!confirm(`要移除${noun}嗎？（不會刪除電腦裡的原檔，可按 Ctrl＋Z 復原）`)) return;
                 const selectedSet = new Set(selectedIndices);
                 this.photos = this.photos.filter((_, index) => !selectedSet.has(index));
                 this.currentIndex = Math.max(0, Math.min(this.currentIndex, this.photos.length - 1));
@@ -3049,7 +3034,7 @@
 
             clearAll() {
                 if (!this.photos.length) return;
-                if (confirm('確定要清空所有載入的照片與資料嗎？')) {
+                if (confirm('要清空清冊中的全部照片嗎？（不會刪除電腦裡的原檔）')) {
                     this.photos = [];
                     this.currentIndex = 0;
                     this.render();
@@ -3085,7 +3070,7 @@
                 if (layout === 'landscape_3') perPage = 3;
                 const pages = count === 0 ? 0 : Math.ceil(count / perPage);
                 this.photoCount.textContent = count;
-                this.pageEstimate.textContent = `（約 ${pages} 頁 Word 報表）`;
+                this.pageEstimate.textContent = `（約 ${pages} 頁）`;
             }
 
             updateLayoutDescription() {
@@ -3757,6 +3742,42 @@
                 this.render();
             }
 
+            // 漏填檢查列預設收合；手動展開或已在篩選某類問題時才顯示，避免常駐佔用版面。
+            applyAuditPanelState(audit) {
+                if (!this.auditFilterBar || !this.btnToggleAudit) return;
+                const hasPhotos = this.photos.length > 0;
+                const open = hasPhotos && (this.auditPanelOpen || this.activeFilter !== 'all');
+                this.auditFilterBar.classList.toggle('audit-collapsed', !open);
+                this.btnToggleAudit.classList.toggle('hidden', !hasPhotos);
+                this.btnToggleAudit.setAttribute('aria-expanded', String(open));
+                const issueCount = audit ? (audit.missingLocation || 0) + (audit.missingDesc || 0) + (audit.invalidDateTime || 0) : 0;
+                this.btnToggleAudit.classList.toggle('has-issues', issueCount > 0);
+                const label = open ? '收起檢查' : (issueCount > 0 ? `檢查漏填（${issueCount}）` : '檢查漏填');
+                this.btnToggleAudit.replaceChildren();
+                const icon = document.createElement('i');
+                icon.className = 'fa-solid fa-list-check';
+                this.btnToggleAudit.append(icon, document.createTextNode(' ' + label));
+            }
+
+            // 頂部「檔案／說明」與工具列「更多」選單：點選項目或點到選單外即收起。
+            setupMenus() {
+                const menus = Array.from(document.querySelectorAll('details.app-menu'));
+                menus.forEach(menu => {
+                    menu.addEventListener('toggle', () => {
+                        if (menu.open) menus.forEach(other => { if (other !== menu) other.open = false; });
+                    });
+                    menu.querySelectorAll('.app-menu-item').forEach(item => {
+                        item.addEventListener('click', () => setTimeout(() => { menu.open = false; }, 0));
+                    });
+                });
+                document.addEventListener('click', event => {
+                    menus.forEach(menu => { if (menu.open && !menu.contains(event.target)) menu.open = false; });
+                });
+                document.addEventListener('keydown', event => {
+                    if (event.key === 'Escape') menus.forEach(menu => { menu.open = false; });
+                });
+            }
+
             // 更新篩選列徽章數字與 warning 樣式（委派 PhotoReportAuditUi 模組）
             updateAuditBarUi() {
                 if (typeof PhotoReportAuditUi !== 'undefined') {
@@ -3777,6 +3798,7 @@
                         },
                         filterNoticeText: this.filterNoticeText
                     });
+                    this.applyAuditPanelState(audit);
                     return;
                 }
 
@@ -3877,16 +3899,16 @@
                 const selectedCount = this.photos.filter(photo => photo.selected).length;
                 if (selectedCount > 0) {
                     this.selectedCountBadge.classList.remove('hidden');
-                    this.selectedCountBadge.textContent = `已選取 ${selectedCount} 張`;
+                    this.selectedCountBadge.textContent = `已選 ${selectedCount} 張`;
                     this.batchApplyBox.classList.remove('hidden');
                     this.batchCountNum.textContent = selectedCount;
-                    this.editorModeBadge.textContent = `已選取 ${selectedCount} 張`;
-                    this.editorModeBadge.className = 'text-[10px] font-bold px-2 py-0.5 rounded bg-blue-500 text-white';
+                    this.editorModeBadge.textContent = `一次改 ${selectedCount} 張`;
+                    this.editorModeBadge.className = 'text-[10px] font-bold px-2 py-0.5 rounded bg-blue-700 text-white whitespace-nowrap';
                 } else {
                     this.selectedCountBadge.classList.add('hidden');
                     this.batchApplyBox.classList.add('hidden');
                     this.editorModeBadge.textContent = '單張編輯';
-                    this.editorModeBadge.className = 'text-[10px] font-bold px-2 py-0.5 rounded bg-[#5B5CE2]/10 text-[#5B5CE2]';
+                    this.editorModeBadge.className = 'text-[10px] font-bold px-2 py-0.5 rounded bg-[#5B5CE2]/10 text-[#3730A3] whitespace-nowrap';
                 }
                 return selectedCount;
             }
@@ -3920,6 +3942,7 @@
                 const photoActionToolbar = document.getElementById('photoActionToolbar');
                 const workspaceToolbar = document.getElementById('workspaceToolbar');
                 if (photoActionToolbar) photoActionToolbar.classList.toggle('hidden', !hasPhotos);
+                document.getElementById('stageStatusBar')?.classList.toggle('hidden', !hasPhotos);
                 if (workspaceToolbar) {
                     workspaceToolbar.classList.toggle('pt-1.5', hasPhotos);
                     workspaceToolbar.classList.toggle('border-t', hasPhotos);
@@ -3968,7 +3991,7 @@
                     const titleIcon = document.createElement('i');
                     titleIcon.className = 'fa-solid fa-pen-to-square text-[#5B5CE2]';
                     const titleText = document.createElement('span');
-                    titleText.textContent = `照片詳情・第 ${this.currentIndex + 1} / ${totalPhotos} 張 (#${curPhoto.seq})`;
+                    titleText.textContent = `編輯照片・第 ${this.currentIndex + 1} / ${totalPhotos} 張（編號 ${curPhoto.seq}）`;
                     this.editorTitle.append(titleIcon, document.createTextNode(' '), titleText);
                     this.editSeq.value = curPhoto.seq || '';
                     this.editDate.value = curPhoto.date || '';
@@ -3977,11 +4000,11 @@
                     this.editDesc.value = curPhoto.desc || '';
                     const defaultDate = document.getElementById('caseDate').value.trim();
                     this.editDateInheritedHint.textContent = defaultDate
-                        ? `格式 YYY/MM/DD；留空時使用清冊預設：${defaultDate}。`
-                        : '格式 YYY/MM/DD；尚未設定清冊預設日期。';
+                        ? `空白時用案件日期：${defaultDate}`
+                        : '空白時用案件日期（案件日期還沒填）';
                     this.editLocationInheritedHint.textContent = defaultLocation
-                        ? `留空時使用清冊預設：${defaultLocation}。`
-                        : '尚未設定清冊預設地點。';
+                        ? `空白時用案件地點：${defaultLocation}`
+                        : '空白時用案件地點（案件地點還沒填）';
                 }
 
                 // 渲染左側縮圖卡片
@@ -3991,7 +4014,7 @@
                     const missingFields = [!String(p.location || '').trim() && !defaultLocation ? '地點' : '', !String(p.desc || '').trim() ? '說明' : ''].filter(Boolean);
                     const statusText = missingFields.length ? `待補：${missingFields.join('、')}` : '資料完整';
                     const displayLayout = this.getPhotoDisplayLayout(p);
-                    const cardTitle = `第 ${p.seq} 張｜採證時間：${p.time || '未填'}｜${statusText}；雙擊展開編輯，拖曳調整順序`;
+                    const cardTitle = `第 ${p.seq} 張｜時間：${p.time || '未填'}｜${statusText}｜雙擊可編輯，拖曳可排序`;
 
                     return `
                         <div class="photo-thumb-card morandi-card p-1.5 flex flex-col gap-1 bg-white border border-[#C7CBD3]/25 rounded-xl ${isSelected} ${isCurrent}"
@@ -4535,7 +4558,7 @@
 
                         this.render();
                         const ambiguousMessage = ambiguousCount ? `另有 ${ambiguousCount} 筆因編號或檔名重複而略過。` : '';
-                        alert(`Excel 匯入完成！成功對齊更新 ${matchCount} 筆照片說明！${ambiguousMessage}`);
+                        alert(`已從 Excel 帶入 ${matchCount} 筆說明。${ambiguousMessage}`);
                     } catch (error) {
                         console.error(error);
                         alert('Excel 讀取失敗，請確認檔案未損毀且格式正確。');
@@ -4547,7 +4570,7 @@
             }
 
             async exportZip() {
-                if (!this.photos.length) return alert('請先載入照片！');
+                if (!this.photos.length) return alert('請先加入照片。');
                 if (typeof JSZip === 'undefined') return alert('JSZip 尚未載入！');
                 this.processingCancelled = false;
 

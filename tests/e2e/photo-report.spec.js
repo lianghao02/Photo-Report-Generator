@@ -33,12 +33,14 @@ async function runE2eTests() {
     console.log('[1A/5] 驗證版型與匯出區的資訊架構...');
     const exportUi = await page.evaluate(() => {
         const byId = id => document.getElementById(id);
-        const layoutSection = byId('layoutSelect')?.closest('section');
+        const exportBar = byId('exportBar');
         const caseSection = byId('caseTitle')?.closest('section');
         return {
             requiredControlsPresent: ['layoutSelect', 'btnSaveProject', 'importProjectInput', 'btnExportExcel', 'importExcelInput', 'btnExportZip', 'btnExportPdf', 'btnExportDocx']
                 .every(id => Boolean(byId(id))),
-            layoutSectionTitle: layoutSection?.querySelector('div.text-sm')?.textContent?.trim(),
+            layoutInExportBar: Boolean(exportBar?.querySelector('#layoutSelect')) && Boolean(exportBar?.querySelector('#btnExportDocx')) && Boolean(exportBar?.querySelector('#btnExportPdf')),
+            rareActionsInMenus: ['btnSaveProject', 'importProjectInput', 'btnExportExcel', 'importExcelInput', 'btnExportZip', 'btnParseFilenameTime', 'btnViewPreview']
+                .every(id => Boolean(byId(id)?.closest('details.app-menu'))),
             caseSectionTitle: caseSection?.querySelector('h2')?.textContent?.trim(),
             layoutInCaseSection: Boolean(caseSection?.querySelector('#layoutSelect')),
             wordIsPrimary: byId('btnExportDocx')?.classList.contains('btn-primary'),
@@ -46,8 +48,9 @@ async function runE2eTests() {
         };
     });
     if (!exportUi.requiredControlsPresent) throw new Error('既有專案／匯出控制項 ID 不完整');
-    if (exportUi.layoutSectionTitle !== '版型與匯出') throw new Error(`版型區標題不正確：${exportUi.layoutSectionTitle}`);
-    if (!exportUi.caseSectionTitle?.includes('案件資料與清冊預設')) throw new Error(`案件區標題不正確：${exportUi.caseSectionTitle}`);
+    if (!exportUi.layoutInExportBar) throw new Error('版型與 Word／PDF 匯出應集中在底部匯出列');
+    if (!exportUi.rareActionsInMenus) throw new Error('專案檔、Excel、ZIP、檔名時間與分頁預覽應收在選單內');
+    if (!exportUi.caseSectionTitle?.includes('案件資料')) throw new Error(`案件區標題不正確：${exportUi.caseSectionTitle}`);
     if (exportUi.layoutInCaseSection) throw new Error('清冊版型不應留在案件資料區');
     if (!exportUi.wordIsPrimary) throw new Error('Word 清冊應維持主要操作按鈕');
     if (exportUi.initialDescription !== '上下兩張・A4 直式・每頁 2 張') throw new Error(`預設版型提示不正確：${exportUi.initialDescription}`);
@@ -59,7 +62,7 @@ async function runE2eTests() {
     const landscapeDescription = await page.$eval('#layoutDescription', el => el.textContent.trim());
     if (landscapeDescription !== '橫式三張・A4 橫式・每頁 3 張') throw new Error(`橫式三張版型提示不正確：${landscapeDescription}`);
     await page.selectOption('#layoutSelect', 'up_down_2');
-    console.log('  ✅ 左側分群、既有控制項與三種版型提示皆正常');
+    console.log('  ✅ 左欄案件資料、底部匯出列、選單收納與三種版型提示皆正常');
 
     // [2/5] 上傳測試照片至 fileInput
     console.log('[2/5] 模擬檔案上傳 (fixtures)...');
@@ -111,6 +114,10 @@ async function runE2eTests() {
 
     // 測試點擊「同名照片」篩選按鈕
     console.log('[4/5] 測試篩選視圖切換...');
+    // 漏填檢查列預設收合，先展開再點篩選
+    const auditCollapsed = await page.$eval('#auditFilterBar', el => el.classList.contains('audit-collapsed'));
+    if (!auditCollapsed) throw new Error('漏填檢查列預設應收合');
+    await page.click('#btnToggleAudit');
     await page.click('#filterBtn_duplicatePhotos');
     
     // 檢查卡片可見數量
@@ -225,7 +232,7 @@ async function runE2eTests() {
                 restoredPhotoCount: window.app.photos.length,
                 importedDescription: window.app.photos.find(photo => photo.name === 'sample02.jpg')?.desc,
                 zipBytes: zip?.blob?.size || 0,
-                projectOpened: alerts.some(message => message.includes('已開啟專案'))
+                projectOpened: alerts.some(message => message.includes('已開啟工作進度'))
             };
         } finally {
             window.saveAs = originalSaveAs;
