@@ -282,17 +282,6 @@
         .photo-thumb-card.pointer-drop-after {
             box-shadow: inset -4px 0 0 var(--accent), 0 4px 0 var(--border) !important;
         }
-        .thumbnail-zoom-trigger {
-            pointer-events: none;
-        }
-        .btn-zoom-preview {
-            position: absolute;
-            bottom: 6px;
-            right: 6px;
-            z-index: 10;
-            pointer-events: auto !important;
-            cursor: pointer;
-        }
         #dragInsertOverlay {
             position: fixed;
             width: 34px;
@@ -871,8 +860,8 @@
                 </div>
                 <div id="workspaceLayoutControls" class="flex items-center gap-1.5" aria-label="縮圖大小">
                     <span class="text-[11px] font-bold">縮圖大小</span>
-                    <input type="range" id="thumbnailSizeRange" min="90" max="480" step="5" value="135" class="w-20 accent-[#5B5CE2] cursor-pointer" aria-label="縮圖大小，90 至 480 像素">
-                    <span id="thumbnailSizeLabel" class="text-xs font-mono font-bold text-[#5B5CE2] whitespace-nowrap min-w-[38px] text-right">135px</span>
+                    <input type="range" id="thumbnailSizeRange" min="90" max="480" step="5" value="150" class="w-20 accent-[#5B5CE2] cursor-pointer" aria-label="縮圖大小，90 至 480 像素">
+                    <span id="thumbnailSizeLabel" class="text-xs font-mono font-bold text-[#5B5CE2] whitespace-nowrap min-w-[38px] text-right">150px</span>
                     <button type="button" id="btnResetThumbnailSize" class="text-[11px] text-[#6B7280] hover:text-[#5B5CE2] hover:underline" title="恢復預設大小">還原</button>
                 </div>
             </div>
@@ -938,7 +927,7 @@
                 <div id="photoPanel" class="lg:col-span-8 flex flex-col gap-2">
                     <div class="flex items-center justify-between text-xs font-bold text-[#6B7280] px-1">
                         <span>拖曳照片可調整順序</span>
-                        <span class="text-[11px] text-[#C7CBD3]">Ctrl 點選＝多選　Shift＝連選　空白處拖曳＝框選</span>
+                        <span class="text-[12px] font-bold text-[#4B5563]">Ctrl 點選＝多選　Shift＝連選　空白處拖曳＝框選　雙擊縮圖＝放大</span>
                     </div>
 
                     <div id="thumbGrid" class="file-drop-target grid relative gap-2.5 max-h-[600px] overflow-y-auto p-2 bg-[#EEF0F3]/50 rounded-xl border border-[#C7CBD3]/20">
@@ -1141,7 +1130,7 @@
                     <div class="flex items-center justify-between"><span class="text-[#6B7280]">連續選取</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">Shift + 點選</kbd></div>
                     <div class="flex items-center justify-between"><span class="text-[#6B7280]">框選多張</span><span class="text-[#4B5563] font-medium">照片區空白處拖曳</span></div>
                     <div class="flex items-center justify-between"><span class="text-[#6B7280]">全選 / 全不選</span><span class="text-[#4B5563] font-medium">點擊工具列「全選」</span></div>
-                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">編輯照片</span><span class="text-[#4B5563] font-medium">雙擊縮圖</span></div>
+                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">編輯照片</span><span class="text-[#4B5563] font-medium">雙擊卡片下方說明列</span></div>
                 </div>
 
                 <div class="p-3 bg-slate-50 rounded-xl border border-slate-200/60 flex flex-col gap-2">
@@ -1166,7 +1155,8 @@
                     <span class="font-bold text-[#20242B] flex items-center gap-1.5">
                         <i class="fa-solid fa-magnifying-glass-plus text-[#5B5CE2]"></i> 放大檢視
                     </span>
-                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">放大檢視照片</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">Space / Enter</kbd></div>
+                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">放大檢視照片</span><span class="text-[#4B5563] font-medium">雙擊縮圖</span></div>
+                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">鍵盤放大檢視</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">Space / Enter</kbd></div>
                     <div class="flex items-center justify-between"><span class="text-[#6B7280]">放大／縮小</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">滾輪 / ＋ －</kbd></div>
                     <div class="flex items-center justify-between"><span class="text-[#6B7280]">移動畫面</span><span class="text-[#4B5563] font-medium">放大時按住左鍵拖曳</span></div>
                     <div class="flex items-center justify-between"><span class="text-[#6B7280]">旋轉照片</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">R / Shift+R</kbd></div>
@@ -1438,7 +1428,7 @@
                 this.lastSelectedIndex = null;
                 this.maxRecommendedPhotos = 500;
                 this.maxRecommendedBytes = 2 * 1024 * 1024 * 1024;
-                this.thumbnailSize = Math.max(90, Math.min(480, this.loadWorkspacePreference('thumbnailSize', 135)));
+                this.thumbnailSize = Math.max(90, Math.min(480, this.loadWorkspacePreference('thumbnailSize', 150)));
                 this.editorCollapsed = this.loadWorkspacePreference('editorCollapsed', false);
                 this.sidePanelWidth = Math.max(280, Math.min(560, this.loadWorkspacePreference('sidePanelWidth', 300)));
                 this.panelResizeState = null;
@@ -2795,18 +2785,10 @@
             }
 
             getPhotoDisplayLayout(photo) {
-                const rawAspect = Number(photo.thumbnailAspect);
-                const sourceAspect = Number.isFinite(rawAspect) && rawAspect > 0 ? rawAspect : 1;
-                const quarterTurn = Math.abs(Number(photo.rotation) || 0) % 180 === 90;
-                const displayAspect = quarterTurn ? 1 / sourceAspect : sourceAspect;
-                // 一般直式照片保留自然比例；僅限制超長截圖，避免單張卡片撐高整列並留下大片空白。
-                // 9:16 手機直式照片約為 0.5625，因此 0.55 不會改變一般照片。
-                const safeAspect = Math.max(0.55, Math.min(6, displayAspect));
-                // 圖片以 contain 完整顯示；比例受限時只增加留白，不裁切內容。
-                const imageStyle = quarterTurn
-                    ? `width:${sourceAspect * 100}%;height:${100 / sourceAspect}%;transform:translate(-50%, -50%) rotate(${photo.rotation}deg);`
-                    : `width:100%;height:100%;transform:translate(-50%, -50%) rotate(${photo.rotation}deg);`;
-                return { safeAspect, imageStyle };
+                // 縮圖框固定為正方形：所有卡片等高、每一排對齊；照片以 contain 完整顯示（不裁切）。
+                // 正方形旋轉 90° 後仍是同一個方框，因此只需旋轉，不必依照片比例換算寬高。
+                const imageStyle = `width:100%;height:100%;transform:translate(-50%, -50%) rotate(${photo.rotation}deg);`;
+                return { safeAspect: 1, imageStyle };
             }
 
             getStageStep() {
@@ -4014,7 +3996,7 @@
                     const missingFields = [!String(p.location || '').trim() && !defaultLocation ? '地點' : '', !String(p.desc || '').trim() ? '說明' : ''].filter(Boolean);
                     const statusText = missingFields.length ? `待補：${missingFields.join('、')}` : '資料完整';
                     const displayLayout = this.getPhotoDisplayLayout(p);
-                    const cardTitle = `第 ${p.seq} 張｜時間：${p.time || '未填'}｜${statusText}｜雙擊可編輯，拖曳可排序`;
+                    const cardTitle = `第 ${p.seq} 張｜時間：${p.time || '未填'}｜${statusText}｜雙擊縮圖放大、雙擊下方說明列編輯，拖曳可排序`;
 
                     return `
                         <div class="photo-thumb-card morandi-card p-1.5 flex flex-col gap-1 bg-white border border-[#C7CBD3]/25 rounded-xl ${isSelected} ${isCurrent}"
@@ -4029,29 +4011,23 @@
                             <div class="thumbnail-meta-row flex items-center justify-between min-h-5">
                                 <div class="flex min-w-0 items-center gap-1.5">
                                     <input type="checkbox" ${p.selected ? 'checked' : ''} onclick="window.app.togglePhotoSelect(${idx}, event)" class="rounded text-blue-600 cursor-pointer" title="勾選">
-                                    <span class="game-seq-badge px-1.5 py-0.5 rounded text-[10px]">#${escapeHtml(p.seq)}</span>
-                                    <span class="thumbnail-card-time text-[10px] font-bold text-slate-700 whitespace-nowrap flex items-center gap-0.5" title="${escapeHtml(p.time || '未填時間')}">
+                                    <span class="game-seq-badge px-1.5 py-0.5 rounded text-[12px]">#${escapeHtml(p.seq)}</span>
+                                    <span class="thumbnail-card-time text-[12px] font-bold text-slate-800 whitespace-nowrap flex items-center gap-0.5" title="${escapeHtml(p.time || '未填時間')}">
                                         <i class="fa-regular fa-clock text-blue-600"></i>${escapeHtml(p.time || '未填時間')}
                                     </span>
                                 </div>
-                                <span class="text-[11px] ${missingFields.length ? 'text-amber-600' : 'text-emerald-600'}" title="${escapeHtml(statusText)}">
+                                <span class="text-[13px] ${missingFields.length ? 'text-amber-700' : 'text-emerald-700'}" title="${escapeHtml(statusText)}">
                                     <i class="fa-solid ${missingFields.length ? 'fa-circle-exclamation' : 'fa-circle-check'}"></i>
                                 </span>
                             </div>
 
-                            <div class="thumbnail-stage w-full bg-[#EEF0F3] rounded-lg overflow-hidden relative group cursor-pointer">
+                            <div class="thumbnail-stage w-full bg-[#EEF0F3] rounded-lg overflow-hidden relative cursor-zoom-in"
+                                 title="雙擊放大檢視"
+                                 ondblclick="event.stopPropagation(); window.app.openLightboxByIndex(${idx})">
                                 <img src="${p.thumbnailSrc}" alt="${escapeHtml(p.name)}" loading="lazy" decoding="async" style="${displayLayout.imageStyle}" class="absolute left-1/2 top-1/2 object-contain pointer-events-none">
-                                <div class="thumbnail-zoom-trigger absolute inset-0 opacity-0 group-hover:opacity-100 transition">
-                                    <button type="button" class="btn-zoom-preview absolute bottom-1.5 right-1.5 px-2 py-1 bg-[#1E293B] hover:bg-blue-600 text-[#FFD23F] hover:text-white border border-slate-900 text-[10px] font-black rounded-md shadow-md flex items-center gap-1 transition-all transform hover:scale-105 active:scale-95"
-                                            style="pointer-events: auto;"
-                                            onclick="event.stopPropagation(); window.app.openLightboxByIndex(${idx})"
-                                            title="點擊放大檢視照片 (燈箱)">
-                                        <i class="fa-solid fa-magnifying-glass-plus"></i> 放大
-                                    </button>
-                                </div>
                             </div>
 
-                            <div class="thumbnail-card-footer flex items-center justify-between gap-1 px-0.5 pt-0.5 text-[10px] font-bold text-slate-800 truncate">
+                            <div class="thumbnail-card-footer flex items-center justify-between gap-1 px-0.5 pt-0.5 text-[12px] font-bold text-slate-900 truncate">
                                 <span id="desc_preview_${p.uid}" class="truncate">${escapeHtml(p.desc || p.location || defaultLocation || '（無說明）')}</span>
                             </div>
                         </div>

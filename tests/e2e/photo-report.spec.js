@@ -249,14 +249,17 @@ async function runE2eTests() {
     // [7/5] 驗證鑑識級大圖燈箱 (PaperSwitch 規格) 與雙擊卡片展開編輯
     console.log('[7/5] 驗證鑑識級大圖燈箱 (縮放/平移/旋轉/快速鍵) 與雙擊卡片展開編輯...');
     await page.click('#filterBtn_all');
-    // 1. 測試點擊放大按鈕
-    await page.hover('.photo-thumb-card .thumbnail-stage');
-    const firstZoomBtn = await page.$('.photo-thumb-card .btn-zoom-preview');
-    if (!firstZoomBtn) throw new Error('找不到縮圖放大按鈕 .btn-zoom-preview');
-    await firstZoomBtn.click({ force: true });
+    // 0. 所有縮圖框等高（固定 1:1），不隨照片比例忽高忽低
+    const stageSizes = await page.$$eval('.photo-thumb-card .thumbnail-stage', els => els.map(el => `${Math.round(el.getBoundingClientRect().width)}x${Math.round(el.getBoundingClientRect().height)}`));
+    if (new Set(stageSizes).size !== 1) throw new Error(`縮圖框大小不一致：${[...new Set(stageSizes)].join(', ')}`);
+    // 1. 測試雙擊縮圖開啟燈箱（單擊只選取，不放大，避免誤觸）
+    await page.click('.photo-thumb-card .thumbnail-stage');
+    const openedBySingleClick = await page.$eval('#imageLightboxModal', el => !el.classList.contains('hidden'));
+    if (openedBySingleClick) throw new Error('單擊縮圖不應開啟燈箱');
+    await page.dblclick('.photo-thumb-card .thumbnail-stage');
     const isLightboxVisible = await page.$eval('#imageLightboxModal', el => !el.classList.contains('hidden'));
-    if (!isLightboxVisible) throw new Error('點擊放大按鈕後，燈箱 Modal 未正常顯示 (仍有 hidden 類別)');
-    console.log('  ✅ 點擊縮圖放大圖示成功開啟燈箱');
+    if (!isLightboxVisible) throw new Error('雙擊縮圖後，燈箱 Modal 未正常顯示 (仍有 hidden 類別)');
+    console.log('  ✅ 雙擊縮圖成功開啟燈箱，單擊不會誤開');
 
     // 檢查初始縮放比例徽章
     const initialBadge = await page.$eval('#lightboxZoomBadge', el => el.textContent.trim());
@@ -368,7 +371,7 @@ async function runE2eTests() {
     // 雙擊第二張卡片
     const secondCard = (await page.$$('.photo-thumb-card'))[1];
     if (!secondCard) throw new Error('找不到第二張照片卡片');
-    await secondCard.dblclick();
+    await (await secondCard.$('.thumbnail-card-footer')).dblclick();
 
     // 檢查編輯面板是否展開
     const isEditorOpenAfter = await page.$eval('#editorPanel', el => !el.classList.contains('hidden'));
