@@ -10,6 +10,11 @@
 
 ---
 
+## 2026-10-21 發布 v2.4.0（Claude）
+- 依使用者指示升版 2.3.2 → 2.4.0：`version.txt`、`package.json`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml`／`Cargo.lock`（僅 `photo-report-generator` 套件）、`index.html` 內 4 處版本字串、README、CHANGELOG（兩個未發布區塊併入 v2.4.0）。
+- 以 `scripts/build-portable.ps1` 建置 Setup.exe 與 Portable.zip；Release 附件為這兩個檔案。
+- 推送 main 會同時觸發 GitHub Pages 更新線上版。
+
 ## 2026-10-21 縮圖卡片等高與雙擊放大（Claude）
 - **起因**：使用者反映卡片上下參差、小圖看不到「放大」按鈕、文字不夠清楚。根因：`.thumbnail-stage` 的 `aspect-ratio` 取自照片比例，扁長圖框高只剩約 10 px，按鈕被 `overflow-hidden` 切掉。
 - **變更**：`getPhotoDisplayLayout` 固定回傳 `safeAspect: 1`（旋轉只需 `rotate`，因為正方形旋轉後不變）；移除 `.thumbnail-zoom-trigger`／`.btn-zoom-preview`；縮圖框 `ondblclick` 開燈箱（`stopPropagation` 以免觸發編輯）；說明列雙擊才編輯；文字 12 px、提示色 `#4B5563`；預設縮圖 150 px。
