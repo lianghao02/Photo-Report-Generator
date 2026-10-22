@@ -1,6 +1,14 @@
 # HANDOFF
 
-## 2026-10-22 拆出內嵌樣式與主程式（Claude，分支 refactor/extract-inline，未合併、未推送）
+## 2026-10-22 v2.4.1 發布：拆出內嵌樣式與主程式（Claude）
+- **發布結果**：使用者授權後，分支快轉合併回 `main`，提交 d9d6ec8 並推送；annotated tag `v2.4.1`、GitHub Release（含 `Photo-Report-Generator-2.4.1-Setup.exe` 2.37 MB、`-Portable.zip` 2.58 MB）已建立，下載回來雜湊與本機一致。GitHub Pages 建置完成（built d9d6ec8），正式站 `index.html`、`css/app.css`、`js/app.js`、`vendor/tailwind.css`、`version.txt` 與提交逐位元組一致（5/5）。
+- **樣式驗證**：以「屬性名稱排序後」的計算後樣式指紋比對，拆分前 v2.4.0、拆分後 v2.4.1 本機、正式站三者皆為 `1b93b46f`（1366 寬）。注意：未排序時 CSS 變數的列舉順序會因來源不同而變，指紋不可跨來源比；新連接埠第一次載入時 Font Awesome 樣式可能尚未套用，要等載入完成再量。
+- **桌面版**：以 Windows PowerShell 5.1 執行 `build-portable.ps1` 建置成功；免安裝版解壓到含中文與空白的路徑可啟動、8 秒後仍正常執行。**未確認桌面視窗內的畫面內容**（未擷取螢幕）。
+- **另修**：`build-portable.ps1` 原本無 BOM，Windows PowerShell 5.1 解析失敗（提交 05e0bf0 補 BOM）。
+- `package-lock.json` 的版本仍是 2.3.2（既有狀況，未更動）。
+- 下方為拆分過程的原記錄。
+
+### 拆分過程（原記錄）
 - 依「有條件、分批、先補測試再拆」原則，兩步各一個提交、不夾帶功能修改：
   1. `c37fe94` 內嵌 `<style>` 630 行 → `css/app.css`（逐字，只去縮排）。
   2. `a28fb87` 內嵌 `<script>` 3,174 行 → `js/app.js`（原封不動，保留縮排）。
