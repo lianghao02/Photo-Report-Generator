@@ -18,6 +18,11 @@ if (Test-Path (Join-Path $root 'js')) {
     New-Item -ItemType Directory -Force -Path $webJs | Out-Null
     Copy-Item (Join-Path $root 'js\*') $webJs -Recurse -Force
 }
+$webCss = Join-Path $web 'css'
+if (Test-Path (Join-Path $root 'css')) {
+    New-Item -ItemType Directory -Force -Path $webCss | Out-Null
+    Copy-Item (Join-Path $root 'css\*') $webCss -Recurse -Force
+}
 if (Test-Path (Join-Path $root 'version.txt')) {
     Copy-Item (Join-Path $root 'version.txt') (Join-Path $web 'version.txt') -Force
 }

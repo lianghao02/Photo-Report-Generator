@@ -1,0 +1,635 @@
+/* 現場照片清冊生成工具：主介面樣式。
+ * 由 index.html 的內嵌 <style> 逐字搬出（只去掉 8 格縮排，內容未修改），
+ * 以 <link> 放在原本 <style> 的位置，載入順序與優先權不變（tailwind、fontawesome 之後）。
+ * 打包桌面版時由 scripts/prepare-web.ps1 複製到 web/css/。 */
+
+:root {
+    --bg: #F7F3E9;
+    --surface: #FFFFFF;
+    --surface-card: #FFFDF7;
+    --border: #1E293B;
+    --text: #0F172A;
+    --text-muted: #334155;
+    --accent: #2563EB;  /* 白字對比 5.2:1 */
+    --accent-hover: #1D4ED8;  /* 白字對比 6.7:1 */
+    --accent-light: #FFFFFF;
+    --game-gold: #FFD23F;
+    --game-gold-bg: #FEF3C7;
+    --success: #10B981;
+    --warning: #F59E0B;
+    --danger: #EF4444;
+    --radius-card: 14px;
+    --shadow: 0 4px 0 #1E293B;
+    --font: "Plus Jakarta Sans", "Noto Sans TC", "Microsoft JhengHei", "Segoe UI", system-ui, sans-serif;
+}
+
+body {
+    background-color: var(--bg);
+    background-image: radial-gradient(#E2DAC8 1.5px, transparent 1.5px);
+    background-size: 20px 20px;
+    color: var(--text);
+    font-family: var(--font);
+    min-height: 100vh;
+}
+
+.morandi-card {
+    background: var(--surface-card) !important;
+    border: 2.5px solid var(--border) !important;
+    border-radius: var(--radius-card) !important;
+    box-shadow: var(--shadow) !important;
+}
+
+.btn-primary {
+    background-color: var(--accent) !important;
+    color: #FFFFFF !important;
+    border: 2px solid var(--border) !important;
+    box-shadow: 0 3px 0 var(--border) !important;
+    font-weight: 800 !important;
+    transition: transform 0.12s ease, box-shadow 0.12s ease, background-color 0.12s ease;
+}
+.btn-primary:hover:not(:disabled) {
+    background-color: var(--accent-hover) !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 0 var(--border) !important;
+}
+.btn-primary:active:not(:disabled) {
+    transform: translateY(2px);
+    box-shadow: 0 1px 0 var(--border) !important;
+}
+
+.btn-secondary {
+    background-color: var(--accent-light) !important;
+    color: var(--text) !important;
+    border: 2px solid var(--border) !important;
+    box-shadow: 0 2px 0 var(--border) !important;
+    font-weight: 800 !important;
+    transition: transform 0.12s ease, box-shadow 0.12s ease, background-color 0.12s ease;
+}
+.btn-secondary:hover:not(:disabled) {
+    background-color: var(--game-gold-bg) !important;
+    border-color: var(--border) !important;
+    color: var(--text) !important;
+    transform: translateY(-1px);
+    box-shadow: 0 3px 0 var(--border) !important;
+}
+.btn-secondary:active:not(:disabled) {
+    transform: translateY(2px);
+    box-shadow: 0 0 0 var(--border) !important;
+}
+.btn-secondary:disabled, .btn-primary:disabled, button:disabled {
+    /* 停用仍需看得出功能名稱：0.45 時文字僅約 2:1。 */
+    opacity: 0.62;
+    cursor: not-allowed !important;
+    transform: none !important;
+    box-shadow: none !important;
+}
+
+.drop-zone {
+    border: 2.5px dashed var(--border) !important;
+    transition: all 0.2s ease;
+    background: #FFFFFF !important;
+    box-shadow: inset 0 2px 0 rgba(30, 41, 59, 0.06), 0 3px 0 var(--border);
+}
+.drop-zone.drag-over {
+    border-color: var(--border) !important;
+    border-style: solid !important;
+    background-color: var(--game-gold-bg) !important;
+    transform: translateY(-1px);
+}
+
+.file-drop-target {
+    transition: border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+}
+.file-drop-target.external-file-drag-over {
+    border-color: var(--border) !important;
+    background-color: var(--game-gold-bg) !important;
+    box-shadow: inset 0 0 0 2px #F59E0B !important;
+}
+#thumbGrid.external-file-drag-over::after {
+    content: '📥 放開以加入照片';
+    position: absolute;
+    inset: 0.5rem;
+    z-index: 60;
+    display: grid;
+    place-items: center;
+    border: 2.5px dashed var(--border);
+    border-radius: 0.75rem;
+    background: rgba(254, 243, 199, 0.95);
+    color: var(--text);
+    font-size: 0.9rem;
+    font-weight: 900;
+    pointer-events: none;
+}
+
+.input-field {
+    background: #FFFFFF !important;
+    border: 2px solid var(--border) !important;
+    color: var(--text) !important;
+    border-radius: 0.5rem !important;
+    padding: 0.32rem 0.55rem;
+    font-weight: 700;
+    box-shadow: inset 0 2px 0 rgba(30, 41, 59, 0.05), 0 2px 0 var(--border);
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+.input-field:focus {
+    outline: none;
+    border-color: var(--border) !important;
+    background: #FFFDF5 !important;
+    box-shadow: 0 2px 0 var(--border), 0 0 0 3px var(--game-gold) !important;
+}
+
+/* 工作台工具列：依工作目的分群，窄螢幕時整組換行。 */
+.toolbar-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.22rem 0.35rem;
+    border: 2px solid var(--border);
+    border-radius: 0.65rem;
+    background: #FFFFFF;
+    box-shadow: 0 2px 0 var(--border);
+}
+.toolbar-group--danger {
+    border-color: var(--border);
+    background: #FEF2F2;
+}
+.btn-single-edit {
+    background: var(--game-gold) !important;
+    color: var(--text) !important;
+    border: 2px solid var(--border) !important;
+    box-shadow: 0 2px 0 var(--border) !important;
+    font-weight: 800 !important;
+    transition: background-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+.btn-single-edit:hover:not(:disabled) {
+    background: #F59E0B !important;
+    box-shadow: 0 3px 0 var(--border) !important;
+    transform: translateY(-1px);
+}
+#layoutMiniPreview {
+    width: 34px;
+    height: 44px;
+    min-width: 34px;
+    min-height: 44px;
+    max-width: 34px;
+    max-height: 44px;
+    box-sizing: border-box;
+    border: 2px solid var(--border) !important;
+    box-shadow: 0 2px 0 var(--border);
+}
+#layoutMiniPreview svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+@media (max-width: 640px) {
+    .toolbar-group {
+        flex-wrap: wrap;
+        width: 100%;
+    }
+    .toolbar-group--danger {
+        margin-left: 0 !important;
+    }
+}
+
+/* PaperSwitch 風格之 2D 卡片拖曳與排序視覺 */
+.photo-thumb-card {
+    position: relative;
+    align-self: start;
+    background: #FFFFFF !important;
+    border: 2.5px solid var(--border) !important;
+    border-radius: 12px !important;
+    box-shadow: 0 4px 0 var(--border) !important;
+    transition: transform 0.15s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.15s ease, border-color 0.15s;
+    cursor: grab;
+    user-select: none;
+}
+.photo-thumb-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 0 var(--border) !important;
+}
+.thumbnail-stage {
+    aspect-ratio: var(--thumbnail-aspect, 1);
+    border: 1.5px solid var(--border);
+}
+/* 小縮圖是排序模式：保留編號、勾選與資料狀態，將時間與說明移至卡片提示，避免拖曳時誤碰擁擠的文字。 */
+#thumbGrid.thumbnail-density-compact {
+    gap: 0.5rem;
+    padding: 0.5rem;
+}
+#thumbGrid.thumbnail-density-compact .photo-thumb-card {
+    padding: 0.25rem !important;
+    gap: 0.25rem !important;
+    border-radius: 0.6rem !important;
+}
+#thumbGrid.thumbnail-density-compact .thumbnail-meta-row {
+    min-height: 1rem;
+}
+#thumbGrid.thumbnail-density-compact .thumbnail-card-time,
+#thumbGrid.thumbnail-density-compact .thumbnail-card-footer {
+    display: none;
+}
+.photo-thumb-card:active {
+    cursor: grabbing;
+}
+.photo-thumb-card.selected {
+    border-color: #B45309 !important;
+    box-shadow: 0 4px 0 #B45309, inset 0 0 0 2px #F59E0B !important;
+    background-color: var(--game-gold-bg) !important;
+}
+.photo-thumb-card.active-editing {
+    border-color: #1D4ED8 !important;
+    box-shadow: 0 4px 0 #1E3A8A, inset 0 0 0 2px #3B82F6 !important;
+}
+.photo-thumb-card.dragging-stacked {
+    /* 原生 HTML 拖曳進行中不能把來源卡片 display:none，否則 Chrome 會直接取消拖曳。 */
+    opacity: 0.28 !important;
+    border-style: dashed !important;
+    transform: scale(0.98);
+}
+.photo-thumb-card.drag-lead {
+    outline: 2.5px dashed var(--border);
+    outline-offset: 2px;
+}
+.photo-thumb-card.pointer-dragging {
+    cursor: grabbing !important;
+    opacity: 0.62;
+    z-index: 5;
+    transition: none !important;
+}
+.photo-thumb-card.pointer-dragging:not(.pointer-drag-lead) {
+    transform: translateY(-10px);
+}
+.photo-thumb-card.pointer-drag-lead {
+    pointer-events: none;
+}
+.photo-thumb-card.pointer-drop-before {
+    box-shadow: inset 4px 0 0 var(--accent), 0 4px 0 var(--border) !important;
+}
+.photo-thumb-card.pointer-drop-after {
+    box-shadow: inset -4px 0 0 var(--accent), 0 4px 0 var(--border) !important;
+}
+#dragInsertOverlay {
+    position: fixed;
+    width: 34px;
+    height: 42px;
+    display: grid;
+    place-items: center;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 100001;
+    border: 2.5px solid var(--border);
+    border-radius: 10px;
+    background: var(--game-gold);
+    color: var(--text);
+    font-weight: 900;
+    box-shadow: 0 4px 0 var(--border);
+}
+#dragInsertOverlay.hidden {
+    display: none;
+}
+/* 桌面版左右工作欄可調整寬度；窄螢幕維持上下排列。 */
+#appMainLayout {
+    --side-panel-width: 345px;
+}
+#mainPanelSplitter {
+    display: none;
+}
+@media (min-width: 1024px) {
+    #appMainLayout {
+        display: grid;
+        grid-template-columns: minmax(310px, var(--side-panel-width)) 12px minmax(0, 1fr);
+        gap: 0;
+    }
+    #sidePanel { grid-column: 1; }
+    #stagePanel { grid-column: 3; }
+    #mainPanelSplitter {
+        display: flex;
+        grid-column: 2;
+        align-items: stretch;
+        justify-content: center;
+        cursor: col-resize;
+        touch-action: none;
+        user-select: none;
+    }
+    #mainPanelSplitter::before {
+        content: '';
+        width: 3px;
+        margin: 8px 4px;
+        border-radius: 999px;
+        background: #94A3B8;
+        transition: background 120ms ease, box-shadow 120ms ease;
+    }
+    #mainPanelSplitter:hover::before,
+    body.is-resizing-panels #mainPanelSplitter::before {
+        background: var(--border);
+        box-shadow: 0 0 0 3px var(--game-gold);
+    }
+}
+/* 拖曳期間暫時佔用目標格位；放開後才真正改變照片排序。 */
+.drag-insert-placeholder {
+    min-width: 0;
+    height: var(--drag-placeholder-height, 120px);
+    border: 2.5px dashed var(--border);
+    border-radius: 0.75rem;
+    background: var(--game-gold-bg);
+    color: var(--text);
+    display: grid;
+    place-items: center;
+    align-self: start;
+    font-size: 0.75rem;
+    font-weight: 900;
+    pointer-events: none;
+    animation: placeholder-pulse 0.8s ease-in-out infinite alternate;
+}
+@keyframes placeholder-pulse {
+    from { opacity: 0.7; }
+    to { opacity: 1; }
+}
+
+.selection-marquee {
+    position: absolute;
+    z-index: 20;
+    pointer-events: none;
+    border: 2px solid var(--border);
+    background: rgba(255, 210, 63, 0.28);
+    border-radius: 6px;
+}
+
+/* 拖曳插入指示線 */
+.photo-thumb-card.drag-target-left::before {
+    content: '';
+    position: absolute;
+    top: -4px;
+    bottom: -4px;
+    left: -6px;
+    width: 5px;
+    background: var(--accent);
+    border-radius: 9999px;
+    box-shadow: 0 0 10px rgba(59, 130, 246, 0.8);
+    z-index: 40;
+    pointer-events: none;
+    animation: pulse-line 0.8s infinite alternate;
+}
+.photo-thumb-card.drag-target-right::after {
+    content: '';
+    position: absolute;
+    top: -4px;
+    bottom: -4px;
+    right: -6px;
+    width: 5px;
+    background: var(--accent);
+    border-radius: 9999px;
+    box-shadow: 0 0 10px rgba(59, 130, 246, 0.8);
+    z-index: 40;
+    pointer-events: none;
+    animation: pulse-line 0.8s infinite alternate;
+}
+
+@keyframes pulse-line {
+    0% { transform: scaleY(0.95); opacity: 0.8; }
+    100% { transform: scaleY(1.05); opacity: 1; }
+}
+
+.modal-backdrop {
+    background-color: rgba(15, 23, 42, 0.55);
+    backdrop-filter: blur(4px);
+}
+
+/* 自訂細軸滾動條 */
+::-webkit-scrollbar {
+    width: 7px;
+    height: 7px;
+}
+::-webkit-scrollbar-track {
+    background: #EDE5D5;
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb {
+    background: #64748B;
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #1E293B;
+}
+
+/* 完整度篩選標籤按鈕樣式 (2D 膠囊徽章) */
+.audit-filter-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1.25;
+    transition: all 120ms ease;
+    border: 2px solid var(--border);
+    background: #FFFFFF;
+    color: var(--text);
+    box-shadow: 0 2px 0 var(--border);
+    cursor: pointer;
+    user-select: none;
+}
+.audit-filter-btn:hover {
+    background: var(--game-gold-bg);
+    transform: translateY(-1px);
+}
+.audit-filter-btn.active {
+    background: var(--game-gold);
+    color: var(--text);
+    border-color: var(--border);
+    box-shadow: 0 2px 0 var(--border);
+}
+.audit-filter-badge {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 9999px;
+    font-size: 10px;
+    font-weight: 900;
+    background: #E2E8F0;
+    color: var(--text);
+    border: 1.5px solid var(--border);
+}
+.audit-filter-btn.active .audit-filter-badge {
+    background: #FFFFFF;
+    color: var(--text);
+}
+.audit-filter-badge.has-warning {
+    background: #FEF3C7;
+    color: #92400E;
+}
+.audit-filter-btn.active .audit-filter-badge.has-warning {
+    background: #FFFFFF;
+    color: #92400E;
+}
+
+/* 2D 語意化圖示盒、膠囊徽章與序號牌（相容離線預編譯 tailwind.css） */
+.game-icon-box {
+    background: var(--game-gold) !important;
+    color: var(--text) !important;
+    border: 2px solid var(--border) !important;
+    box-shadow: 0 2px 0 var(--border) !important;
+}
+.game-icon-box--lg {
+    background: var(--game-gold) !important;
+    color: var(--text) !important;
+    border: 2.5px solid var(--border) !important;
+    box-shadow: 0 3px 0 var(--border) !important;
+}
+.game-badge-pill {
+    background: var(--game-gold-bg) !important;
+    color: var(--text) !important;
+    border: 2px solid var(--border) !important;
+    box-shadow: 0 2px 0 var(--border) !important;
+    font-weight: 800 !important;
+}
+.game-badge-pill--green {
+    background: #ECFDF5 !important;
+    color: #065F46 !important;
+    border: 2px solid var(--border) !important;
+    box-shadow: 0 2px 0 var(--border) !important;
+    font-weight: 800 !important;
+}
+.game-seq-badge {
+    background: #1E293B !important;
+    color: #FFD23F !important;
+    border: 1.5px solid #0F172A !important;
+    font-weight: 900 !important;
+    line-height: 1.2;
+}
+#workspaceToolbar > div:first-child,
+#photoActionToolbar [aria-label="復原與重做"] {
+    border: 2px solid var(--border) !important;
+    box-shadow: 0 2px 0 var(--border) !important;
+    background: #FFFFFF !important;
+}
+#btnViewWorkspace.bg-\[\#5B5CE2\],
+#btnViewGrid.bg-\[\#5B5CE2\],
+#btnViewPreview.bg-\[\#5B5CE2\] {
+    background: var(--accent) !important;
+    color: #FFFFFF !important;
+    border: 1.5px solid var(--border) !important;
+}
+.text-\[\#C7CBD3\],
+.text-\[\#9CA3AF\] {
+    color: #475569 !important;
+    font-weight: 700 !important;
+}
+.text-\[\#6B7280\] {
+    color: #334155 !important;
+}
+.max-w-\[1440px\] {
+    max-width: 1440px !important;
+}
+
+/* 2D 試算表表格強化對比 */
+#gridContainer {
+    border: 2.5px solid var(--border) !important;
+    box-shadow: 0 4px 0 var(--border) !important;
+}
+#gridContainer thead {
+    background: #1E293B !important;
+    color: #FFFFFF !important;
+    border-bottom: 2.5px solid #0F172A !important;
+}
+#gridContainer thead th {
+    font-weight: 900 !important;
+    color: #FFFFFF !important;
+}
+#gridContainer thead th button {
+    color: var(--game-gold) !important;
+}
+#gridContainer tbody tr:nth-child(even) {
+    background: #FFFDF7;
+}
+#gridContainer tbody td {
+    border-bottom: 1.5px solid #CBD5E1;
+}
+
+/* 鑑識級大圖燈箱 (PaperSwitch 規格：雙層舞台、游標縮放與抓手平移) */
+#lightboxViewport {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    min-height: 420px;
+    overflow: hidden;
+    touch-action: none;
+    user-select: none;
+    cursor: default;
+}
+#lightboxViewport.is-zoomed {
+    cursor: grab;
+}
+#lightboxViewport.is-panning {
+    cursor: grabbing !important;
+}
+#lightboxStage {
+    transform-origin: center center;
+    will-change: transform;
+    transition: transform 0.12s ease-out;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+#lightboxStage.panning-active {
+    transition: none !important;
+}
+#lightboxImg {
+    transition: transform 0.2s ease-out;
+    max-width: 100%;
+    max-height: calc(88vh - 5.5rem);
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    pointer-events: none;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+    border-radius: 6px;
+}
+
+/* 下拉選單（檔案／說明／更多）：少用功能收在這裡，不佔版面 */
+.app-menu { position: relative; }
+.app-menu > summary { list-style: none; cursor: pointer; user-select: none; }
+.app-menu > summary::-webkit-details-marker { display: none; }
+.app-menu-panel {
+    position: absolute; right: 0; top: calc(100% + 6px); z-index: 40;
+    min-width: 220px; padding: 6px;
+    background: #FFFFFF; border: 2px solid var(--border); border-radius: 12px;
+    box-shadow: 0 4px 0 var(--border);
+    display: flex; flex-direction: column; gap: 2px;
+}
+.app-menu-group {
+    font-size: 11px; font-weight: 800; color: #334155;
+    padding: 6px 8px 2px; margin: 0;
+}
+.app-menu-group:not(:first-child) { border-top: 1.5px dashed #CBD5E1; margin-top: 4px; padding-top: 8px; }
+.app-menu-item {
+    display: flex; align-items: center; gap: 8px; width: 100%;
+    padding: 7px 10px; border-radius: 8px;
+    font-size: 13px; font-weight: 700; color: var(--text); text-align: left;
+    background: transparent; cursor: pointer; text-decoration: none;
+}
+.app-menu-item:hover, .app-menu-item:focus-visible { background: var(--game-gold-bg); outline: none; }
+.app-menu-item i { width: 16px; text-align: center; color: #1D4ED8; }
+.app-menu-item--danger, .app-menu-item--danger i { color: #B91C1C; }
+.app-menu-item--danger { margin-top: 4px; border-top: 1.5px dashed #CBD5E1; border-radius: 0 0 8px 8px; }
+.app-menu-item:disabled { opacity: 0.62; cursor: not-allowed; }
+.app-menu-note { font-size: 11px; color: #334155; padding: 6px 10px 2px; margin: 4px 0 0; border-top: 1.5px dashed #CBD5E1; }
+.toolbar-divider { width: 1.5px; height: 22px; background: #CBD5E1; margin: 0 2px; }
+
+/* 漏填檢查：預設收合 */
+#auditFilterBar.audit-collapsed { display: none !important; }
+#btnToggleAudit.has-issues { background: #FEF3C7 !important; color: #78350F !important; }
+
+/* 匯出列：固定在照片區底部，隨時可匯出 */
+.export-bar {
+    position: sticky; bottom: 0.75rem; z-index: 20;
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px;
+    margin-top: 4px; padding: 10px 12px;
+    background: #FFFDF7; border: 2.5px solid var(--border); border-radius: 14px;
+    box-shadow: 0 4px 0 var(--border);
+}
+.export-bar #layoutSelect { width: auto; min-width: 7.5rem; }

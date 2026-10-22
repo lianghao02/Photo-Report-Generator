@@ -45,7 +45,9 @@ if (Test-Path $sourceFontDir) {
 
 $tailwind = Join-Path $root 'node_modules\.bin\tailwindcss.cmd'
 if (Test-Path $tailwind) {
-    & $tailwind -i (Join-Path $PSScriptRoot 'tailwind-input.css') -o (Join-Path $vendor 'tailwind.css') --content (Join-Path $root 'index.html') --minify
+    # 掃描範圍要包含 css/app.css（由 index.html 內嵌樣式拆出），否則會少產生原本靠樣式文字觸發的規則
+    $tailwindContent = (Join-Path $root 'index.html') + ',' + (Join-Path $root 'css\app.css')
+    & $tailwind -i (Join-Path $PSScriptRoot 'tailwind-input.css') -o (Join-Path $vendor 'tailwind.css') --content $tailwindContent --minify
     if ($LASTEXITCODE -ne 0) { throw 'Tailwind CSS build failed.' }
 } elseif (Test-Path (Join-Path $vendor 'tailwind.css')) {
     Write-Warning '找不到 Tailwind CSS 套件，保留既有離線樣式。'
