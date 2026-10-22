@@ -1,5 +1,17 @@
 # HANDOFF
 
+## 2026-10-22 拆出內嵌樣式與主程式（Claude，分支 refactor/extract-inline，未合併、未推送）
+- 依「有條件、分批、先補測試再拆」原則，兩步各一個提交、不夾帶功能修改：
+  1. `c37fe94` 內嵌 `<style>` 630 行 → `css/app.css`（逐字，只去縮排）。
+  2. `a28fb87` 內嵌 `<script>` 3,174 行 → `js/app.js`（原封不動，保留縮排）。
+- `index.html` 4,581 → 775 行。
+- 抓到並修正兩個只有重建／打包時才會出現的問題：
+  - Tailwind 只掃描 `index.html`，搬走後會少產生規則（CSS 少 3 條；JS 少約 1.7KB）。`prepare-assets.ps1` 掃描範圍加入兩個新檔後，產物與拆分前**逐位元組相同**。
+  - 桌面版 `prepare-web.ps1` 原本不複製 `css/`，已加入；實跑確認 `web/` 與來源一致。
+- 驗證：單元 4/4、Golden Baseline（Word／Excel／PDF）、Playwright E2E（file:// 開啟）、`qa.ps1` 全部通過；真實瀏覽器以「每個元素的計算後樣式」雜湊比對，1366 與 390 寬度皆與拆分前完全相同；主程式正常啟動、主控台零錯誤。
+- 未做：未合併回 `main`、未推送、未升版；未實際執行 Tauri 打包（`cargo` 建置），只驗證了它的前置腳本 `prepare-web.ps1`。合併後建議打包一次桌面版並實際開啟確認。
+- 下一步可選：`js/app.js`（3,174 行）之後要大改某區塊時，再依 AGENTS.md 第 4 節逐步拆出模組。
+
 ## 核心元資料 (Metadata)
 - **Repository**：lianghao02/Photo-Report-Generator
 - **Branch**：main
