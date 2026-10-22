@@ -1,4 +1,4 @@
-# build-portable.ps1
+﻿# build-portable.ps1
 # Usage: .\scripts\build-portable.ps1
 
 Set-StrictMode -Version Latest
