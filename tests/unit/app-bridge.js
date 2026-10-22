@@ -5,13 +5,16 @@ let cachedMethods = null;
 
 function loadAppMethods() {
     if (cachedMethods) return cachedMethods;
-    const htmlPath = path.resolve(__dirname, '../../index.html');
-    const html = fs.readFileSync(htmlPath, 'utf8');
+    // 主程式已由 index.html 拆到 js/app.js；兩個檔案都讀，方法在哪一個都找得到
+    const sources = ['../../index.html', '../../js/app.js']
+        .map((p) => path.resolve(__dirname, p))
+        .filter((p) => fs.existsSync(p));
+    const html = sources.map((p) => fs.readFileSync(p, 'utf8')).join('\n');
 
     function extractMethod(name) {
         const regex = new RegExp('(?:async\\s+)?' + name + '\\s*\\([^)]*\\)\\s*\\{');
         const match = regex.exec(html);
-        if (!match) throw new Error(`Method ${name} not found in index.html`);
+        if (!match) throw new Error(`Method ${name} not found in index.html or js/app.js`);
         let start = match.index;
         let braceCount = 0;
         let inBraces = false;
