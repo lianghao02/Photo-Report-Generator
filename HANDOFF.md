@@ -1,5 +1,76 @@
 # HANDOFF
 
+## 核心元資料 (Metadata)
+- **Repository**：lianghao02/Photo-Report-Generator
+- **Branch**：main
+- **Commit SHA**：87fa4e415a93ca0711ec346142753078ccfa902c（本輪基準；交付提交以 Git 記錄為準）
+- **Skill Version**：v1.0.0
+- **Task Type**：IMPROVE
+- **Local Path Hint**：04_Photo-Report-Generator
+
+## 目前狀態
+2026-10-26：頁面操作提示與局部視覺改善完成，本機驗證通過；使用者已授權提交、推送與網頁部署。交付提交與部署結果以 Git 遠端及 GitHub Pages 狀態為準。
+
+## 本輪目標
+依使用者確認的方向，逐步改善操作範圍、向下填滿、檢查摘要、工具列分組與可讀性。
+後續追加：排序保留編號、匯出前提示重新編號，以及移除縮圖下方說明與地點。
+
+## 基準與已確認事實 (Baseline & Confirmed Facts)
+- 開始時 main 工作目錄乾淨，版本 v2.4.1。
+- 縮圖已有 90～480px 滑桿、縮放記憶與雙擊放大，沿用既有功能。
+
+## 已完成 (Completed)
+- 旋轉按鈕依選取狀態顯示全部／已選與張數提示；案件資料套用在零選取時停用，有選取時顯示張數；編輯標題與勾選數使用不同用語。
+- 向下填滿顯示後續範圍；日期、時間、地點覆寫不同既有內容前確認；說明仍只填空白；回報實際更新及保留張數，最後一張停用。
+- 檢查摘要改為問題項數，包含面板已有的同名照片分類。
+- 工具列加入分組，排序按鈕文案明確化；提高編輯提示字級、減輕輸入框與編輯卡片陰影、降低編輯欄按鈕強調。
+- 空白清冊停用 Word／PDF 匯出並顯示提示；窄螢幕匯出列改為正常排列，避免遮住照片。
+- 排序流程不再自動重新編號或依最大編號長度補零；編號由使用者透過既有重新編號功能決定。
+- 匯出前檢查數字編號是否依目前順序連續，支援前綴、自訂起始值與補零；與既有資料檢查共用提醒視窗，可保留編號匯出，或開啟重新編號設定並於套用後接續匯出。自由文字編號不強制套用數字規則。
+- 移除縮圖下方的說明／地點列及其更新程式；編輯入口改為雙擊編號列，雙擊縮圖仍開啟燈箱。
+
+## 異動檔案 (Changed Files)
+index.html、js/app.js、css/app.css、tests/e2e/photo-report.spec.js、HANDOFF.md。
+
+## 刻意未修改 (Do Not Do / Deliberately Omitted)
+縮圖功能、照片處理、稽核計算模組、Word／PDF／Excel 版型與匯出器、版本號、相依套件與離線資源。
+
+## 尚未完成 (Remaining Work)
+- **P1 (阻斷/必須)**：無已知阻斷。
+- **P2 (重要/當次)**：無。
+- **P3 (改善建議/暫緩)**：若後續發布桌面版，另做 Tauri 建置與桌面視窗驗收。
+
+## 驗證結果 (Validation)
+### 已執行測試與結果
+- node tests/run-all-unit.js：4 組通過。
+- node tests/e2e/photo-report.spec.js：完整通過，新增未選取／單選／多選操作範圍、覆寫取消與確認、說明保護、末張停用、匯出與問題摘要驗證。
+- 追加修改後重跑單元、完整 E2E 與 Golden Baseline 均通過；新增 12 張檔名排序保留原編號、保留編號匯出、重新編號後接續匯出、自訂前綴／起始值／補零、移動後連號檢查與縮圖文字移除驗證。
+- 追加修改後檢視 1366px 工作台與 390px 匯出提醒截圖，瀏覽器未捕捉例外為 0，窄螢幕無水平溢出；語法與 QA 檢查通過。
+- node tests/run-baseline-test.js：Word／Excel／PDF Golden Baseline 及三種版型匯出通過。
+- scripts/qa.ps1 與 git diff --check：通過。
+- 1920、1366、390px 截圖；1366、390px 無頁面水平溢出。窄螢幕固定匯出列遮擋已改為正常排列。
+- 這輪沒有新增 Tailwind utility class，新增樣式直接由 css/app.css 提供。
+### 尚未驗證項目
+未建置或操作 Tauri 桌面版；本機驗證後另核對正式站部署內容。
+### 已知風險 (Known Risks)
+無本輪已知阻斷性問題。
+
+## Git 狀態
+- Commit：本輪基準 87fa4e4；交付提交訊息為「fix: 改善照片排序編號與清冊操作提示」。
+- Push：使用者已授權推送 origin/main；結果以遠端分支為準。
+- Working Tree：本輪提交僅涵蓋上述 5 檔；交付後以 git status 為準。
+- Branch：main。
+
+## 下一步建議動作 (Next Recommended Action)
+推送後核對 Pages 建置提交與正式站 index.html、js/app.js、css/app.css；完成後停止擴大修改。
+
+## 發布狀態 (Release Status)
+Web 本機功能驗證通過；GitHub Pages 設定為 main 根目錄自動部署（legacy）。本輪不升版、不建立 Release、不重建桌面版。
+
+---
+
+以下為先前交接紀錄，現況以本輪狀態與 Git 為準。
+
 ## 2026-10-22 v2.4.1 發布：拆出內嵌樣式與主程式（Claude）
 - **發布結果**：使用者授權後，分支快轉合併回 `main`，提交 d9d6ec8 並推送；annotated tag `v2.4.1`、GitHub Release（含 `Photo-Report-Generator-2.4.1-Setup.exe` 2.37 MB、`-Portable.zip` 2.58 MB）已建立，下載回來雜湊與本機一致。GitHub Pages 建置完成（built d9d6ec8），正式站 `index.html`、`css/app.css`、`js/app.js`、`vendor/tailwind.css`、`version.txt` 與提交逐位元組一致（5/5）。
 - **樣式驗證**：以「屬性名稱排序後」的計算後樣式指紋比對，拆分前 v2.4.0、拆分後 v2.4.1 本機、正式站三者皆為 `1b93b46f`（1366 寬）。注意：未排序時 CSS 變數的列舉順序會因來源不同而變，指紋不可跨來源比；新連接埠第一次載入時 Font Awesome 樣式可能尚未套用，要等載入完成再量。

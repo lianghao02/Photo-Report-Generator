@@ -28,6 +28,8 @@ async function runE2eTests() {
         throw new Error('window.app 未能成功初始化！');
     }
     console.log('  ✅ window.app 初始化完成');
+    if (!(await page.isDisabled('#btnExportDocx')) || !(await page.isDisabled('#btnExportPdf'))) throw new Error('空白清冊應停用 Word 與 PDF 匯出');
+    if (!(await page.isVisible('#exportEmptyHint'))) throw new Error('空白清冊應提示加入照片後即可匯出');
 
     // 驗證左側資訊架構與版型提示：維持既有控制項 ID，並讓 Word/PDF 共用同一版型。
     console.log('[1A/5] 驗證版型與匯出區的資訊架構...');
@@ -88,6 +90,65 @@ async function runE2eTests() {
     }
     console.log('  ✅ 成功載入 3 張測試照片卡片並完成縮圖渲染');
 
+    // 核對操作提示與實際旋轉範圍，避免未勾選時被誤認為只處理目前照片。
+    await page.evaluate(() => window.app.toggleSelectAll(false));
+    if (!(await page.isDisabled('#btnApplyDefaultsToSelected'))) throw new Error('未勾選照片時應停用案件資料套用');
+    if ((await page.textContent('#batchRotateText')) !== '旋轉全部') throw new Error('未勾選時應標示旋轉全部');
+    const rotationsBefore = await page.evaluate(() => window.app.photos.map(p => p.rotation));
+    await page.click('#btnBatchRotate');
+    const rotationsAll = await page.evaluate(() => window.app.photos.map(p => p.rotation));
+    if (!rotationsAll.every((rotation, i) => rotation === (rotationsBefore[i] + 90) % 360)) throw new Error('旋轉全部的實際範圍不符');
+    await page.locator('.photo-thumb-card input[type="checkbox"]').nth(0).check();
+    if (await page.isDisabled('#btnApplyDefaultsToSelected')) throw new Error('勾選照片後應啟用案件資料套用');
+    if (!(await page.textContent('#btnApplyDefaultsToSelected')).includes('已選 1 張')) throw new Error('套用按鈕應顯示單選張數');
+    if ((await page.textContent('#batchRotateText')) !== '旋轉已選') throw new Error('勾選後應標示旋轉已選');
+    await page.click('#btnBatchRotate');
+    const rotationsSelected = await page.evaluate(() => window.app.photos.map(p => p.rotation));
+    if (rotationsSelected[0] !== (rotationsAll[0] + 90) % 360 || rotationsSelected.slice(1).some((rotation, i) => rotation !== rotationsAll[i + 1])) throw new Error('旋轉已選不應修改未勾選照片');
+    await page.locator('.photo-thumb-card input[type="checkbox"]').nth(1).check();
+    if (!(await page.textContent('#btnApplyDefaultsToSelected')).includes('已選 2 張')) throw new Error('套用按鈕應隨多選更新張數');
+    if ((await page.textContent('#selectedCountBadge')) !== '已勾選 2 張') throw new Error('應明確顯示已勾選張數');
+    if (!(await page.textContent('#editorTitle')).includes('正在編輯第')) throw new Error('編輯標題應與勾選狀態區別');
+    await page.evaluate(rotations => {
+        window.app.photos.forEach((photo, i) => { photo.rotation = rotations[i]; });
+        window.app.toggleSelectAll(false);
+    }, rotationsBefore);
+    console.log('  ✅ 未選取、單選、多選提示與實際旋轉範圍一致');
+
+    if (await page.isDisabled('#btnExportDocx') || await page.isDisabled('#btnExportPdf')) throw new Error('加入照片後應啟用匯出');
+    const originalFields = await page.evaluate(() => window.app.photos.map(p => ({ date: p.date, desc: p.desc })));
+    await page.evaluate(() => {
+        window.app.currentIndex = 0;
+        window.app.photos[0].date = '115/10/26';
+        window.app.photos[1].date = '115/10/25';
+        window.app.photos[2].date = '';
+        window.app.photos[0].desc = '新增說明';
+        window.app.photos[1].desc = '保留說明';
+        window.app.photos[2].desc = '';
+        window.app.render();
+    });
+    let overwritePrompt = '';
+    page.once('dialog', async dialog => { overwritePrompt = dialog.message(); await dialog.dismiss(); });
+    await page.click('#btnFillDownDate');
+    if (!overwritePrompt.includes('後續 2 張') || !overwritePrompt.includes('1 張已有不同內容')) throw new Error('覆寫確認應標示範圍與既有內容張數');
+    if ((await page.evaluate(() => window.app.photos[1].date)) !== '115/10/25') throw new Error('取消覆寫後應保留原值');
+    const acceptFill = async dialog => { await dialog.accept(); };
+    page.on('dialog', acceptFill);
+    await page.click('#btnFillDownDate');
+    if (!(await page.evaluate(() => window.app.photos.every(p => p.date === '115/10/26')))) throw new Error('確認後應填滿後續日期');
+    await page.click('#btnFillDownDescAll');
+    const descriptions = await page.evaluate(() => window.app.photos.map(p => p.desc));
+    if (descriptions[1] !== '保留說明' || descriptions[2] !== '新增說明') throw new Error('說明應只填空白並保護已有內容');
+    page.off('dialog', acceptFill);
+    await page.evaluate(() => { window.app.currentIndex = 2; window.app.render(); });
+    if (!(await page.isDisabled('#btnFillDownDate'))) throw new Error('最後一張應停用向下填滿');
+    await page.evaluate(fields => {
+        window.app.photos.forEach((photo, i) => Object.assign(photo, fields[i]));
+        window.app.currentIndex = 0;
+        window.app.render();
+    }, originalFields);
+    console.log('  ✅ 覆寫取消／確認、保留原有說明、最後一張停用與匯出狀態皆正常');
+
     // [3/5] 驗證完整度篩選列與 Badge 數字
     console.log('[3/5] 驗證完整度篩選列 Badge 統計...');
     // 清空預設地點並重新呼叫 render()，檢驗預設地點對 missingLocation 的影響
@@ -110,6 +171,8 @@ async function runE2eTests() {
     if (badgesNoLocation.missingLocation !== '3') throw new Error(`未填地點 Badge 預期 3，實際為 ${badgesNoLocation.missingLocation}`);
     if (badgesNoLocation.missingDesc !== '3') throw new Error(`未填說明 Badge 預期 3，實際為 ${badgesNoLocation.missingDesc}`);
     if (badgesNoLocation.duplicatePhotos !== '2') throw new Error(`同名照片 Badge 預期 2，實際為 ${badgesNoLocation.duplicatePhotos}`);
+    const expectedIssues = await page.evaluate(() => window.app.auditPhotosCompleteness().issuesCount);
+    if (!(await page.textContent('#btnToggleAudit')).includes(`待檢查 ${expectedIssues} 項`)) throw new Error('檢查摘要應呈現問題項數');
     console.log('  ✅ 篩選列 Badge 統計數據計算完全正確');
 
     // 測試點擊「同名照片」篩選按鈕
@@ -184,6 +247,53 @@ async function runE2eTests() {
         throw new Error('點擊「仍要匯出」後，暫存之匯出回呼動作應被執行！');
     }
     console.log('  ✅ 「仍要匯出」行為正確：Modal 關閉且匯出回呼正常觸發');
+
+    // 以超過 9 張的情境驗證排序不補零、不改編號，以及匯出前的重新編號選擇。
+    await page.evaluate(() => {
+        window.originalSequenceTestState = { photos: window.app.photos, currentIndex: window.app.currentIndex, activeFilter: window.app.activeFilter };
+        const source = window.app.photos[0];
+        window.app.photos = Array.from({ length: 12 }, (_, index) => ({ ...source,
+            uid: `sequence-test-${index}`, name: `${12 - index}.jpg`, seq: String(index + 1),
+            date: '115/10/26', time: '12:00', location: '現場', desc: '測試說明', selected: false
+        }));
+        window.app.currentIndex = 0;
+        window.app.activeFilter = 'all';
+        window.app.sortPhotosByNaturalFilename();
+        window.sequenceTestExported = false;
+    });
+    const sortedSequence = await page.evaluate(() => window.app.photos.map(p => ({ name: p.name, seq: p.seq })));
+    if (sortedSequence[0].name !== '1.jpg' || sortedSequence[0].seq !== '12' || sortedSequence[11].seq !== '1') throw new Error('檔名排序應保留照片原編號，不得自動重編或補零');
+    if (await page.locator('.thumbnail-card-footer').count()) throw new Error('縮圖下方不應顯示說明或地點');
+    await page.evaluate(() => window.app.confirmExportWithAudit(() => { window.sequenceTestExported = true; }, 'Word 清冊'));
+    if (!(await page.isVisible('#btnAuditRenumber')) || !(await page.isVisible('#exportSequenceNotice'))) throw new Error('編號順序不連續時應提示重新編號');
+    if (await page.evaluate(() => window.sequenceTestExported)) throw new Error('使用者選擇前不得執行匯出');
+    await page.click('#btnAuditProceedExport');
+    if (!(await page.evaluate(() => window.sequenceTestExported && window.app.photos[0].seq === '12'))) throw new Error('應能保留原編號匯出');
+    await page.evaluate(() => {
+        window.sequenceTestExported = false;
+        window.app.confirmExportWithAudit(() => { window.sequenceTestExported = true; }, 'PDF 清冊');
+    });
+    await page.click('#btnAuditRenumber');
+    if (!(await page.isVisible('#sequenceModal'))) throw new Error('應開啟既有重新編號設定');
+    await page.fill('#seqPrefix', '');
+    await page.fill('#seqStart', '1');
+    await page.selectOption('#seqDigits', '1');
+    await page.click('#btnApplySequence');
+    if (!(await page.evaluate(() => window.sequenceTestExported && window.app.photos.every((p, i) => p.seq === String(i + 1))))) throw new Error('重新編號後應接續原匯出流程');
+    await page.evaluate(() => {
+        window.app.photos.forEach((p, i) => { p.seq = `證物-${String(10 + i).padStart(3, '0')}`; });
+        if (window.app.hasSequenceOrderMismatch()) throw new Error('自訂前綴、起始值與補零應視為有效連號');
+        const before = new Map(window.app.photos.map(p => [p.uid, p.seq]));
+        window.app.sortPhotosByNaturalFilename();
+        if (window.app.photos.some(p => p.seq !== before.get(p.uid))) throw new Error('排序應保留自訂補零格式');
+        window.app.photos[0].selected = true;
+        window.app.moveSelectedBy(1);
+        if (!window.app.hasSequenceOrderMismatch()) throw new Error('移動照片順序後應偵測連號不一致');
+        Object.assign(window.app, window.originalSequenceTestState);
+        window.app.render();
+        delete window.originalSequenceTestState;
+    });
+    console.log('  ✅ 排序保留編號、無縮圖下方文字、匯出保留／重新編號與自訂格式皆正常');
 
     // 專案、Excel、ZIP 按鈕雖只搬移位置，仍實際驗證其既有資料流程。
     console.log('[6/5] 驗證專案、Excel 與 ZIP 資料操作...');
@@ -371,7 +481,7 @@ async function runE2eTests() {
     // 雙擊第二張卡片
     const secondCard = (await page.$$('.photo-thumb-card'))[1];
     if (!secondCard) throw new Error('找不到第二張照片卡片');
-    await (await secondCard.$('.thumbnail-card-footer')).dblclick();
+    await (await secondCard.$('.thumbnail-meta-row')).dblclick();
 
     // 檢查編輯面板是否展開
     const isEditorOpenAfter = await page.$eval('#editorPanel', el => !el.classList.contains('hidden'));

@@ -128,7 +128,7 @@ body {
     border-radius: 0.5rem !important;
     padding: 0.32rem 0.55rem;
     font-weight: 700;
-    box-shadow: inset 0 2px 0 rgba(30, 41, 59, 0.05), 0 2px 0 var(--border);
+    box-shadow: inset 0 1px 2px rgba(30, 41, 59, 0.04);
     transition: border-color 0.15s, box-shadow 0.15s;
 }
 .input-field:focus {
@@ -212,7 +212,7 @@ body {
     aspect-ratio: var(--thumbnail-aspect, 1);
     border: 1.5px solid var(--border);
 }
-/* 小縮圖是排序模式：保留編號、勾選與資料狀態，將時間與說明移至卡片提示，避免拖曳時誤碰擁擠的文字。 */
+/* 小縮圖保留編號、勾選與資料狀態；時間移至卡片提示。 */
 #thumbGrid.thumbnail-density-compact {
     gap: 0.5rem;
     padding: 0.5rem;
@@ -225,8 +225,7 @@ body {
 #thumbGrid.thumbnail-density-compact .thumbnail-meta-row {
     min-height: 1rem;
 }
-#thumbGrid.thumbnail-density-compact .thumbnail-card-time,
-#thumbGrid.thumbnail-density-compact .thumbnail-card-footer {
+#thumbGrid.thumbnail-density-compact .thumbnail-card-time {
     display: none;
 }
 .photo-thumb-card:active {
@@ -619,6 +618,26 @@ body {
 .app-menu-item:disabled { opacity: 0.62; cursor: not-allowed; }
 .app-menu-note { font-size: 11px; color: #334155; padding: 6px 10px 2px; margin: 4px 0 0; border-top: 1.5px dashed #CBD5E1; }
 .toolbar-divider { width: 1.5px; height: 22px; background: #CBD5E1; margin: 0 2px; }
+.toolbar-action-group { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.export-audit-actions { flex-wrap: wrap; }
+#exportAuditModal [hidden] { display: none !important; }
+#photoActionToolbar > div:first-child { gap: 10px; }
+.editor-help, #editDateInheritedHint, #editLocationInheritedHint {
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-muted) !important;
+}
+#editorPanel button[id^="btnFillDown"] { font-size: 12px; min-height: 28px; }
+#editorPanel .morandi-card { box-shadow: 0 2px 0 var(--border) !important; }
+#btnToggleEditor {
+    background: var(--surface) !important;
+    color: var(--text) !important;
+    box-shadow: 0 2px 0 var(--border) !important;
+}
+#btnToggleEditor:hover:not(:disabled) { background: var(--game-gold-bg) !important; }
+@media (max-width: 767px) {
+    #exportBar { position: static; }
+}
 
 /* 漏填檢查：預設收合 */
 #auditFilterBar.audit-collapsed { display: none !important; }

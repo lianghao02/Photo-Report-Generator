@@ -145,28 +145,32 @@
             <!-- 常用工具列：一排；少用功能收在「更多」 -->
             <div id="photoActionToolbar" class="flex items-center justify-between gap-2 flex-wrap" aria-label="照片工具列">
                 <div class="flex items-center gap-1.5 flex-wrap">
+                    <div class="toolbar-action-group" role="group" aria-label="加入照片">
                     <button type="button" id="btnAddPhotos" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1">
                         <i class="fa-solid fa-plus"></i> 加入照片
                     </button>
                     <button type="button" id="btnAddFolder" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1">
                         <i class="fa-solid fa-folder-plus"></i> 加入資料夾
                     </button>
+                    </div>
                     <span class="toolbar-divider" aria-hidden="true"></span>
+                    <div class="toolbar-action-group" role="group" aria-label="照片選取與操作">
                     <button type="button" id="btnToggleSelectAll" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5">
                         <i class="fa-regular fa-square-check"></i> <span id="selectAllText">全選</span>
                     </button>
                     <button type="button" id="btnBatchRotate" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5" title="把已選照片（沒選就是全部）順時針轉 90°">
-                        <i class="fa-solid fa-rotate-right"></i> 旋轉
+                        <i class="fa-solid fa-rotate-right"></i> <span id="batchRotateText">旋轉全部</span>
                     </button>
                     <button type="button" id="btnMoveSelectedBackward" class="btn-secondary px-2 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1" title="已選照片往前一格（Ctrl+←）">
-                        <i class="fa-solid fa-arrow-left"></i> 往前
+                        <i class="fa-solid fa-arrow-left"></i> 往前一張
                     </button>
                     <button type="button" id="btnMoveSelectedForward" class="btn-secondary px-2 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1" title="已選照片往後一格（Ctrl+→）">
-                        往後 <i class="fa-solid fa-arrow-right"></i>
+                        往後一張 <i class="fa-solid fa-arrow-right"></i>
                     </button>
                     <button type="button" id="btnRemoveSelected" class="px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 text-red-700 hover:bg-red-50 border border-red-200 transition" title="從清冊移除已選照片（不會刪除電腦裡的原檔）">
                         <i class="fa-regular fa-trash-can"></i> 移除
                     </button>
+                    </div>
                     <span class="toolbar-divider" aria-hidden="true"></span>
                     <div class="inline-flex rounded-lg border border-[#C7CBD3]/40 bg-white p-0.5" role="group" aria-label="復原與重做">
                         <button type="button" id="btnUndo" class="p-1.5 px-2 rounded-md text-xs font-bold text-[#4B5563] hover:bg-slate-100 disabled:cursor-not-allowed flex items-center gap-1 transition" title="復原（Ctrl+Z）" disabled>
@@ -369,6 +373,7 @@
                                 <textarea id="editDesc" rows="3" class="input-field w-full text-xs leading-relaxed" placeholder="例：客廳桌上查扣手機一支"></textarea>
                             </div>
 
+                            <p id="fillDownHint" class="editor-help" aria-live="polite"></p>
                             <!-- 已選照片的明確批次套用流程 -->
                             <div id="batchApplyBox" class="pt-2 border-t border-[#C7CBD3]/20 hidden flex flex-col gap-2">
                                 <p class="text-[11px] font-semibold text-[#5B5CE2] text-center">已選 <span id="batchCountNum">0</span> 張。改好上方欄位後，按下方按鈕一次套用。</p>
@@ -453,6 +458,7 @@
                     <p id="layoutDescription" class="text-[11px] text-[#6B7280]" aria-live="polite">上下兩張・A4 直式・每頁 2 張</p>
                 </div>
                 <div class="flex items-center gap-2">
+                    <span id="exportEmptyHint" class="editor-help">加入照片後即可匯出</span>
                     <button type="button" id="btnExportPdf" class="btn-secondary px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5">
                         <i class="fa-regular fa-file-pdf"></i> 匯出 PDF
                     </button>
@@ -499,7 +505,7 @@
                     <div class="flex items-center justify-between"><span class="text-[#6B7280]">連續選取</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">Shift + 點選</kbd></div>
                     <div class="flex items-center justify-between"><span class="text-[#6B7280]">框選多張</span><span class="text-[#4B5563] font-medium">照片區空白處拖曳</span></div>
                     <div class="flex items-center justify-between"><span class="text-[#6B7280]">全選 / 全不選</span><span class="text-[#4B5563] font-medium">點擊工具列「全選」</span></div>
-                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">編輯照片</span><span class="text-[#4B5563] font-medium">雙擊卡片下方說明列</span></div>
+                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">編輯照片</span><span class="text-[#4B5563] font-medium">雙擊卡片編號列</span></div>
                 </div>
 
                 <div class="p-3 bg-slate-50 rounded-xl border border-slate-200/60 flex flex-col gap-2">
@@ -728,20 +734,22 @@
                 </div>
                 <div class="flex-1 min-w-0">
                     <h3 class="text-sm font-black text-[#20242B]" id="exportAuditModalTitle">匯出前提醒</h3>
-                    <p class="text-xs text-[#6B7280] mt-0.5">有些照片的資料還沒填完：</p>
+                    <p class="text-xs text-[#6B7280] mt-0.5">請確認照片編號與資料後再匯出。</p>
                 </div>
             </div>
 
+            <p id="exportSequenceNotice" class="editor-help" hidden>照片順序與編號不一致，是否需要重新編號？</p>
             <!-- 缺失項目統計列表 -->
             <div id="exportAuditList" class="flex flex-col gap-2 p-3 bg-amber-50/40 rounded-xl border border-amber-200/50 text-xs text-[#20242B]">
                 <!-- 動態注入缺失項目 -->
             </div>
 
-            <p class="text-[11px] text-[#6B7280]">
+            <p id="exportAuditHint" class="text-[11px] text-[#6B7280]">
                 按「查看問題照片」會只顯示這些照片，方便補填；也可以按「仍要匯出」直接產生清冊。
             </p>
 
-            <div class="flex items-center justify-end gap-2 pt-2 border-t border-[#C7CBD3]/20">
+            <div class="export-audit-actions flex items-center justify-end gap-2 pt-2 border-t border-[#C7CBD3]/20">
+                <button type="button" id="btnAuditRenumber" class="btn-secondary px-3.5 py-1.5 rounded-lg text-xs font-bold" hidden>重新編號</button>
                 <button type="button" onclick="window.app.closeModal('exportAuditModal')" class="btn-secondary px-3.5 py-1.5 rounded-lg text-xs font-bold">
                     取消
                 </button>
@@ -749,7 +757,7 @@
                     <i class="fa-solid fa-filter"></i> 查看問題照片
                 </button>
                 <button type="button" id="btnAuditProceedExport" class="btn-primary px-4 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 shadow">
-                    <i class="fa-solid fa-check"></i> 仍要匯出
+                    <i class="fa-solid fa-check"></i> <span>仍要匯出</span>
                 </button>
             </div>
         </div>

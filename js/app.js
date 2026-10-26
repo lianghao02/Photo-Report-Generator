@@ -46,6 +46,7 @@
                 this.savedProjectSignature = '';
                 this.activeFilter = 'all';
                 this.pendingExportAction = null;
+                this.pendingSequenceExport = null;
                 this.initElements();
                 this.initEvents();
                 this.applyWorkspaceLayout();
@@ -414,6 +415,11 @@
                 document.getElementById('filterBtn_duplicatePhotos').addEventListener('click', () => this.setActiveFilter('duplicatePhotos'));
 
                 // 匯出前稽核彈窗按鈕
+                document.getElementById('btnAuditRenumber').addEventListener('click', () => {
+                    this.pendingSequenceExport = { action: this.pendingExportAction, title: this.pendingExportTitle };
+                    this.closeModal('exportAuditModal');
+                    this.openModal('sequenceModal');
+                });
                 this.btnAuditViewIssues.addEventListener('click', () => {
                     this.exportAuditModal.classList.add('hidden');
                     const audit = this.auditPhotosCompleteness();
@@ -846,6 +852,7 @@
             }
 
             applySequence() {
+                const pendingExport = this.pendingSequenceExport;
                 const prefix = document.getElementById('seqPrefix').value;
                 const start = parseInt(document.getElementById('seqStart').value, 10) || 1;
                 const digits = parseInt(document.getElementById('seqDigits').value, 10) || 1;
@@ -859,27 +866,33 @@
                 this.closeModal('sequenceModal');
                 this.render();
                 this.recordHistory('重排流水號');
+                if (pendingExport?.action) this.confirmExportWithAudit(pendingExport.action, pendingExport.title);
             }
 
             fillDownFromIndex(index, field) {
                 if (!this.photos[index]) return;
                 const val = this.photos[index][field];
+                const targets = this.photos.slice(index + 1);
+                if (!targets.length) return alert('這是最後一張照片，沒有後續照片可填入。');
+                const label = { date: '日期', time: '時間', location: '地點', desc: '說明' }[field];
+                const overwriteCount = field === 'desc' ? 0 : targets.filter(photo => String(photo[field] || '').trim() && photo[field] !== val).length;
+                if (overwriteCount && !confirm(`將第 ${index + 1} 張的${label}套用至後續 ${targets.length} 張照片，其中 ${overwriteCount} 張已有不同內容，將被取代。要繼續嗎？（可按 Ctrl＋Z 復原）`)) return;
                 let skipped = 0;
+                let updated = 0;
                 for (let i = index + 1; i < this.photos.length; i++) {
                     // 跡證說明欄位：若目標格已有資料，跳過不覆寫
                     if (field === 'desc' && this.photos[i][field].trim() !== '') {
                         skipped++;
                         continue;
                     }
-                    this.photos[i][field] = val;
+                    if (this.photos[i][field] !== val) {
+                        this.photos[i][field] = val;
+                        updated++;
+                    }
                 }
                 this.render();
-                this.recordHistory(`向下填滿${field}`);
-                if (field === 'desc' && skipped > 0) {
-                    alert(`已填入說明；${skipped} 張原本就有說明，沒有更動。`);
-                } else {
-                    alert(`已把第 ${index + 1} 張的內容填到後面的照片。`);
-                }
+                if (updated) this.recordHistory(`向下填滿${field}`);
+                alert(`已更新 ${updated} 張照片的${label}。${skipped ? `保留 ${skipped} 張原有說明。` : ''}`);
             }
 
             fillDownFirst(field) {
@@ -1451,7 +1464,6 @@
                 if (confirmBeforeSort && !confirm('要依檔名重新排列全部照片嗎？手動排好的順序會被取代。')) return;
                 const currentPhoto = this.photos[this.currentIndex];
                 this.photos.sort((a, b) => this.comparePhotoFileOrder(a, b));
-                this.syncPlainNumericSequence();
                 this.currentIndex = Math.max(0, this.photos.indexOf(currentPhoto));
                 this.lastSelectedIndex = this.currentIndex;
                 this.render();
@@ -1493,16 +1505,8 @@
             sortPhotosByStageReadingOrder() {
                 const currentPhoto = this.photos[this.currentIndex];
                 this.photos.sort((a, b) => (Number(a.stageY) - Number(b.stageY)) || (Number(a.stageX) - Number(b.stageX)));
-                this.syncPlainNumericSequence();
                 this.currentIndex = Math.max(0, this.photos.indexOf(currentPhoto));
                 this.lastSelectedIndex = this.currentIndex;
-            }
-
-            syncPlainNumericSequence() {
-                if (this.photos.every(photo => /^\d+$/.test(String(photo.seq)))) {
-                    const digits = Math.max(1, ...this.photos.map(photo => String(photo.seq).length));
-                    this.photos.forEach((photo, index) => { photo.seq = String(index + 1).padStart(digits, '0'); });
-                }
             }
 
             getStageSlotsInReadingOrder() {
@@ -1518,7 +1522,6 @@
                     photo.stageX = slot.stageX;
                     photo.stageY = slot.stageY;
                 });
-                this.syncPlainNumericSequence();
             }
 
             beginStageDrag(index, event) {
@@ -2263,10 +2266,6 @@
                 if (!this.photos[this.currentIndex]) return;
                 this.photos[this.currentIndex][field] = value;
                 this.scheduleHistory('修改照片欄位');
-                const thumbLabel = document.getElementById(`desc_preview_${this.photos[this.currentIndex].uid}`);
-                if (thumbLabel && field === 'desc') {
-                    thumbLabel.textContent = value || '（無說明）';
-                }
             }
 
             // 建立重複檔名 Set（快取於 _dupSet，委派 PhotoReportAudit 模組）
@@ -2334,9 +2333,11 @@
                 this.auditFilterBar.classList.toggle('audit-collapsed', !open);
                 this.btnToggleAudit.classList.toggle('hidden', !hasPhotos);
                 this.btnToggleAudit.setAttribute('aria-expanded', String(open));
-                const issueCount = audit ? (audit.missingLocation || 0) + (audit.missingDesc || 0) + (audit.invalidDateTime || 0) : 0;
+                const issueCount = audit?.issuesCount || 0;
                 this.btnToggleAudit.classList.toggle('has-issues', issueCount > 0);
-                const label = open ? '收起檢查' : (issueCount > 0 ? `檢查漏填（${issueCount}）` : '檢查漏填');
+                const summary = issueCount > 0 ? `待檢查 ${issueCount} 項` : '資料檢查通過';
+                const label = open ? `收起檢查・${summary}` : summary;
+                this.btnToggleAudit.title = '檢查未填地點、未填說明、日期時間異常與同名照片；同一張照片可能有多項問題';
                 this.btnToggleAudit.replaceChildren();
                 const icon = document.createElement('i');
                 icon.className = 'fa-solid fa-list-check';
@@ -2441,20 +2442,41 @@
                 }
             }
 
-            // 匯出前完整度檢查（非阻斷，委派 PhotoReportModalUi 模組）
+            hasSequenceOrderMismatch() {
+                if (this.photos.length < 2) return false;
+                const parts = this.photos.map(photo => String(photo.seq || '').match(/^(.*?)(\d+)$/));
+                // 支援重新編號功能的前綴、起始值與補零；自由文字編號不強制套用數字規則。
+                if (parts.some(part => !part)) return false;
+                const prefix = parts[0][1];
+                const start = Number(parts[0][2]);
+                return parts.some((part, index) => part[1] !== prefix || Number(part[2]) !== start + index);
+            }
+
+            // 匯出前編號與完整度檢查，保留使用者直接匯出的選擇。
             confirmExportWithAudit(action, title) {
                 if (!this.photos.length) {
                     action();
                     return;
                 }
                 const audit = this.auditPhotosCompleteness();
-                if (audit.issuesCount === 0) {
+                const sequenceMismatch = this.hasSequenceOrderMismatch();
+                if (audit.issuesCount === 0 && !sequenceMismatch) {
                     action();
                     return;
                 }
 
+                document.getElementById('exportSequenceNotice').hidden = !sequenceMismatch;
+                document.getElementById('btnAuditRenumber').hidden = !sequenceMismatch;
+                this.btnAuditViewIssues.hidden = audit.issuesCount === 0;
+                this.exportAuditList.hidden = audit.issuesCount === 0;
+                document.getElementById('exportAuditHint').textContent = sequenceMismatch
+                    ? '照片編號未依目前順序連續排列。可先重新編號，也可保留原編號匯出。'
+                    : '以下資料可再確認；也可以直接匯出。';
+                this.btnAuditProceedExport.querySelector('span').textContent = sequenceMismatch ? '保留編號匯出' : '仍要匯出';
+
                 // 有問題時顯示提醒彈窗，暫存 action
                 this.pendingExportAction = action;
+                this.pendingExportTitle = title;
                 const titleEl = this.exportAuditModalTitle || this.exportAuditModal?.querySelector('#exportAuditModalTitle') || this.exportAuditModal?.querySelector('#exportAuditTitle');
                 if (typeof PhotoReportModalUi !== 'undefined') {
                     PhotoReportModalUi.showExportAuditPrompt({
@@ -2483,7 +2505,7 @@
                 const selectedCount = this.photos.filter(photo => photo.selected).length;
                 if (selectedCount > 0) {
                     this.selectedCountBadge.classList.remove('hidden');
-                    this.selectedCountBadge.textContent = `已選 ${selectedCount} 張`;
+                    this.selectedCountBadge.textContent = `已勾選 ${selectedCount} 張`;
                     this.batchApplyBox.classList.remove('hidden');
                     this.batchCountNum.textContent = selectedCount;
                     this.editorModeBadge.textContent = `一次改 ${selectedCount} 張`;
@@ -2517,10 +2539,22 @@
                 setBtnState('btnAutoArrangeStage', hasPhotos);
                 setBtnState('btnClearAll', hasPhotos);
                 setBtnState('btnToggleEditor', hasPhotos);
+                setBtnState('btnExportPdf', hasPhotos);
+                setBtnState('btnExportDocx', hasPhotos);
+                document.getElementById('exportEmptyHint').hidden = hasPhotos;
 
                 setBtnState('btnRemoveSelected', hasSelection);
+                setBtnState('btnApplyDefaultsToSelected', hasSelection);
                 setBtnState('btnMoveSelectedBackward', hasSelection);
                 setBtnState('btnMoveSelectedForward', hasSelection);
+
+                document.getElementById('batchRotateText').textContent = hasSelection ? '旋轉已選' : '旋轉全部';
+                document.getElementById('btnBatchRotate').title = `將${hasSelection ? `已勾選的 ${selectedCount}` : `全部 ${totalPhotos}`} 張照片順時針旋轉 90°`;
+                const applyDefaultsButton = document.getElementById('btnApplyDefaultsToSelected');
+                applyDefaultsButton.textContent = hasSelection ? `套用日期與地點至已選 ${selectedCount} 張` : '請先勾選要套用日期與地點的照片';
+                applyDefaultsButton.title = hasSelection
+                    ? `將案件日期與地點寫入已勾選的 ${selectedCount} 張照片；之後修改案件資料，這些照片不會跟著變`
+                    : '勾選照片後，即可套用案件日期與地點';
 
                 // 空白狀態只保留匯入後才需要設定的檢視控制，避免停用按鈕佔滿操作區。
                 const photoActionToolbar = document.getElementById('photoActionToolbar');
@@ -2575,13 +2609,24 @@
                     const titleIcon = document.createElement('i');
                     titleIcon.className = 'fa-solid fa-pen-to-square text-[#5B5CE2]';
                     const titleText = document.createElement('span');
-                    titleText.textContent = `編輯照片・第 ${this.currentIndex + 1} / ${totalPhotos} 張（編號 ${curPhoto.seq}）`;
+                    titleText.textContent = `正在編輯第 ${this.currentIndex + 1}／${totalPhotos} 張（編號 ${curPhoto.seq}）`;
                     this.editorTitle.append(titleIcon, document.createTextNode(' '), titleText);
                     this.editSeq.value = curPhoto.seq || '';
                     this.editDate.value = curPhoto.date || '';
                     this.editTime.value = curPhoto.time || '';
                     this.editLocation.value = curPhoto.location || '';
                     this.editDesc.value = curPhoto.desc || '';
+                    const remaining = totalPhotos - this.currentIndex - 1;
+                    ['btnFillDownDate', 'btnFillDownTime', 'btnFillDownLocation', 'btnFillDownDescAll'].forEach(id => {
+                        const button = document.getElementById(id);
+                        button.disabled = remaining === 0;
+                        button.title = remaining === 0 ? '沒有後續照片可填入' : id === 'btnFillDownDescAll'
+                            ? `填入後續 ${remaining} 張的空白說明，保留已有內容`
+                            : `套用至後續 ${remaining} 張，將取代原有內容；覆寫不同內容前會先確認`;
+                    });
+                    document.getElementById('fillDownHint').textContent = remaining
+                        ? `向下填滿範圍：後續 ${remaining} 張。日期、時間與地點會取代原值；說明只填空白。`
+                        : '這是最後一張照片，沒有後續照片可填入。';
                     const defaultDate = document.getElementById('caseDate').value.trim();
                     this.editDateInheritedHint.textContent = defaultDate
                         ? `空白時用案件日期：${defaultDate}`
@@ -2598,7 +2643,7 @@
                     const missingFields = [!String(p.location || '').trim() && !defaultLocation ? '地點' : '', !String(p.desc || '').trim() ? '說明' : ''].filter(Boolean);
                     const statusText = missingFields.length ? `待補：${missingFields.join('、')}` : '資料完整';
                     const displayLayout = this.getPhotoDisplayLayout(p);
-                    const cardTitle = `第 ${p.seq} 張｜時間：${p.time || '未填'}｜${statusText}｜雙擊縮圖放大、雙擊下方說明列編輯，拖曳可排序`;
+                    const cardTitle = `第 ${p.seq} 張｜時間：${p.time || '未填'}｜${statusText}｜雙擊縮圖放大、雙擊編號列編輯，拖曳可排序`;
 
                     return `
                         <div class="photo-thumb-card morandi-card p-1.5 flex flex-col gap-1 bg-white border border-[#C7CBD3]/25 rounded-xl ${isSelected} ${isCurrent}"
@@ -2629,9 +2674,6 @@
                                 <img src="${p.thumbnailSrc}" alt="${escapeHtml(p.name)}" loading="lazy" decoding="async" style="${displayLayout.imageStyle}" class="absolute left-1/2 top-1/2 object-contain pointer-events-none">
                             </div>
 
-                            <div class="thumbnail-card-footer flex items-center justify-between gap-1 px-0.5 pt-0.5 text-[12px] font-bold text-slate-900 truncate">
-                                <span id="desc_preview_${p.uid}" class="truncate">${escapeHtml(p.desc || p.location || defaultLocation || '（無說明）')}</span>
-                            </div>
                         </div>
                     `;
                 }).join('');
@@ -2945,6 +2987,8 @@
             }
 
             closeModal(id) {
+                if (id === 'sequenceModal') this.pendingSequenceExport = null;
+                if (id === 'exportAuditModal') this.pendingExportAction = null;
                 if (id === 'imageLightboxModal') {
                     this.commitLightboxHistoryIfNeeded();
                 }
