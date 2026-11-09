@@ -105,7 +105,12 @@ body {
     background-color: var(--game-gold-bg) !important;
     box-shadow: inset 0 0 0 2px #F59E0B !important;
 }
-#thumbGrid.external-file-drag-over::after {
+/* 提示框掛在外層不捲動的容器上，避免照片多、捲動後只蓋住頂端區域。 */
+#thumbGridDropZone {
+    z-index: 10;
+}
+#thumbGridDropZone.external-file-drag-over::after,
+#thumbGridDropZone:has(> #thumbGrid.external-file-drag-over)::after {
     content: '📥 放開以加入照片';
     position: absolute;
     inset: 0.5rem;

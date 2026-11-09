@@ -64,6 +64,7 @@
                 this.workspaceContainer = document.getElementById('workspaceContainer');
                 this.appMainLayout = document.getElementById('appMainLayout');
                 this.mainPanelSplitter = document.getElementById('mainPanelSplitter');
+                this.thumbGridDropZone = document.getElementById('thumbGridDropZone');
                 this.thumbGrid = document.getElementById('thumbGrid');
                 this.photoPanel = document.getElementById('photoPanel');
                 this.editorPanel = document.getElementById('editorPanel');
@@ -156,7 +157,7 @@
 
                 // 外部檔案拖入空白狀態或照片舞台；既有卡片拖曳排序不含 Files，不會被攔截。
                 this.bindExternalFileDropTarget(this.emptyState);
-                this.bindExternalFileDropTarget(this.thumbGrid);
+                this.bindExternalFileDropTarget(this.thumbGrid, this.thumbGridDropZone);
 
                 this.fileInput.addEventListener('change', (e) => {
                     const files = Array.from(e.target.files).filter(f => f.type.startsWith('image/'));
@@ -1124,27 +1125,31 @@
                 return Array.from(event.dataTransfer?.types || []).includes('Files');
             }
 
-            bindExternalFileDropTarget(target) {
+            bindExternalFileDropTarget(target, overlayTarget = null) {
+                const setDragOver = (active) => {
+                    target.classList.toggle('external-file-drag-over', active);
+                    if (overlayTarget) overlayTarget.classList.toggle('external-file-drag-over', active);
+                };
                 if (!target) return;
                 target.addEventListener('dragenter', (event) => {
                     if (!this.isExternalFileDrag(event)) return;
                     event.preventDefault();
-                    target.classList.add('external-file-drag-over');
+                    setDragOver(true);
                 });
                 target.addEventListener('dragover', (event) => {
                     if (!this.isExternalFileDrag(event)) return;
                     event.preventDefault();
                     event.dataTransfer.dropEffect = 'copy';
-                    target.classList.add('external-file-drag-over');
+                    setDragOver(true);
                 });
                 target.addEventListener('dragleave', (event) => {
                     if (!this.isExternalFileDrag(event) || target.contains(event.relatedTarget)) return;
-                    target.classList.remove('external-file-drag-over');
+                    setDragOver(false);
                 });
                 target.addEventListener('drop', (event) => {
                     if (!this.isExternalFileDrag(event)) return;
                     event.preventDefault();
-                    target.classList.remove('external-file-drag-over');
+                    setDragOver(false);
                     const files = Array.from(event.dataTransfer.files).filter(file => file.type.startsWith('image/'));
                     if (!files.length) return alert('請拖入支援的圖片檔案。');
                     this.handleFiles(files).catch(error => this.handleProcessingError(error));

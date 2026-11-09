@@ -3,69 +3,63 @@
 ## 核心元資料 (Metadata)
 - **Repository**：lianghao02/Photo-Report-Generator
 - **Branch**：main
-- **Commit SHA**：87fa4e415a93ca0711ec346142753078ccfa902c（本輪基準；交付提交以 Git 記錄為準）
+- **Commit SHA**：53f7c180bfbdc2f048b486dbfc627a2b9e13dd54（本輪修改前基準；本輪交付提交以最新 Git 記錄為準）
 - **Skill Version**：v1.0.0
-- **Task Type**：IMPROVE
+- **Task Type**：FIX
 - **Local Path Hint**：04_Photo-Report-Generator
 
+---
+
 ## 目前狀態
-2026-10-26：頁面操作提示與局部視覺改善完成，本機驗證通過；使用者已授權提交、推送與網頁部署。交付提交與部署結果以 Git 遠端及 GitHub Pages 狀態為準。
+可交付（已完成修復與全套驗證；使用者授權先提交本輪修復，尚未推送遠端）。
 
 ## 本輪目標
-依使用者確認的方向，逐步改善操作範圍、向下填滿、檢查摘要、工具列分組與可讀性。
-後續追加：排序保留編號、匯出前提示重新編號，以及移除縮圖下方說明與地點。
+修復照片數量較多、縮圖區（`#thumbGrid`）產生垂直捲動時，外部檔案拖曳提示框（`📥 放開以加入照片`）因絕對定位受限於可視高度且隨內容捲動而只覆蓋上半部的問題。
 
 ## 基準與已確認事實 (Baseline & Confirmed Facts)
-- 開始時 main 工作目錄乾淨，版本 v2.4.1。
-- 縮圖已有 90～480px 滑桿、縮放記憶與雙擊放大，沿用既有功能。
+- 起始為 `main`（`53f7c18`），工作目錄乾淨，版本 `v2.4.1`。
+- 實測載入 43 張照片並捲動 `#thumbGrid` 後，`scrollHeight` 超過 `600px`，原本直接掛在 `#thumbGrid::after` 的虛線提示框停留在頂端 `0～590px`，導致下方照片露出框外。
 
 ## 已完成 (Completed)
-- 旋轉按鈕依選取狀態顯示全部／已選與張數提示；案件資料套用在零選取時停用，有選取時顯示張數；編輯標題與勾選數使用不同用語。
-- 向下填滿顯示後續範圍；日期、時間、地點覆寫不同既有內容前確認；說明仍只填空白；回報實際更新及保留張數，最後一張停用。
-- 檢查摘要改為問題項數，包含面板已有的同名照片分類。
-- 工具列加入分組，排序按鈕文案明確化；提高編輯提示字級、減輕輸入框與編輯卡片陰影、降低編輯欄按鈕強調。
-- 空白清冊停用 Word／PDF 匯出並顯示提示；窄螢幕匯出列改為正常排列，避免遮住照片。
-- 排序流程不再自動重新編號或依最大編號長度補零；編號由使用者透過既有重新編號功能決定。
-- 匯出前檢查數字編號是否依目前順序連續，支援前綴、自訂起始值與補零；與既有資料檢查共用提醒視窗，可保留編號匯出，或開啟重新編號設定並於套用後接續匯出。自由文字編號不強制套用數字規則。
-- 移除縮圖下方的說明／地點列及其更新程式；編輯入口改為雙擊編號列，雙擊縮圖仍開啟燈箱。
+- `index.html`：於 `#thumbGrid` 外層新增不捲動定位容器 `#thumbGridDropZone`（沿用既有 `relative rounded-xl`）。
+- `css/app.css`：將外部拖曳提示框 `::after` 改掛於 `#thumbGridDropZone`，並設定 `z-index: 10` 以維持在底部 `.export-bar`（`z-index: 20`）之下。
+- `js/app.js`：更新 `bindExternalFileDropTarget` 同步切換 `#thumbGrid` 與 `#thumbGridDropZone` 的 `.external-file-drag-over`。
+- `tests/e2e/photo-report.spec.js`：新增 24 張照片捲動至底部的外部檔案拖曳提示框覆蓋高度與拖離清除 E2E 回歸驗證。
 
 ## 異動檔案 (Changed Files)
-index.html、js/app.js、css/app.css、tests/e2e/photo-report.spec.js、HANDOFF.md。
+index.html、css/app.css、js/app.js、tests/e2e/photo-report.spec.js、HANDOFF.md。
 
 ## 刻意未修改 (Do Not Do / Deliberately Omitted)
-縮圖功能、照片處理、稽核計算模組、Word／PDF／Excel 版型與匯出器、版本號、相依套件與離線資源。
+Word／PDF／Excel 匯出格式與 Golden Baseline 結構、版本號、`vendor/tailwind.css`（無新增樣式類別）。
 
 ## 尚未完成 (Remaining Work)
-- **P1 (阻斷/必須)**：無已知阻斷。
-- **P2 (重要/當次)**：無。
-- **P3 (改善建議/暫緩)**：若後續發布桌面版，另做 Tauri 建置與桌面視窗驗收。
+- **P1 (阻斷/必須)**：無。
+- **P2 (重要/當次)**：待使用者決定是否推送 `origin/main`（觸發 GitHub Pages 自動部署）。
+- **P3 (改善建議/暫緩)**：已依據使用者實際採證 Word 檔完成「非破壞性圖片標記（黃／紅框＋姓名文字標籤）＋ 水平鏡像翻轉 ＋ 局部裁切特寫」（Phase 1～3）方向評估，待使用者確認啟動規格；若後續發布桌面版再另行執行 Tauri 建置驗收。
 
 ## 驗證結果 (Validation)
 ### 已執行測試與結果
-- node tests/run-all-unit.js：4 組通過。
-- node tests/e2e/photo-report.spec.js：完整通過，新增未選取／單選／多選操作範圍、覆寫取消與確認、說明保護、末張停用、匯出與問題摘要驗證。
-- 追加修改後重跑單元、完整 E2E 與 Golden Baseline 均通過；新增 12 張檔名排序保留原編號、保留編號匯出、重新編號後接續匯出、自訂前綴／起始值／補零、移動後連號檢查與縮圖文字移除驗證。
-- 追加修改後檢視 1366px 工作台與 390px 匯出提醒截圖，瀏覽器未捕捉例外為 0，窄螢幕無水平溢出；語法與 QA 檢查通過。
-- node tests/run-baseline-test.js：Word／Excel／PDF Golden Baseline 及三種版型匯出通過。
-- scripts/qa.ps1 與 git diff --check：通過。
-- 1920、1366、390px 截圖；1366、390px 無頁面水平溢出。窄螢幕固定匯出列遮擋已改為正常排列。
-- 這輪沒有新增 Tailwind utility class，新增樣式直接由 css/app.css 提供。
+- `npm test`（`node tests/run-all-unit.js`）：4/4 通過。
+- `npm run test:baseline`（`node tests/run-baseline-test.js`）：Word／Excel／PDF 結構與 3 種版型全部通過。
+- `npm run test:e2e`（`node tests/e2e/photo-report.spec.js`）：全部通過（含新增大量照片捲動拖曳提示框回歸檢查）。
+- `powershell -ExecutionPolicy Bypass -File scripts\qa.ps1` 與 `git diff --check`：通過。
+- Playwright 截圖實測（43 張照片捲動至底及頁面頂端狀態）：確認提示框完整覆蓋可視縮圖區且未遮擋底部匯出列。
 ### 尚未驗證項目
-未建置或操作 Tauri 桌面版；本機驗證後另核對正式站部署內容。
+未建置或操作 Tauri 桌面版；本輪尚未推送遠端。
 ### 已知風險 (Known Risks)
-無本輪已知阻斷性問題。
+無本輪已知阻斷性問題；在極舊不支援 CSS `:has()` 之瀏覽器仍可透過 `js/app.js` 同步切換 `#thumbGridDropZone` 類別正常運作。
 
 ## Git 狀態
-- Commit：本輪基準 87fa4e4；交付提交訊息為「fix: 改善照片排序編號與清冊操作提示」。
-- Push：使用者已授權推送 origin/main；結果以遠端分支為準。
-- Working Tree：本輪提交僅涵蓋上述 5 檔；交付後以 git status 為準。
+- Commit：本輪修正提交於 `main`（交付提交訊息為「fix: 修復大量照片捲動時外部拖曳提示框截斷問題」，實際 SHA 以 Git 記錄為準）。
+- Push：否（依指示先執行本機提交，待確認推送）。
+- Working Tree：提交後維持 Clean。
 - Branch：main。
 
 ## 下一步建議動作 (Next Recommended Action)
-推送後核對 Pages 建置提交與正式站 index.html、js/app.js、css/app.css；完成後停止擴大修改。
+確認是否推送 `origin/main`；若確認展開 Phase 1（畫黃／紅框＋人名文字標籤＋水平鏡像翻轉），先確認規格細節再實作。
 
 ## 發布狀態 (Release Status)
-Web 本機功能驗證通過；GitHub Pages 設定為 main 根目錄自動部署（legacy）。本輪不升版、不建立 Release、不重建桌面版。
+Web 本機功能與全套測試通過，未升版、未建置桌面版或推送部署。
 
 ---
 

@@ -497,6 +497,49 @@ async function runE2eTests() {
     if (!isFocusedOnDesc) throw new Error('雙擊卡片後焦點未自動置於說明欄位 #editDesc');
     console.log('  ✅ 雙擊縮圖卡片成功展開單張編輯面板並聚焦至說明欄位');
 
+    // 3. 測試大量照片捲動到底部時，外部檔案拖曳提示框仍完整覆蓋可視區域
+    const sample01Path = path.resolve(__dirname, '../fixtures/sample01.jpg');
+    await page.setInputFiles('#fileInput', Array.from({ length: 24 }, () => sample01Path));
+    await page.waitForFunction(() => window.app && window.app.photos.length >= 24);
+    const dragOverlayCheck = await page.evaluate(() => {
+        window.app.setThumbnailSize(130);
+        const grid = document.getElementById('thumbGrid');
+        const zone = document.getElementById('thumbGridDropZone');
+        grid.scrollTop = grid.scrollHeight;
+        const dt = new DataTransfer();
+        dt.items.add(new File(['x'], 'extra.jpg', { type: 'image/jpeg' }));
+        grid.dispatchEvent(new DragEvent('dragenter', { bubbles: true, cancelable: true, dataTransfer: dt }));
+        grid.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt }));
+        const afterStyle = getComputedStyle(zone, '::after');
+        const result = {
+            gridScrollHeight: grid.scrollHeight,
+            gridClientHeight: grid.clientHeight,
+            gridScrollTop: grid.scrollTop,
+            zoneClientHeight: zone.clientHeight,
+            zoneScrollHeight: zone.scrollHeight,
+            zoneHasClass: zone.classList.contains('external-file-drag-over'),
+            gridHasClass: grid.classList.contains('external-file-drag-over'),
+            afterHeight: parseFloat(afterStyle.height),
+            afterContent: afterStyle.content
+        };
+        grid.dispatchEvent(new DragEvent('dragleave', { bubbles: true, cancelable: true, dataTransfer: dt, relatedTarget: document.body }));
+        result.clearedAfterLeave = !zone.classList.contains('external-file-drag-over') && !grid.classList.contains('external-file-drag-over');
+        return result;
+    });
+    if (dragOverlayCheck.gridScrollHeight <= dragOverlayCheck.gridClientHeight || dragOverlayCheck.gridScrollTop <= 0) {
+        throw new Error(`測試前提失敗：縮圖區未產生捲動 (${JSON.stringify(dragOverlayCheck)})`);
+    }
+    if (!dragOverlayCheck.zoneHasClass || !dragOverlayCheck.gridHasClass || !dragOverlayCheck.afterContent.includes('放開以加入照片')) {
+        throw new Error(`外部拖曳提示狀態未正確啟用 (${JSON.stringify(dragOverlayCheck)})`);
+    }
+    if (Math.abs(dragOverlayCheck.afterHeight - (dragOverlayCheck.zoneClientHeight - 16)) > 4 || dragOverlayCheck.zoneScrollHeight !== dragOverlayCheck.zoneClientHeight) {
+        throw new Error(`捲動後拖曳提示框高度異常 (${JSON.stringify(dragOverlayCheck)})`);
+    }
+    if (!dragOverlayCheck.clearedAfterLeave) {
+        throw new Error('拖離縮圖區後未清除外部拖曳提示狀態');
+    }
+    console.log('  ✅ 大量照片捲動時外部拖曳提示框完整覆蓋可視區域');
+
     if (pageErrors.length > 0) {
         console.warn('⚠️ 頁面出現 Uncaught Error:', pageErrors);
     }
