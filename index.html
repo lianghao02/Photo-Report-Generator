@@ -38,7 +38,13 @@
             </div>
         </div>
 
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-2 flex-wrap">
+            <!-- 工作進度儲存狀態與一鍵快存按鈕（有照片或未存變更時顯示） -->
+            <button type="button" id="btnQuickSaveStatus" class="hidden project-save-badge project-save-badge--saved" title="點擊立即儲存工作進度（快速鍵：Ctrl+S）">
+                <i id="quickSaveStatusIcon" class="fa-solid fa-circle-check"></i>
+                <span id="quickSaveStatusText">工作進度已儲存</span>
+            </button>
+
             <!-- 檔案選單：專案檔、Excel、照片 ZIP 等少用功能 -->
             <details class="app-menu">
                 <summary class="btn-secondary px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5">
@@ -46,24 +52,19 @@
                 </summary>
                 <div class="app-menu-panel">
                     <p class="app-menu-group">工作進度</p>
-                    <label class="app-menu-item" title="開啟之前儲存的工作進度">
+                    <label class="app-menu-item" title="開啟之前儲存的工作進度（也可直接把 .photo-report 拖進畫面）">
                         <i class="fa-solid fa-folder-open"></i> 開啟工作進度…
                         <input type="file" id="importProjectInput" accept=".photo-report,application/zip" class="hidden">
                     </label>
-                    <button type="button" id="btnSaveProject" class="app-menu-item" title="把照片與已填資料存成一個檔案，之後可繼續編輯">
-                        <i class="fa-solid fa-floppy-disk"></i> 儲存工作進度
-                    </button>
-                    <p class="app-menu-group">Excel</p>
-                    <label class="app-menu-item" title="用 Excel 填好的說明，依編號或檔名帶回照片">
-                        <i class="fa-solid fa-file-import"></i> 從 Excel 匯入說明…
-                        <input type="file" id="importExcelInput" accept=".xlsx, .xls" class="hidden">
+                    <label class="app-menu-item" title="把另一份（或多份）.photo-report 進度檔彙整到目前清冊：同照片自動去重並保留較新版本，新照片自動接續">
+                        <i class="fa-solid fa-code-merge"></i> 併入其他工作進度…
+                        <input type="file" id="mergeProjectInput" multiple accept=".photo-report,application/zip" class="hidden">
                     </label>
-                    <button type="button" id="btnExportExcel" class="app-menu-item" title="把編號、日期、時間、地點、說明輸出成 Excel">
-                        <i class="fa-regular fa-file-excel"></i> 匯出 Excel 清單
+                    <button type="button" id="btnSaveProject" class="app-menu-item" title="把照片與已填資料存成檔案，之後可繼續編輯（快速鍵：Ctrl+S；超大原圖會自動以 220 ppi 等級最佳化壓縮）">
+                        <i class="fa-solid fa-floppy-disk"></i> <span id="saveProjectMenuText">儲存工作進度（Ctrl+S）</span>
                     </button>
-                    <p class="app-menu-group">照片</p>
-                    <button type="button" id="btnExportZip" class="app-menu-item" title="下載已轉正、壓縮後的照片（ZIP）">
-                        <i class="fa-regular fa-file-zipper"></i> 下載處理後照片（ZIP）
+                    <button type="button" id="btnSaveProjectAs" class="app-menu-item" title="另存成新的 .photo-report 檔案（快速鍵：Ctrl+Shift+S）">
+                        <i class="fa-regular fa-copy"></i> 另存新進度檔…
                     </button>
                 </div>
             </details>
@@ -200,8 +201,11 @@
                         </summary>
                         <div class="app-menu-panel">
                             <p class="app-menu-group">排序與編號</p>
-                            <button type="button" id="btnAutoArrangeStage" class="app-menu-item" title="依檔名重新排列全部照片（會取代手動排好的順序）">
+                            <button type="button" id="btnAutoArrangeStage" class="app-menu-item" title="依原始照片檔名重新排列全部照片（會取代手動排好的順序）">
                                 <i class="fa-solid fa-arrow-down-a-z"></i> 依檔名排序
+                            </button>
+                            <button type="button" id="btnSortByCaptureTime" class="app-menu-item" title="依每張照片填寫的採證日期與時間由早到晚重新排列全部照片">
+                                <i class="fa-regular fa-clock"></i> 依採證時間排序
                             </button>
                             <button type="button" id="btnOpenSequenceModal" class="app-menu-item" title="從指定號碼開始重新編號">
                                 <i class="fa-solid fa-arrow-down-1-9"></i> 重新編號…
@@ -210,10 +214,7 @@
                             <button type="button" id="btnParseFilenameTime" class="app-menu-item" title="檔名像 20240826_143210 時，自動帶入日期與時間">
                                 <i class="fa-solid fa-wand-magic-sparkles"></i> 從檔名讀取日期時間
                             </button>
-                            <p class="app-menu-group">檢視</p>
-                            <button type="button" id="btnViewPreview" class="app-menu-item" title="依目前版型預覽每一頁會放哪幾張">
-                                <i class="fa-regular fa-file-lines"></i> 分頁預覽
-                            </button>
+                            <p class="app-menu-group">清理</p>
                             <button type="button" id="btnClearAll" class="app-menu-item app-menu-item--danger" title="移除清冊中的全部照片（不會刪除電腦裡的原檔）">
                                 <i class="fa-regular fa-trash-can"></i> 清空全部照片
                             </button>
@@ -273,14 +274,33 @@
                 </div>
             </div>
 
+            <!-- 自動暫存草稿恢復提示列（發現上次未完成草稿時顯示） -->
+            <div id="autoDraftBanner" class="hidden auto-draft-banner" role="region" aria-label="恢復上次未完成的工作進度">
+                <div class="flex items-center gap-2.5 min-w-0">
+                    <span class="auto-draft-banner__icon" aria-hidden="true"><i class="fa-solid fa-clock-rotate-left"></i></span>
+                    <div class="min-w-0">
+                        <p id="autoDraftBannerTitle" class="text-xs font-black text-[#1E293B]">發現上次還沒做完的工作進度</p>
+                        <p id="autoDraftBannerMeta" class="text-[11px] font-bold text-[#334155] mt-0.5">系統已自動暫存在這台電腦裡，可直接接續編輯。</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2 shrink-0 flex-wrap">
+                    <button type="button" id="btnRestoreAutoDraft" class="btn-primary px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5">
+                        <i class="fa-solid fa-rotate-left"></i> 接續上次進度
+                    </button>
+                    <button type="button" id="btnDiscardAutoDraft" class="btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-bold">
+                        捨棄草稿
+                    </button>
+                </div>
+            </div>
+
             <!-- 還沒有照片時的拖曳區 -->
             <div id="emptyState" class="file-drop-target drop-zone relative py-10 px-5 text-center text-slate-800 flex flex-col items-center gap-2.5 rounded-2xl transition">
                 <div class="game-icon-box--lg w-14 h-14 rounded-2xl flex items-center justify-center text-2xl">
                     <i class="fa-solid fa-cloud-arrow-up"></i>
                 </div>
                 <div class="max-w-md">
-                    <h3 class="text-base font-black text-slate-900">把照片或整個資料夾拖到這裡</h3>
-                    <p class="text-xs font-bold text-slate-700 mt-0.5 leading-relaxed">支援 JPG、PNG、WEBP。會自動轉正，並讀取拍攝時間。</p>
+                    <h3 class="text-base font-black text-slate-900">把照片、資料夾或 .photo-report 進度檔拖到這裡</h3>
+                    <p class="text-xs font-bold text-slate-700 mt-0.5 leading-relaxed">支援 JPG、PNG、WEBP 與 .photo-report 工作進度檔（一次拖入多個進度檔可自動彙整合併）。</p>
                 </div>
                 <div class="flex flex-wrap justify-center gap-2.5 mt-1">
                     <button type="button" class="btn-primary px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2" onclick="document.getElementById('fileInput').click()">
@@ -415,9 +435,6 @@
 
             </div>
 
-            <!-- Word 分頁拼貼預覽：依所選版型分組，僅供畫面確認，實際格式以 DOCX 匯出為準。 -->
-            <div id="previewContainer" class="hidden max-h-[600px] overflow-y-auto p-3 bg-[#EEF0F3]/50 rounded-xl border border-[#C7CBD3]/20"></div>
-
             <!-- 4. 試算表 DataGrid 視圖 (適合鍵盤快速 Key 表格) -->
             <div id="gridContainer" class="hidden overflow-x-auto border border-[#C7CBD3]/20 rounded-xl bg-white max-h-[600px] overflow-y-auto">
                 <table class="w-full text-left text-xs">
@@ -531,8 +548,10 @@
 
                 <div class="p-3 bg-slate-50 rounded-xl border border-slate-200/60 flex flex-col gap-2">
                     <span class="font-bold text-[#20242B] flex items-center gap-1.5">
-                        <i class="fa-solid fa-clock-rotate-left text-[#5B5CE2]"></i> 復原與移除
+                        <i class="fa-solid fa-clock-rotate-left text-[#5B5CE2]"></i> 儲存、復原與移除
                     </span>
+                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">儲存工作進度（主畫面／燈箱皆可用）</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">Ctrl + S</kbd></div>
+                    <div class="flex items-center justify-between"><span class="text-[#6B7280]">另存新進度檔</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">Ctrl + Shift + S</kbd></div>
                     <div class="flex items-center justify-between"><span class="text-[#6B7280]">移出目前／已選照片</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">Delete</kbd></div>
                     <div class="flex items-center justify-between"><span class="text-[#6B7280]">復原（主畫面／燈箱皆可用）</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">Ctrl + Z</kbd></div>
                     <div class="flex items-center justify-between"><span class="text-[#6B7280]">重做</span><kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded shadow-xs font-mono font-bold text-[11px]">Ctrl + Y</kbd></div>

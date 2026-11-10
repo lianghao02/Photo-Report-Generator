@@ -46,6 +46,20 @@
                 this.processingCancelled = false;
                 this.lightboxIndex = null;
                 this.savedProjectSignature = '';
+                this.savedPhotosByUid = new Map();
+                this.currentProjectFileHandle = null;
+                this.currentProjectFileName = '';
+                this.currentProjectSavedAt = null;
+                this.lastLocalEditAt = null;
+                this.initialSaveAs = typeof window !== 'undefined' && typeof window.saveAs === 'function' ? window.saveAs : null;
+                this.autoDraftDbName = 'PhotoReportAutoDraftDB';
+                this.autoDraftStoreName = 'drafts';
+                this.autoDraftTimer = null;
+                this.lastAutoDraftSavedAt = null;
+                this.pendingAutoDraft = null;
+                this.hadPhotosInSession = false;
+                this.maxAutoDraftPhotos = 120;
+                this.maxAutoDraftBytes = 200 * 1024 * 1024;
                 this.activeFilter = 'all';
                 this.pendingExportAction = null;
                 this.pendingSequenceExport = null;
@@ -58,6 +72,7 @@
                 this.render();
                 this.recordHistory('初始狀態');
                 this.markProjectSaved();
+                this.checkAndOfferAutoDraft();
             }
 
             initElements() {
@@ -76,7 +91,6 @@
                 this.selectionMarquee = document.getElementById('selectionMarquee');
                 this.btnToggleEditor = document.getElementById('btnToggleEditor');
                 this.gridContainer = document.getElementById('gridContainer');
-                this.previewContainer = document.getElementById('previewContainer');
                 this.gridTbody = document.getElementById('gridTbody');
                 this.emptyState = document.getElementById('emptyState');
                 this.photoCount = document.getElementById('photoCount');
@@ -98,6 +112,17 @@
                 this.btnCheckUpdate = document.getElementById('btnCheckUpdate');
                 this.checkUpdateIcon = document.getElementById('checkUpdateIcon');
                 this.checkUpdateText = document.getElementById('checkUpdateText');
+                this.btnQuickSaveStatus = document.getElementById('btnQuickSaveStatus');
+                this.quickSaveStatusIcon = document.getElementById('quickSaveStatusIcon');
+                this.quickSaveStatusText = document.getElementById('quickSaveStatusText');
+                this.saveProjectMenuText = document.getElementById('saveProjectMenuText');
+                this.btnSaveProjectAs = document.getElementById('btnSaveProjectAs');
+                this.mergeProjectInput = document.getElementById('mergeProjectInput');
+                this.autoDraftBanner = document.getElementById('autoDraftBanner');
+                this.autoDraftBannerTitle = document.getElementById('autoDraftBannerTitle');
+                this.autoDraftBannerMeta = document.getElementById('autoDraftBannerMeta');
+                this.btnRestoreAutoDraft = document.getElementById('btnRestoreAutoDraft');
+                this.btnDiscardAutoDraft = document.getElementById('btnDiscardAutoDraft');
 
                 // 右側編輯器元件
                 this.editorCard = document.getElementById('editorCard');
@@ -219,7 +244,6 @@
                 document.getElementById('btnToggleSelectAll').addEventListener('click', () => this.toggleSelectAll());
                 document.getElementById('btnViewWorkspace').addEventListener('click', () => this.switchView('workspace'));
                 document.getElementById('btnViewGrid').addEventListener('click', () => this.switchView('grid'));
-                document.getElementById('btnViewPreview').addEventListener('click', () => this.switchView('preview'));
                 document.getElementById('btnResetThumbnailSize').addEventListener('click', () => this.setThumbnailSize(135));
                 this.thumbnailSizeRange.addEventListener('input', (event) => this.setThumbnailSize(event.target.value));
                 this.mainPanelSplitter.addEventListener('pointerdown', (event) => this.beginMainPanelResize(event));
@@ -252,6 +276,7 @@
                 this.thumbGrid.addEventListener('dragover', (event) => this.handleStageGridDragOver(event));
                 this.thumbGrid.addEventListener('drop', (event) => this.handleStageGridDrop(event));
                 document.getElementById('btnAutoArrangeStage').addEventListener('click', () => this.sortPhotosByNaturalFilename({ confirmBeforeSort: true }));
+                document.getElementById('btnSortByCaptureTime')?.addEventListener('click', () => this.sortPhotosByCaptureTime({ confirmBeforeSort: true }));
                 this.btnToggleEditor.addEventListener('click', () => this.toggleEditor());
                 this.btnToggleAudit?.addEventListener('click', () => {
                     this.auditPanelOpen = !this.auditPanelOpen;
@@ -270,18 +295,19 @@
                 document.getElementById('btnParseFilenameTime').addEventListener('click', () => this.parseFilenameTime());
                 document.getElementById('btnOpenShortcutsModal')?.addEventListener('click', () => this.openModal('shortcutsModal'));
                 document.getElementById('btnExportDocx').addEventListener('click', () => this.confirmExportWithAudit(() => this.exportDocx().catch(e => this.handleExportError(e)), 'Word 清冊'));
-                document.getElementById('btnSaveProject').addEventListener('click', () => this.saveProject().catch(error => this.handleProjectError(error)));
+                document.getElementById('btnSaveProject').addEventListener('click', () => this.saveProject({ fromUserPicker: true }).catch(error => this.handleProjectError(error, 'save')));
+                this.btnSaveProjectAs?.addEventListener('click', () => this.saveProject({ saveAsNew: true, fromUserPicker: true }).catch(error => this.handleProjectError(error, 'save')));
+                this.btnQuickSaveStatus?.addEventListener('click', () => this.saveProject({ fromUserPicker: true }).catch(error => this.handleProjectError(error, 'save')));
+                this.btnRestoreAutoDraft?.addEventListener('click', () => this.restoreAutoDraft().catch(error => this.handleProjectError(error, 'open')));
+                this.btnDiscardAutoDraft?.addEventListener('click', () => this.discardAutoDraft());
                 document.getElementById('importProjectInput').addEventListener('change', (e) => this.openProject(e));
+                document.getElementById('mergeProjectInput')?.addEventListener('change', (e) => this.mergeProjects(e));
                 document.getElementById('btnUndo').addEventListener('click', () => this.undo());
                 document.getElementById('btnRedo').addEventListener('click', () => this.redo());
-                document.getElementById('btnExportExcel').addEventListener('click', () => this.confirmExportWithAudit(() => this.exportExcel(), 'Excel 清冊'));
-                document.getElementById('btnExportZip').addEventListener('click', () => this.exportZip().catch(error => this.handleExportError(error)));
                 document.getElementById('btnExportPdf').addEventListener('click', () => this.confirmExportWithAudit(() => this.exportPdf().catch(e => this.handleExportError(e)), 'PDF 清冊'));
-                document.getElementById('importExcelInput').addEventListener('change', (e) => this.importExcel(e));
                 this.layoutSelect.addEventListener('change', () => {
                     this.updateLayoutDescription();
                     this.updatePageEstimate();
-                    if (this.currentView === 'preview') this.renderPagePreview();
                     if (this.isLightboxOpen()) this.syncLightboxAnnotationLayerBounds();
                     this.scheduleHistory('變更清冊版型');
                 });
@@ -353,8 +379,16 @@
                 document.getElementById('btnNextPhoto').addEventListener('click', () => this.navigatePhoto(1));
                 document.getElementById('btnDeleteCurrent').addEventListener('click', () => this.removePhoto(this.currentIndex));
 
-                // 鍵盤快速鍵：方向鍵切換單張選取；Ctrl＋方向鍵與 Ctrl＋Home／End 重排已選照片；Delete 移除照片。
+                // 鍵盤快速鍵：Ctrl+S 儲存進度；方向鍵切換單張選取；Ctrl＋方向鍵與 Ctrl＋Home／End 重排已選照片；Delete 移除照片。
                 window.addEventListener('keydown', (e) => {
+                    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 's') {
+                        e.preventDefault();
+                        if (!this.hasBlockingModalOpen()) {
+                            this.saveProject({ saveAsNew: Boolean(e.shiftKey), fromUserPicker: true })
+                                .catch(error => this.handleProjectError(error, 'save'));
+                        }
+                        return;
+                    }
                     const isCheckboxDeleteShortcut = e.key === 'Delete' &&
                         !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey &&
                         e.target instanceof HTMLInputElement && e.target.type === 'checkbox';
@@ -732,6 +766,7 @@
                     try {
                         sourceUrl = URL.createObjectURL(file);
                         const thumbnail = await this.createThumbnailUrl(file, sourceUrl);
+                        const parsedTime = this.extractTimeFromFilename(file.name);
                         const photoItem = {
                             uid: 'uid_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9),
                             file: file,
@@ -739,6 +774,7 @@
                             src: sourceUrl,
                             thumbnailSrc: thumbnail.src,
                             thumbnailAspect: thumbnail.aspect,
+                            visualFingerprint: thumbnail.visualFingerprint || '',
                             rotation: 0,
                             flipH: false,
                             parentUid: null,
@@ -750,7 +786,8 @@
                             exifRotation: await this.readJpegExifRotation(file),
                             seq: String(this.getNextMainSeqNumber()),
                             date: '',
-                            time: this.extractTimeFromFilename(file.name) || '12:00',
+                            time: parsedTime || '12:00',
+                            timeAutoDefaulted: !parsedTime,
                             // 留空代表繼承清冊預設地點，避免把預設值誤認為本張覆寫資料。
                             location: '',
                             desc: '',
@@ -814,11 +851,143 @@
                     ));
                     return {
                         src: URL.createObjectURL(blob),
-                        aspect: canvas.width / canvas.height
+                        aspect: canvas.width / canvas.height,
+                        visualFingerprint: this.computeVisualFingerprintFromCanvas(canvas)
                     };
                 } finally {
                     if (source && typeof source.close === 'function') source.close();
                 }
+            }
+
+            normalizePhotoFilenameKey(name) {
+                const trimmed = String(name || '').trim().toLowerCase();
+                return trimmed.replace(/\.(jpe?g|png|webp|gif|bmp|heic)$/i, '').replace(/\s+/g, ' ');
+            }
+
+            computeVisualFingerprintFromCanvas(sourceCanvas) {
+                if (!sourceCanvas) return '';
+                try {
+                    const w = 17;
+                    const h = 16;
+                    const fpCanvas = document.createElement('canvas');
+                    fpCanvas.width = w;
+                    fpCanvas.height = h;
+                    const ctx = fpCanvas.getContext('2d', { willReadFrequently: true });
+                    if (!ctx) return '';
+                    ctx.fillStyle = '#FFFFFF';
+                    ctx.fillRect(0, 0, w, h);
+                    ctx.imageSmoothingEnabled = true;
+                    ctx.drawImage(sourceCanvas, 0, 0, w, h);
+                    const data = ctx.getImageData(0, 0, w, h).data;
+
+                    // 16x16 horizontal dHash（256 bits => 64 位 hex）
+                    let hexBits = '';
+                    let nibble = 0;
+                    let bitIdx = 0;
+                    const grayAt = (x, y) => {
+                        const i = (y * w + x) * 4;
+                        return data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+                    };
+                    for (let y = 0; y < h; y++) {
+                        for (let x = 0; x < 16; x++) {
+                            const bit = grayAt(x, y) > grayAt(x + 1, y) ? 1 : 0;
+                            nibble = (nibble << 1) | bit;
+                            bitIdx++;
+                            if (bitIdx === 4) {
+                                hexBits += nibble.toString(16);
+                                nibble = 0;
+                                bitIdx = 0;
+                            }
+                        }
+                    }
+
+                    // 2x2 象限平均 RGB（4 象限 x RGB => 12 位 hex），輔助區分純色與平緩漸層圖
+                    let quadHex = '';
+                    const regions = [
+                        { x0: 0, x1: 8, y0: 0, y1: 8 },
+                        { x0: 9, x1: 17, y0: 0, y1: 8 },
+                        { x0: 0, x1: 8, y0: 8, y1: 16 },
+                        { x0: 9, x1: 17, y0: 8, y1: 16 }
+                    ];
+                    regions.forEach(({ x0, x1, y0, y1 }) => {
+                        let r = 0, g = 0, b = 0, count = 0;
+                        for (let y = y0; y < y1; y++) {
+                            for (let x = x0; x < x1; x++) {
+                                const i = (y * w + x) * 4;
+                                r += data[i];
+                                g += data[i + 1];
+                                b += data[i + 2];
+                                count++;
+                            }
+                        }
+                        if (count > 0) {
+                            quadHex += Math.min(15, Math.round((r / count) / 17)).toString(16);
+                            quadHex += Math.min(15, Math.round((g / count) / 17)).toString(16);
+                            quadHex += Math.min(15, Math.round((b / count) / 17)).toString(16);
+                        } else {
+                            quadHex += '000';
+                        }
+                    });
+                    return `${hexBits}:${quadHex}`;
+                } catch {
+                    return '';
+                }
+            }
+
+            async computeVisualFingerprintFromBlob(blob) {
+                if (!blob) return { visualFingerprint: '', aspect: 1 };
+                let source = null;
+                let tempUrl = '';
+                try {
+                    if (typeof createImageBitmap === 'function') {
+                        source = await createImageBitmap(blob);
+                    } else {
+                        tempUrl = URL.createObjectURL(blob);
+                        source = await this.loadImage(tempUrl);
+                    }
+                    const w = source.width || source.naturalWidth || 1;
+                    const h = source.height || source.naturalHeight || 1;
+                    const maxDim = 320;
+                    const ratio = Math.min(maxDim / w, maxDim / h, 1);
+                    const canvas = document.createElement('canvas');
+                    canvas.width = Math.max(1, Math.round(w * ratio));
+                    canvas.height = Math.max(1, Math.round(h * ratio));
+                    const ctx = canvas.getContext('2d');
+                    if (!ctx) return { visualFingerprint: '', aspect: w / h };
+                    ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+                    return {
+                        visualFingerprint: this.computeVisualFingerprintFromCanvas(canvas),
+                        aspect: canvas.width / canvas.height
+                    };
+                } catch {
+                    return { visualFingerprint: '', aspect: 1 };
+                } finally {
+                    if (source && typeof source.close === 'function') source.close();
+                    if (tempUrl) URL.revokeObjectURL(tempUrl);
+                }
+            }
+
+            compareVisualFingerprints(fpA, fpB) {
+                if (!fpA || !fpB) return { match: false, dhashDist: 999, totalQuadDiff: 999, maxQuadDiff: 999, score: 9999 };
+                const [hashA = '', quadA = ''] = String(fpA).split(':');
+                const [hashB = '', quadB = ''] = String(fpB).split(':');
+                if (hashA.length !== 64 || hashB.length !== 64 || quadA.length !== 12 || quadB.length !== 12) {
+                    return { match: false, dhashDist: 999, totalQuadDiff: 999, maxQuadDiff: 999, score: 9999 };
+                }
+                let dhashDist = 0;
+                for (let i = 0; i < 64; i++) {
+                    const xor = (parseInt(hashA[i], 16) || 0) ^ (parseInt(hashB[i], 16) || 0);
+                    dhashDist += ((xor & 1) + ((xor >> 1) & 1) + ((xor >> 2) & 1) + ((xor >> 3) & 1));
+                }
+                let totalQuadDiff = 0;
+                let maxQuadDiff = 0;
+                for (let i = 0; i < 12; i++) {
+                    const diff = Math.abs((parseInt(quadA[i], 16) || 0) - (parseInt(quadB[i], 16) || 0));
+                    totalQuadDiff += diff;
+                    if (diff > maxQuadDiff) maxQuadDiff = diff;
+                }
+                const match = dhashDist <= 28 && maxQuadDiff <= 2 && totalQuadDiff <= 14;
+                return { match, dhashDist, totalQuadDiff, maxQuadDiff, score: dhashDist * 2 + totalQuadDiff };
             }
 
             loadImage(src) {
@@ -923,6 +1092,7 @@
                     const t = this.extractTimeFromFilename(p.name);
                     if (t) {
                         p.time = t;
+                        p.timeAutoDefaulted = false;
                         count++;
                     }
                 });
@@ -1002,8 +1172,12 @@
                     }
                     if (this.photos[i][field] !== val) {
                         this.photos[i][field] = val;
+                        if (field === 'time') this.photos[i].timeAutoDefaulted = false;
                         updated++;
                     }
+                }
+                if (field === 'time' && updated > 0 && this.photos[index]) {
+                    this.photos[index].timeAutoDefaulted = false;
                 }
                 this.render();
                 if (updated) this.recordHistory(`向下填滿${field}`);
@@ -1159,7 +1333,10 @@
 
                 selectedList.forEach(p => {
                     if (dateVal || applyEmptyValues) p.date = dateVal;
-                    if (timeVal || applyEmptyValues) p.time = timeVal;
+                    if (timeVal || applyEmptyValues) {
+                        p.time = timeVal;
+                        p.timeAutoDefaulted = false;
+                    }
                     if (locVal || applyEmptyValues) p.location = locVal;
                     if (descVal || applyEmptyValues) p.desc = descVal;
                 });
@@ -1170,15 +1347,17 @@
             }
 
             switchView(view) {
-                this.currentView = view;
-                this.workspaceContainer.classList.toggle('hidden', view !== 'workspace');
-                this.gridContainer.classList.toggle('hidden', view !== 'grid');
-                this.previewContainer.classList.toggle('hidden', view !== 'preview');
+                const nextView = view === 'grid' ? 'grid' : 'workspace';
+                this.currentView = nextView;
+                this.workspaceContainer.classList.toggle('hidden', nextView !== 'workspace');
+                this.gridContainer.classList.toggle('hidden', nextView !== 'grid');
+                if (this.previewContainer) this.previewContainer.classList.add('hidden');
                 const activeClass = "px-2.5 py-1 rounded text-xs font-bold bg-[#5B5CE2] text-white flex items-center gap-1 shadow-2xs";
                 const idleClass = "px-2.5 py-1 rounded text-xs font-bold text-[#6B7280] hover:text-[#20242B] flex items-center gap-1";
-                document.getElementById('btnViewWorkspace').className = view === 'workspace' ? activeClass : idleClass;
-                document.getElementById('btnViewGrid').className = view === 'grid' ? activeClass : idleClass;
-                document.getElementById('btnViewPreview').className = view === 'preview' ? activeClass : idleClass;
+                document.getElementById('btnViewWorkspace').className = nextView === 'workspace' ? activeClass : idleClass;
+                document.getElementById('btnViewGrid').className = nextView === 'grid' ? activeClass : idleClass;
+                const btnViewPreview = document.getElementById('btnViewPreview');
+                if (btnViewPreview) btnViewPreview.className = idleClass;
                 this.render();
             }
 
@@ -1291,12 +1470,35 @@
                     if (!this.isExternalFileDrag(event) || target.contains(event.relatedTarget)) return;
                     setDragOver(false);
                 });
-                target.addEventListener('drop', (event) => {
+                target.addEventListener('drop', async (event) => {
                     if (!this.isExternalFileDrag(event)) return;
                     event.preventDefault();
                     setDragOver(false);
-                    const files = Array.from(event.dataTransfer.files).filter(file => file.type.startsWith('image/'));
-                    if (!files.length) return alert('請拖入支援的圖片檔案。');
+                    const droppedFiles = Array.from(event.dataTransfer?.files || []);
+                    const projectFiles = droppedFiles.filter(file => /\.photo-report$/i.test(file.name || ''));
+                    if (projectFiles.length === 1) {
+                        let fileHandle = null;
+                        try {
+                            const items = Array.from(event.dataTransfer?.items || []);
+                            const firstItem = items.find(item => item.kind === 'file');
+                            if (firstItem && typeof firstItem.getAsFileSystemHandle === 'function') {
+                                const handle = await firstItem.getAsFileSystemHandle();
+                                if (handle && handle.kind === 'file' && /\.photo-report$/i.test(handle.name || '')) {
+                                    fileHandle = handle;
+                                }
+                            }
+                        } catch {
+                            // 無法取得檔案控制代碼時退回一般檔案開啟
+                        }
+                        await this.openProjectFromFile(projectFiles[0], fileHandle);
+                        return;
+                    }
+                    if (projectFiles.length >= 2) {
+                        await this.mergeProjectFiles(projectFiles);
+                        return;
+                    }
+                    const files = droppedFiles.filter(file => file.type.startsWith('image/'));
+                    if (!files.length) return alert('請拖入支援的圖片檔案或 .photo-report 工作進度檔。');
                     this.handleFiles(files).catch(error => this.handleProcessingError(error));
                 });
             }
@@ -1312,29 +1514,127 @@
                 });
             }
 
-            markProjectSaved() {
+            getPhotoContentSignature(photo) {
+                if (!photo) return '';
+                return JSON.stringify({
+                    rotation: Number(photo.rotation) || 0,
+                    flipH: Boolean(photo.flipH),
+                    annotations: Array.isArray(photo.annotations) ? photo.annotations : [],
+                    sideCrop: photo.sideCrop || null,
+                    date: photo.date || '',
+                    time: photo.time || '',
+                    location: photo.location || '',
+                    desc: photo.desc || ''
+                });
+            }
+
+            markProjectSaved(savedTs = null) {
                 this.savedProjectSignature = this.projectSignature();
+                this.savedPhotosByUid = new Map(
+                    this.photos.map(photo => [photo.uid, this.getPhotoContentSignature(photo)])
+                );
+                if (savedTs === 'clear') {
+                    this.currentProjectSavedAt = null;
+                } else if (savedTs !== null && Number.isFinite(savedTs)) {
+                    this.currentProjectSavedAt = savedTs;
+                } else if (this.photos.length > 0 && !this.currentProjectSavedAt) {
+                    this.currentProjectSavedAt = Date.now();
+                }
+                this.lastLocalEditAt = null;
+                this.updateProjectSaveStatusUi();
             }
 
             hasUnsavedProjectChanges() {
                 return this.projectSignature() !== this.savedProjectSignature;
             }
 
+            getProjectTimestamp(manifest, file) {
+                const manifestTs = manifest?.savedAt ? Date.parse(manifest.savedAt) : NaN;
+                if (Number.isFinite(manifestTs) && manifestTs > 0) return manifestTs;
+                const fileTs = Number(file?.lastModified);
+                if (Number.isFinite(fileTs) && fileTs > 0) return fileTs;
+                return 0;
+            }
+
+            getCurrentWorkspaceTimestamp() {
+                if (this.hasUnsavedProjectChanges()) {
+                    return Math.max(this.lastLocalEditAt || 0, this.currentProjectSavedAt || 0, Date.now());
+                }
+                return this.currentProjectSavedAt || 0;
+            }
+
+            updateProjectSaveStatusUi() {
+                if (!this.btnQuickSaveStatus || !this.quickSaveStatusText || !this.quickSaveStatusIcon) return;
+                const hasPhotos = this.photos.length > 0;
+                const unsaved = this.hasUnsavedProjectChanges();
+                if (!hasPhotos && !unsaved) {
+                    this.btnQuickSaveStatus.classList.add('hidden');
+                    if (this.saveProjectMenuText) {
+                        this.saveProjectMenuText.textContent = '儲存工作進度（Ctrl+S）';
+                    }
+                    return;
+                }
+                this.btnQuickSaveStatus.classList.remove('hidden');
+                this.btnQuickSaveStatus.classList.toggle('project-save-badge--unsaved', unsaved);
+                this.btnQuickSaveStatus.classList.toggle('project-save-badge--saved', !unsaved);
+                if (unsaved) {
+                    this.quickSaveStatusIcon.className = 'fa-solid fa-circle-exclamation';
+                    const autoDraftHint = this.lastAutoDraftSavedAt ? '・已自動暫存' : '';
+                    this.quickSaveStatusText.textContent = `還有修改沒存（Ctrl+S）${autoDraftHint}`;
+                    this.btnQuickSaveStatus.title = this.currentProjectFileName
+                        ? `點擊直接儲存至「${this.currentProjectFileName}」（快速鍵：Ctrl+S）`
+                        : '點擊儲存工作進度檔（快速鍵：Ctrl+S）';
+                } else {
+                    this.quickSaveStatusIcon.className = 'fa-solid fa-circle-check';
+                    this.quickSaveStatusText.textContent = this.currentProjectFileName
+                        ? `已儲存：${this.currentProjectFileName}`
+                        : '工作進度已儲存';
+                    this.btnQuickSaveStatus.title = this.currentProjectFileName
+                        ? `目前已儲存至「${this.currentProjectFileName}」（按 Ctrl+S 可再次儲存）`
+                        : '目前工作進度已儲存（按 Ctrl+S 可再次儲存）';
+                }
+                if (this.saveProjectMenuText) {
+                    this.saveProjectMenuText.textContent = (this.currentProjectFileHandle && this.currentProjectFileName)
+                        ? `儲存至「${this.currentProjectFileName}」（Ctrl+S）`
+                        : '儲存工作進度（Ctrl+S）';
+                }
+            }
+
             recordHistory(label = '') {
                 if (this.isRestoringHistory) return;
                 const next = this.snapshotState(label);
                 const current = this.history[this.historyIndex];
-                if (current && this.historySignature(current) === this.historySignature(next)) return;
+                if (current && this.historySignature(current) === this.historySignature(next)) {
+                    this.updateProjectSaveStatusUi();
+                    return;
+                }
                 this.history.splice(this.historyIndex + 1);
                 this.history.push(next);
                 if (this.history.length > this.historyLimit) this.history.shift();
                 this.historyIndex = this.history.length - 1;
                 this.releaseUnusedPhotoUrls();
                 this.updateHistoryControls();
+                const nonEditLabels = ['初始狀態', '開啟專案', '清空照片', '變更照片選取', '切換目前照片', '框選照片'];
+                if (!nonEditLabels.includes(label) && this.hasUnsavedProjectChanges()) {
+                    this.lastLocalEditAt = Date.now();
+                }
+                this.updateProjectSaveStatusUi();
+                if (this.photos.length > 0) {
+                    this.hadPhotosInSession = true;
+                    this.hideAutoDraftBanner();
+                    this.scheduleAutoDraftSave();
+                }
             }
 
             scheduleHistory(label) {
                 if (this.isRestoringHistory) return;
+                if (this.hasUnsavedProjectChanges()) {
+                    this.lastLocalEditAt = Date.now();
+                }
+                this.updateProjectSaveStatusUi();
+                if (this.photos.length > 0) {
+                    this.scheduleAutoDraftSave();
+                }
                 clearTimeout(this.historyTimer);
                 this.pendingHistoryLabel = label || '';
                 this.historyTimer = setTimeout(() => {
@@ -1408,51 +1708,262 @@
                 return this.layoutSelect.value === 'landscape_3' ? 3 : 2;
             }
 
-            async saveProject() {
+            sanitizeFilename(rawName, fallback = '現場照片清冊') {
+                const cleaned = String(rawName ?? '')
+                    .replace(/[\\/:*?"<>|\u0000-\u001F]/g, '_')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+                return cleaned || fallback;
+            }
+
+            finalizeActiveInputsBeforeSave() {
+                const active = document.activeElement;
+                if (active instanceof HTMLInputElement) {
+                    if (
+                        active.dataset.maskOriginalValue !== undefined ||
+                        active.dataset.maskEntryPending !== undefined ||
+                        active.classList.contains('lightbox-inline-label-input')
+                    ) {
+                        active.blur();
+                    }
+                }
+                this.commitLightboxHistoryIfNeeded();
+                this.flushPendingHistory();
+            }
+
+            async createLitePhotoEntry(photo, maxDimension = 2000, quality = 0.88) {
+                const fallback = {
+                    blob: photo.file,
+                    type: photo.file?.type || 'image/jpeg',
+                    exifRotation: photo.exifRotation || 0
+                };
+                if (!photo || !photo.file) return fallback;
+                let source = null;
+                let img = null;
+                try {
+                    img = await this.loadImage(photo.src);
+                    let exifRotation = 0;
+                    if (photo.exifRotation && typeof createImageBitmap === 'function') {
+                        source = await createImageBitmap(photo.file, { imageOrientation: 'none' });
+                        exifRotation = photo.exifRotation;
+                    } else {
+                        source = img;
+                    }
+                    let w = source.width || img.naturalWidth || img.width;
+                    let h = source.height || img.naturalHeight || img.height;
+                    if (!w || !h) return fallback;
+
+                    if (w <= maxDimension && h <= maxDimension && !exifRotation && photo.file.size <= 350 * 1024) {
+                        return fallback;
+                    }
+
+                    const origW = w;
+                    const origH = h;
+                    if (w > maxDimension || h > maxDimension) {
+                        if (w >= h) {
+                            h = Math.max(1, Math.round((h * maxDimension) / w));
+                            w = maxDimension;
+                        } else {
+                            w = Math.max(1, Math.round((w * maxDimension) / h));
+                            h = maxDimension;
+                        }
+                    }
+
+                    const rot = ((exifRotation % 360) + 360) % 360;
+                    const canvas = document.createElement('canvas');
+                    if (rot === 90 || rot === 270) {
+                        canvas.width = h;
+                        canvas.height = w;
+                    } else {
+                        canvas.width = w;
+                        canvas.height = h;
+                    }
+                    const ctx = canvas.getContext('2d');
+                    if (!ctx) return fallback;
+                    ctx.fillStyle = '#FFFFFF';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    ctx.save();
+                    ctx.translate(canvas.width / 2, canvas.height / 2);
+                    if (rot) ctx.rotate((rot * Math.PI) / 180);
+                    ctx.drawImage(source, -w / 2, -h / 2, w, h);
+                    ctx.restore();
+
+                    const liteBlob = await new Promise((resolve, reject) => canvas.toBlob(
+                        result => result ? resolve(result) : reject(new Error('無法建立輕量照片')),
+                        'image/jpeg',
+                        quality
+                    ));
+                    if (liteBlob.size >= photo.file.size && origW <= maxDimension && origH <= maxDimension && !exifRotation) {
+                        return fallback;
+                    }
+                    return {
+                        blob: liteBlob,
+                        type: 'image/jpeg',
+                        exifRotation: 0
+                    };
+                } catch {
+                    return fallback;
+                } finally {
+                    if (source && source !== img && typeof source.close === 'function') source.close();
+                }
+            }
+
+            async saveProject(options = {}) {
                 if (!this.photos.length) return alert('還沒有照片，不需要儲存。');
                 if (typeof JSZip === 'undefined') throw new Error('JSZip 尚未載入，無法儲存專案。');
-                const zip = new JSZip();
-                const manifestPhotos = [];
-                this.setProgress('正在封裝專案檔…', 0, this.photos.length);
-                for (let index = 0; index < this.photos.length; index++) {
-                    const photo = this.photos[index];
-                    const archiveName = `${String(index + 1).padStart(4, '0')}_${photo.uid}_${photo.name}`;
-                    zip.file(`images/${archiveName}`, photo.file);
-                    manifestPhotos.push({
-                        uid: photo.uid, archiveName, name: photo.name, type: photo.file.type,
-                        rotation: photo.rotation, flipH: Boolean(photo.flipH),
-                        parentUid: photo.parentUid || null,
-                        cropRect: photo.cropRect ? { ...photo.cropRect } : null,
-                        sideCrop: this.cloneSideCrop(photo.sideCrop),
-                        annotations: this.cloneAnnotations(photo.annotations),
-                        exifRotation: photo.exifRotation || 0, seq: photo.seq, date: photo.date, time: photo.time,
-                        location: photo.location, desc: photo.desc, selected: photo.selected,
-                        stageX: Number.isFinite(photo.stageX) ? photo.stageX : null,
-                        stageY: Number.isFinite(photo.stageY) ? photo.stageY : null
-                    });
-                    this.setProgress('正在封裝專案檔…', index + 1, this.photos.length);
-                    if ((index + 1) % 10 === 0) await this.yieldToBrowser();
+
+                const lite = options?.lite !== undefined ? Boolean(options.lite) : true;
+                const saveAsNew = Boolean(options?.saveAsNew);
+                const fromUserPicker = Boolean(options?.fromUserPicker);
+
+                this.finalizeActiveInputsBeforeSave();
+                this.processingCancelled = false;
+
+                const caseData = this.getCaseData();
+                const safeTitle = this.sanitizeFilename(caseData.caseTitle, '現場照片清冊');
+                const suffix = '_照片清冊專案.photo-report';
+                const suggestedName = (!saveAsNew && this.currentProjectFileHandle && this.currentProjectFileName)
+                    ? this.currentProjectFileName
+                    : `${safeTitle}${suffix}`;
+
+                const isDefaultSaveAs = !this.initialSaveAs || window.saveAs === this.initialSaveAs;
+                let targetHandle = (!saveAsNew && isDefaultSaveAs && this.currentProjectFileHandle)
+                    ? this.currentProjectFileHandle
+                    : null;
+
+                if (!targetHandle && fromUserPicker && isDefaultSaveAs && window.isSecureContext && typeof window.showSaveFilePicker === 'function' && !navigator.webdriver) {
+                    try {
+                        targetHandle = await window.showSaveFilePicker({
+                            suggestedName,
+                            types: [{
+                                description: '現場照片清冊工作進度檔 (.photo-report)',
+                                accept: { 'application/zip': ['.photo-report'] }
+                            }]
+                        });
+                    } catch (pickerError) {
+                        if (pickerError?.name === 'AbortError') return false;
+                        targetHandle = null;
+                    }
                 }
-                zip.file('manifest.json', JSON.stringify({
-                    format: 'photo-report-project', version: 1, savedAt: new Date().toISOString(),
-                    caseData: this.getCaseData(), currentIndex: this.currentIndex,
-                    lastSelectedIndex: this.lastSelectedIndex, photos: manifestPhotos
-                }));
-                const content = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
-                const caseTitle = this.getCaseData().caseTitle || '現場照片清冊';
-                saveAs(content, `${caseTitle}_照片清冊專案.photo-report`);
-                this.markProjectSaved();
-                this.clearProgress();
+
+                try {
+                    const zip = new JSZip();
+                    const manifestPhotos = [];
+                    const progressText = '正在最佳化圖片並封裝工作進度…';
+                    this.setProgress(progressText, 0, this.photos.length);
+
+                    for (let index = 0; index < this.photos.length; index++) {
+                        this.throwIfProcessingCancelled();
+                        const photo = this.photos[index];
+                        const safeArchivePhotoName = this.sanitizeFilename(photo.name, `photo_${index + 1}.jpg`);
+                        const archiveName = `${String(index + 1).padStart(4, '0')}_${photo.uid}_${safeArchivePhotoName}`;
+
+                        let entryBlob = photo.file;
+                        let entryType = photo.file?.type || 'image/jpeg';
+                        let entryExifRotation = photo.exifRotation || 0;
+
+                        if (lite) {
+                            const liteEntry = await this.createLitePhotoEntry(photo, 2000, 0.88);
+                            this.throwIfProcessingCancelled();
+                            entryBlob = liteEntry.blob;
+                            entryType = liteEntry.type;
+                            entryExifRotation = liteEntry.exifRotation;
+                        }
+
+                        let photoFp = photo.visualFingerprint || '';
+                        if (!photoFp && photo.file) {
+                            const calcFp = await this.computeVisualFingerprintFromBlob(photo.file);
+                            photoFp = calcFp.visualFingerprint || '';
+                            if (photoFp) photo.visualFingerprint = photoFp;
+                        }
+
+                        // 照片本身已是壓縮格式，一律以 STORE 直接封裝，避免重複 DEFLATE 壓縮造成嚴重卡頓
+                        zip.file(`images/${archiveName}`, entryBlob, { compression: 'STORE' });
+                        manifestPhotos.push({
+                            uid: photo.uid,
+                            archiveName,
+                            name: photo.name,
+                            type: entryType,
+                            visualFingerprint: photoFp,
+                            thumbnailAspect: Number(photo.thumbnailAspect) || 1,
+                            rotation: photo.rotation,
+                            flipH: Boolean(photo.flipH),
+                            parentUid: photo.parentUid || null,
+                            cropRect: photo.cropRect ? { ...photo.cropRect } : null,
+                            sideCrop: this.cloneSideCrop(photo.sideCrop),
+                            annotations: this.cloneAnnotations(photo.annotations),
+                            exifRotation: entryExifRotation,
+                            seq: photo.seq,
+                            date: photo.date,
+                            time: photo.time,
+                            timeAutoDefaulted: Boolean(photo.timeAutoDefaulted),
+                            location: photo.location,
+                            desc: photo.desc,
+                            selected: photo.selected,
+                            stageX: Number.isFinite(photo.stageX) ? photo.stageX : null,
+                            stageY: Number.isFinite(photo.stageY) ? photo.stageY : null
+                        });
+                        this.setProgress(progressText, index + 1, this.photos.length);
+                        this.throwIfProcessingCancelled();
+                        if ((index + 1) % (lite ? 4 : 10) === 0) await this.yieldToBrowser();
+                    }
+
+                    this.throwIfProcessingCancelled();
+                    const savedAtIso = new Date().toISOString();
+                    const savedAtMs = Date.parse(savedAtIso);
+                    zip.file('manifest.json', JSON.stringify({
+                        format: 'photo-report-project',
+                        version: 1,
+                        liteMode: lite,
+                        savedAt: savedAtIso,
+                        caseData: this.getCaseData(),
+                        currentIndex: this.currentIndex,
+                        lastSelectedIndex: this.lastSelectedIndex,
+                        photos: manifestPhotos
+                    }), { compression: 'DEFLATE', compressionOptions: { level: 6 } });
+
+                    const content = await zip.generateAsync({ type: 'blob' });
+                    this.throwIfProcessingCancelled();
+
+                    if (targetHandle && typeof targetHandle.createWritable === 'function') {
+                        const writable = await targetHandle.createWritable();
+                        await writable.write(content);
+                        await writable.close();
+                        this.currentProjectFileHandle = targetHandle;
+                        this.currentProjectFileName = targetHandle.name || suggestedName;
+                    } else {
+                        saveAs(content, suggestedName);
+                        this.currentProjectFileName = suggestedName;
+                    }
+
+                    this.markProjectSaved(savedAtMs);
+                    this.scheduleAutoDraftSave();
+                    return true;
+                } finally {
+                    this.clearProgress();
+                }
             }
 
             async openProject(event) {
-                const file = event.target.files?.[0];
-                event.target.value = '';
-                if (!file) return;
-                if (typeof JSZip === 'undefined') return this.handleProjectError(new Error('JSZip 尚未載入，無法開啟專案。'));
-                if (this.photos.length && !confirm('開啟後會取代目前的照片與資料，沒存的修改會不見。要繼續嗎？')) return;
+                const file = event?.target?.files?.[0];
+                if (event?.target) event.target.value = '';
+                if (!file) return false;
+                return this.openProjectFromFile(file, null);
+            }
+
+            async openProjectFromFile(file, fileHandle = null) {
+                if (!file) return false;
+                if (typeof JSZip === 'undefined') {
+                    this.handleProjectError(new Error('JSZip 尚未載入，無法開啟專案。'), 'open');
+                    return false;
+                }
+                if (this.photos.length && !confirm('開啟後會取代目前的照片與資料，沒存的修改會不見。要繼續嗎？')) return false;
+
+                this.processingCancelled = false;
+                const restored = [];
                 try {
                     const zip = await JSZip.loadAsync(file);
+                    this.throwIfProcessingCancelled();
                     const manifestFile = zip.file('manifest.json');
                     if (!manifestFile) throw new Error('這不是有效的照片清冊專案檔（缺少 manifest.json）。');
                     const manifest = JSON.parse(await manifestFile.async('text'));
@@ -1460,18 +1971,30 @@
                         throw new Error('專案檔格式不支援或內容不完整。');
                     }
                     this.setProgress('正在還原專案照片…', 0, manifest.photos.length);
-                    const restored = [];
                     for (let index = 0; index < manifest.photos.length; index++) {
+                        this.throwIfProcessingCancelled();
                         const saved = manifest.photos[index];
                         const entry = zip.file(`images/${saved.archiveName}`);
                         if (!entry) throw new Error(`專案檔缺少照片：${saved.name}`);
                         const blob = await entry.async('blob');
+                        this.throwIfProcessingCancelled();
                         const imageFile = new File([blob], saved.name, { type: saved.type || blob.type || 'image/jpeg' });
                         const src = URL.createObjectURL(imageFile);
-                        const thumbnail = await this.createThumbnailUrl(imageFile, src);
+                        let thumbnail;
+                        try {
+                            thumbnail = await this.createThumbnailUrl(imageFile, src);
+                        } catch (thumbErr) {
+                            URL.revokeObjectURL(src);
+                            throw thumbErr;
+                        }
                         restored.push({
-                            uid: saved.uid || crypto.randomUUID(), file: imageFile, name: saved.name,
-                            src, thumbnailSrc: thumbnail.src, thumbnailAspect: thumbnail.aspect,
+                            uid: saved.uid || crypto.randomUUID(),
+                            file: imageFile,
+                            name: saved.name,
+                            src,
+                            thumbnailSrc: thumbnail.src,
+                            thumbnailAspect: Number(saved.thumbnailAspect) || thumbnail.aspect,
+                            visualFingerprint: saved.visualFingerprint || thumbnail.visualFingerprint || '',
                             rotation: Number(saved.rotation) || 0,
                             flipH: Boolean(saved.flipH),
                             parentUid: saved.parentUid || null,
@@ -1486,14 +2009,27 @@
                             _compositeKey: '',
                             annotations: this.cloneAnnotations(saved.annotations),
                             exifRotation: Number(saved.exifRotation) || 0,
-                            seq: String(saved.seq ?? index + 1), date: saved.date || '', time: saved.time || '',
-                            location: saved.location || '', desc: saved.desc || '', selected: Boolean(saved.selected),
+                            seq: String(saved.seq ?? index + 1),
+                            date: saved.date || '',
+                            time: saved.time || '',
+                            timeAutoDefaulted: Boolean(saved.timeAutoDefaulted),
+                            location: saved.location || '',
+                            desc: saved.desc || '',
+                            selected: Boolean(saved.selected),
                             stageX: Number.isFinite(saved.stageX) ? saved.stageX : null,
                             stageY: Number.isFinite(saved.stageY) ? saved.stageY : null
                         });
                         this.setProgress('正在還原專案照片…', index + 1, manifest.photos.length);
+                        this.throwIfProcessingCancelled();
                         if ((index + 1) % 5 === 0) await this.yieldToBrowser();
                     }
+
+                    if (this.isLightboxOpen()) {
+                        this.lightboxNeedsRender = false;
+                        this.closeModal('imageLightboxModal');
+                    }
+                    this.activeFilter = 'all';
+                    this._dupSet = null;
                     this.photos.forEach(photo => this.releasePhotoUrls(photo));
                     this.history = [];
                     this.historyIndex = -1;
@@ -1510,21 +2046,978 @@
                     if (restored.some(photo => !Number.isFinite(photo.stageX) || !Number.isFinite(photo.stageY))) {
                         this.placeUnpositionedPhotos();
                     }
+                    this.currentProjectFileHandle = fileHandle || null;
+                    this.currentProjectFileName = file.name || '';
+                    this.hideAutoDraftBanner();
                     this.recordHistory('開啟專案');
-                    this.markProjectSaved();
-                    this.clearProgress();
+                    const projectTs = this.getProjectTimestamp(manifest, file) || Date.now();
+                    this.markProjectSaved(projectTs);
                     this.render();
-                    this.syncAllCompositeThumbnails();
+                    await this.syncAllCompositeThumbnails();
                     alert(`已開啟工作進度，共 ${restored.length} 張照片。`);
+                    return true;
                 } catch (error) {
+                    restored.forEach(item => {
+                        if (item.src) URL.revokeObjectURL(item.src);
+                        if (item.thumbnailSrc) URL.revokeObjectURL(item.thumbnailSrc);
+                    });
+                    this.handleProjectError(error, 'open');
+                    return false;
+                } finally {
                     this.clearProgress();
-                    this.handleProjectError(error);
                 }
             }
 
-            handleProjectError(error) {
+            async mergeProjects(event) {
+                const files = Array.from(event?.target?.files || []);
+                if (event?.target) event.target.value = '';
+                if (!files.length) return false;
+                return this.mergeProjectFiles(files);
+            }
+
+            areAnnotationsEqual(annsA, annsB) {
+                const listA = Array.isArray(annsA) ? annsA : [];
+                const listB = Array.isArray(annsB) ? annsB : [];
+                if (listA.length !== listB.length) return false;
+                const norm = (a) => ({
+                    type: a?.type || '',
+                    color: a?.color || 'yellow',
+                    x: Math.round((Number(a?.x) || 0) * 1000) / 1000,
+                    y: Math.round((Number(a?.y) || 0) * 1000) / 1000,
+                    w: Math.round((Number(a?.w) || 0) * 1000) / 1000,
+                    h: Math.round((Number(a?.h) || 0) * 1000) / 1000,
+                    scale: Math.round((Number(a?.scale) || 1) * 100) / 100,
+                    text: String(a?.text || '').trim()
+                });
+                return JSON.stringify(listA.map(norm)) === JSON.stringify(listB.map(norm));
+            }
+
+            areSideCropsEqual(scA, scB) {
+                const hasA = Boolean(scA && scA.cropRect);
+                const hasB = Boolean(scB && scB.cropRect);
+                if (!hasA && !hasB) return true;
+                if (!hasA || !hasB) return false;
+                const norm = (sc) => ({
+                    x: Math.round((Number(sc.cropRect.x) || 0) * 1000) / 1000,
+                    y: Math.round((Number(sc.cropRect.y) || 0) * 1000) / 1000,
+                    w: Math.round((Number(sc.cropRect.w) || 0) * 1000) / 1000,
+                    h: Math.round((Number(sc.cropRect.h) || 0) * 1000) / 1000,
+                    widthRatio: Math.round((Number(sc.widthRatio) || 0.65) * 1000) / 1000,
+                    offsetY: Math.round((Number.isFinite(Number(sc.offsetY)) ? Number(sc.offsetY) : 0.5) * 1000) / 1000,
+                    borderColor: sc.borderColor === 'red' ? 'red' : sc.borderColor === 'none' ? 'none' : 'yellow'
+                });
+                return JSON.stringify(norm(scA)) === JSON.stringify(norm(scB));
+            }
+
+            isCropRectSimilar(rectA, rectB) {
+                if (!rectA || !rectB) return false;
+                return Math.abs((Number(rectA.x) || 0) - (Number(rectB.x) || 0)) <= 0.025 &&
+                    Math.abs((Number(rectA.y) || 0) - (Number(rectB.y) || 0)) <= 0.025 &&
+                    Math.abs((Number(rectA.w) || 0) - (Number(rectB.w) || 0)) <= 0.025 &&
+                    Math.abs((Number(rectA.h) || 0) - (Number(rectB.h) || 0)) <= 0.025;
+            }
+
+            allocateMergedMainSeq(workingPhotos, preferredSeq = '') {
+                const existingMain = workingPhotos.filter(p => !this.isLinkedCropChild(p, workingPhotos));
+                const usedSeqs = new Set(workingPhotos.map(p => String(p.seq || '').trim()));
+                const cleanPreferred = String(preferredSeq || '').trim();
+                if (existingMain.length === 0 && cleanPreferred && !usedSeqs.has(cleanPreferred)) {
+                    return cleanPreferred;
+                }
+
+                let prefix = '';
+                let minDigits = 1;
+                let maxNum = existingMain.length;
+                const lastMain = existingMain[existingMain.length - 1];
+                const lastMatch = String(lastMain?.seq || '').match(/^(.*?)(\d+)$/);
+                if (lastMatch) {
+                    prefix = lastMatch[1];
+                    minDigits = lastMatch[2].length;
+                }
+                existingMain.forEach(p => {
+                    const m = String(p.seq || '').match(/^(.*?)(\d+)$/);
+                    if (m && m[1] === prefix) {
+                        const num = parseInt(m[2], 10);
+                        if (Number.isFinite(num) && num > maxNum) maxNum = num;
+                    }
+                });
+
+                let nextNum = Math.max(1, maxNum + 1);
+                let candidate = `${prefix}${String(nextNum).padStart(minDigits, '0')}`;
+                while (usedSeqs.has(candidate)) {
+                    nextNum++;
+                    candidate = `${prefix}${String(nextNum).padStart(minDigits, '0')}`;
+                }
+                return candidate;
+            }
+
+            makeUniqueDetailFilenameInList(parentPhoto, photoList) {
+                const origName = String(parentPhoto?.name || 'photo.jpg');
+                const dotIdx = origName.lastIndexOf('.');
+                const base = dotIdx > 0 ? origName.slice(0, dotIdx) : origName;
+                const existingNames = new Set((photoList || []).map(p => p.name));
+                let n = 1;
+                let candidate = `${base}_特寫${n}.jpg`;
+                while (existingNames.has(candidate)) {
+                    n++;
+                    candidate = `${base}_特寫${n}.jpg`;
+                }
+                return candidate;
+            }
+
+            mergeMatchedPhotoRecord(target, incoming, incomingTs) {
+                const targetTs = Number(target._effectiveTs) || 0;
+                const preferIncoming = incomingTs > targetTs;
+                let complemented = false;
+                let overwritten = false;
+
+                ['date', 'location', 'desc'].forEach(field => {
+                    const tVal = String(target[field] || '');
+                    const iVal = String(incoming[field] || '');
+                    const tHas = tVal.trim().length > 0;
+                    const iHas = iVal.trim().length > 0;
+                    if (!tHas && iHas) {
+                        target[field] = iVal;
+                        complemented = true;
+                    } else if (tHas && iHas && tVal.trim() !== iVal.trim() && preferIncoming) {
+                        target[field] = iVal;
+                        overwritten = true;
+                    }
+                });
+
+                const tTime = String(target.time || '').trim();
+                const iTime = String(incoming.time || '').trim();
+                const tIsRealTime = tTime.length > 0 && !(target.timeAutoDefaulted && tTime === '12:00');
+                const iIsRealTime = iTime.length > 0 && !(incoming.timeAutoDefaulted && iTime === '12:00');
+                if (!tIsRealTime && iIsRealTime) {
+                    target.time = iTime;
+                    target.timeAutoDefaulted = false;
+                    complemented = true;
+                } else if (tIsRealTime && iIsRealTime && tTime !== iTime && preferIncoming) {
+                    target.time = iTime;
+                    target.timeAutoDefaulted = Boolean(incoming.timeAutoDefaulted);
+                    overwritten = true;
+                } else if (!tIsRealTime && !iIsRealTime && !tTime && iTime) {
+                    target.time = iTime;
+                    target.timeAutoDefaulted = Boolean(incoming.timeAutoDefaulted);
+                }
+
+                const tRot = (((Number(target.rotation) || 0) % 360) + 360) % 360;
+                const iRot = (((Number(incoming.rotation) || 0) % 360) + 360) % 360;
+                const tFlip = Boolean(target.flipH);
+                const iFlip = Boolean(incoming.flipH);
+                const orientSame = (tRot === iRot) && (tFlip === iFlip);
+                const tHasOrient = tRot !== 0 || tFlip;
+                const iHasOrient = iRot !== 0 || iFlip;
+
+                const tAnns = Array.isArray(target.annotations) ? target.annotations : [];
+                const iAnns = Array.isArray(incoming.annotations) ? incoming.annotations : [];
+                const tHasAnns = tAnns.length > 0;
+                const iHasAnns = iAnns.length > 0;
+
+                const tSide = (target.sideCrop && target.sideCrop.cropRect) ? target.sideCrop : null;
+                const iSide = (incoming.sideCrop && incoming.sideCrop.cropRect) ? incoming.sideCrop : null;
+                const tHasSide = Boolean(tSide);
+                const iHasSide = Boolean(iSide);
+
+                const tHasOverlays = tHasAnns || tHasSide;
+                const iHasOverlays = iHasAnns || iHasSide;
+
+                if (orientSame) {
+                    if (!tHasAnns && iHasAnns) {
+                        target.annotations = this.cloneAnnotations(iAnns);
+                        complemented = true;
+                    } else if (tHasAnns && iHasAnns && !this.areAnnotationsEqual(tAnns, iAnns) && preferIncoming) {
+                        target.annotations = this.cloneAnnotations(iAnns);
+                        overwritten = true;
+                    }
+                    if (!tHasSide && iHasSide) {
+                        target.sideCrop = this.cloneSideCrop(iSide);
+                        complemented = true;
+                    } else if (tHasSide && iHasSide && !this.areSideCropsEqual(tSide, iSide) && preferIncoming) {
+                        target.sideCrop = this.cloneSideCrop(iSide);
+                        overwritten = true;
+                    }
+                } else {
+                    // 方向不同時，標記與並排綁定在對應方向座標系上，協同切換才不會歪框
+                    if (!tHasOverlays && iHasOverlays) {
+                        target.rotation = iRot;
+                        target.flipH = iFlip;
+                        target.annotations = this.cloneAnnotations(iAnns);
+                        target.sideCrop = this.cloneSideCrop(iSide);
+                        complemented = true;
+                    } else if (tHasOverlays && !iHasOverlays) {
+                        // 保留目標已有標記或並排的版本與其方向
+                    } else if (!tHasOrient && iHasOrient) {
+                        target.rotation = iRot;
+                        target.flipH = iFlip;
+                        complemented = true;
+                    } else if (tHasOrient && !iHasOrient) {
+                        // 保留目標已調整過的方向
+                    } else if (preferIncoming) {
+                        target.rotation = iRot;
+                        target.flipH = iFlip;
+                        if (!this.areAnnotationsEqual(tAnns, iAnns)) {
+                            target.annotations = this.cloneAnnotations(iAnns);
+                        }
+                        if (!this.areSideCropsEqual(tSide, iSide)) {
+                            target.sideCrop = this.cloneSideCrop(iSide);
+                        }
+                        overwritten = true;
+                    }
+                }
+
+                if (incomingTs > targetTs) {
+                    target._effectiveTs = incomingTs;
+                }
+
+                return {
+                    complemented,
+                    overwritten,
+                    changed: complemented || overwritten
+                };
+            }
+
+            async mergeProjectFiles(files) {
+                const fileList = Array.from(files || []).filter(Boolean);
+                if (!fileList.length) return false;
+                if (typeof JSZip === 'undefined') {
+                    this.handleProjectError(new Error('JSZip 尚未載入，無法合併進度檔。'), 'merge');
+                    return false;
+                }
+
+                this.finalizeActiveInputsBeforeSave();
+                this.processingCancelled = false;
+
+                const newlyCreatedUrls = new Set();
+                try {
+                    const parsedSources = [];
+                    this.setProgress(`正在讀取 ${fileList.length} 份工作進度檔…`, 0, fileList.length);
+                    for (let i = 0; i < fileList.length; i++) {
+                        this.throwIfProcessingCancelled();
+                        const file = fileList[i];
+                        const zip = await JSZip.loadAsync(file);
+                        this.throwIfProcessingCancelled();
+                        const manifestFile = zip.file('manifest.json');
+                        if (!manifestFile) {
+                            throw new Error(`「${file.name}」不是有效的照片清冊進度檔（缺少 manifest.json）。`);
+                        }
+                        const manifest = JSON.parse(await manifestFile.async('text'));
+                        if (manifest.format !== 'photo-report-project' || !Array.isArray(manifest.photos)) {
+                            throw new Error(`「${file.name}」格式不支援或內容不完整。`);
+                        }
+                        parsedSources.push({
+                            file,
+                            zip,
+                            manifest,
+                            timestamp: this.getProjectTimestamp(manifest, file),
+                            originalOrder: i
+                        });
+                        this.setProgress(`正在讀取 ${fileList.length} 份工作進度檔…`, i + 1, fileList.length);
+                    }
+
+                    // 依存檔時間由早到晚排列，確保後面併入較晚存檔的決定性與一致性
+                    parsedSources.sort((a, b) => (a.timestamp - b.timestamp) || (a.originalOrder - b.originalOrder));
+
+                    const hadExistingPhotos = this.photos.length > 0;
+                    const prevActiveUid = this.photos[this.currentIndex]?.uid || null;
+                    const unsavedTimestamp = Math.max(this.lastLocalEditAt || 0, this.currentProjectSavedAt || 0, Date.now());
+                    const baseSavedTimestamp = this.currentProjectSavedAt || 0;
+
+                    const workingCaseData = { ...this.getCaseData() };
+                    let workingCaseInitialized = hadExistingPhotos;
+                    let workingCaseTs = hadExistingPhotos ? this.getCurrentWorkspaceTimestamp() : 0;
+                    let caseDataChanged = false;
+
+                    const workingPhotos = [];
+                    for (let i = 0; i < this.photos.length; i++) {
+                        this.throwIfProcessingCancelled();
+                        const photo = this.photos[i];
+                        let fp = photo.visualFingerprint || '';
+                        let aspect = Number(photo.thumbnailAspect) || 1;
+                        if (!fp && photo.file) {
+                            const calc = await this.computeVisualFingerprintFromBlob(photo.file);
+                            fp = calc.visualFingerprint || '';
+                            if (!photo.thumbnailAspect && calc.aspect) aspect = calc.aspect;
+                        }
+                        const savedSig = this.savedPhotosByUid?.get(photo.uid);
+                        const isThisPhotoUnchangedFromSave = Boolean(
+                            this.currentProjectSavedAt &&
+                            savedSig &&
+                            savedSig === this.getPhotoContentSignature(photo)
+                        );
+                        const effectiveTs = isThisPhotoUnchangedFromSave ? baseSavedTimestamp : unsavedTimestamp;
+                        workingPhotos.push({
+                            ...photo,
+                            flipH: Boolean(photo.flipH),
+                            parentUid: photo.parentUid || null,
+                            cropRect: photo.cropRect ? { ...photo.cropRect } : null,
+                            sideCrop: this.cloneSideCrop(photo.sideCrop),
+                            compositeThumbnailSrc: null,
+                            _compositeKey: '',
+                            annotations: this.cloneAnnotations(photo.annotations),
+                            visualFingerprint: fp,
+                            thumbnailAspect: aspect,
+                            timeAutoDefaulted: Boolean(photo.timeAutoDefaulted),
+                            selected: false,
+                            _effectiveTs: effectiveTs
+                        });
+                    }
+
+                    const totalSteps = parsedSources.reduce((sum, src) => sum + src.manifest.photos.length, 0);
+                    let completedSteps = 0;
+                    let addedCount = 0;
+                    const matchedUids = new Set();
+                    const complementedUids = new Set();
+                    const overwrittenUids = new Set();
+
+                    const createNewWorkingPhoto = async (extSaved, zip, file, extTs, overrideParentUid, isInitialEmptyImport) => {
+                        const entry = zip.file(`images/${extSaved.archiveName}`);
+                        if (!entry) throw new Error(`進度檔「${file.name}」缺少照片：${extSaved.name}`);
+                        const blob = await entry.async('blob');
+                        this.throwIfProcessingCancelled();
+
+                        let targetName = extSaved.name || `photo_${workingPhotos.length + 1}.jpg`;
+                        if (overrideParentUid && workingPhotos.some(p => p.name === targetName)) {
+                            const parentObj = workingPhotos.find(p => p.uid === overrideParentUid);
+                            if (parentObj) targetName = this.makeUniqueDetailFilenameInList(parentObj, workingPhotos);
+                        }
+                        const imageFile = new File([blob], targetName, { type: extSaved.type || blob.type || 'image/jpeg' });
+                        const srcUrl = URL.createObjectURL(imageFile);
+                        newlyCreatedUrls.add(srcUrl);
+
+                        let thumbnail;
+                        try {
+                            thumbnail = await this.createThumbnailUrl(imageFile, srcUrl);
+                        } catch (err) {
+                            URL.revokeObjectURL(srcUrl);
+                            newlyCreatedUrls.delete(srcUrl);
+                            throw err;
+                        }
+                        newlyCreatedUrls.add(thumbnail.src);
+
+                        let newUid = extSaved.uid || crypto.randomUUID();
+                        if (workingPhotos.some(p => p.uid === newUid)) {
+                            newUid = crypto.randomUUID();
+                        }
+
+                        let newSeq;
+                        if (overrideParentUid) {
+                            newSeq = String(extSaved.seq || '');
+                        } else if (isInitialEmptyImport && extSaved.seq !== undefined && extSaved.seq !== null && String(extSaved.seq).trim()) {
+                            newSeq = String(extSaved.seq);
+                        } else {
+                            newSeq = this.allocateMergedMainSeq(workingPhotos, extSaved.seq);
+                        }
+
+                        return {
+                            uid: newUid,
+                            file: imageFile,
+                            name: targetName,
+                            src: srcUrl,
+                            thumbnailSrc: thumbnail.src,
+                            thumbnailAspect: Number(extSaved.thumbnailAspect) || thumbnail.aspect,
+                            visualFingerprint: extSaved.visualFingerprint || thumbnail.visualFingerprint || '',
+                            rotation: Number(extSaved.rotation) || 0,
+                            flipH: Boolean(extSaved.flipH),
+                            parentUid: overrideParentUid || null,
+                            cropRect: extSaved.cropRect && typeof extSaved.cropRect === 'object' ? {
+                                x: Number(extSaved.cropRect.x) || 0,
+                                y: Number(extSaved.cropRect.y) || 0,
+                                w: Number(extSaved.cropRect.w) || 0.1,
+                                h: Number(extSaved.cropRect.h) || 0.1
+                            } : null,
+                            sideCrop: this.cloneSideCrop(extSaved.sideCrop),
+                            compositeThumbnailSrc: null,
+                            _compositeKey: '',
+                            annotations: this.cloneAnnotations(extSaved.annotations),
+                            exifRotation: Number(extSaved.exifRotation) || 0,
+                            seq: newSeq,
+                            date: extSaved._materializedDate || '',
+                            time: extSaved.time || '',
+                            timeAutoDefaulted: Boolean(extSaved.timeAutoDefaulted),
+                            location: extSaved._materializedLocation || '',
+                            desc: extSaved.desc || '',
+                            selected: false,
+                            stageX: null,
+                            stageY: null,
+                            _effectiveTs: extTs
+                        };
+                    };
+
+                    for (let srcIdx = 0; srcIdx < parsedSources.length; srcIdx++) {
+                        this.throwIfProcessingCancelled();
+                        const { file, zip, manifest, timestamp: extTs } = parsedSources[srcIdx];
+                        const extCase = manifest.caseData || {};
+                        const isInitialEmptyImport = !hadExistingPhotos && srcIdx === 0;
+
+                        if (!workingCaseInitialized) {
+                            ['caseTitle', 'caseDate', 'defaultLocation', 'deptName', 'officerName', 'layoutSelect'].forEach(k => {
+                                if (typeof extCase[k] === 'string') workingCaseData[k] = extCase[k];
+                            });
+                            workingCaseInitialized = true;
+                            workingCaseTs = extTs;
+                            caseDataChanged = true;
+                        } else {
+                            const caseFields = hadExistingPhotos
+                                ? ['caseTitle', 'caseDate', 'defaultLocation', 'deptName', 'officerName']
+                                : ['caseTitle', 'caseDate', 'defaultLocation', 'deptName', 'officerName', 'layoutSelect'];
+                            caseFields.forEach(k => {
+                                const curVal = String(workingCaseData[k] || '').trim();
+                                const extVal = String(extCase[k] || '').trim();
+                                if (!curVal && extVal) {
+                                    workingCaseData[k] = extCase[k];
+                                    caseDataChanged = true;
+                                } else if (!hadExistingPhotos && curVal && extVal && curVal !== extVal && extTs > workingCaseTs) {
+                                    // 若較晚檔改寫空白工作台的共用預設日期／地點，暫記既有留空照片的原預設值；未再被較晚檔配對的專屬照片才實體化保留
+                                    if (k === 'caseDate') {
+                                        workingPhotos.forEach(wp => {
+                                            if (!String(wp.date || '').trim() && !wp._fallbackCaseDate) wp._fallbackCaseDate = curVal;
+                                        });
+                                    } else if (k === 'defaultLocation') {
+                                        workingPhotos.forEach(wp => {
+                                            if (!String(wp.location || '').trim() && !wp._fallbackDefaultLocation) wp._fallbackDefaultLocation = curVal;
+                                        });
+                                    }
+                                    workingCaseData[k] = extCase[k];
+                                    caseDataChanged = true;
+                                }
+                            });
+                            if (extTs > workingCaseTs) workingCaseTs = extTs;
+                        }
+
+                        // 更新共用案件資料後再比對預設值，僅對「全新加入」的外部留空照片實體化不同預設值
+                        const tgtDefaultDateAfter = String(workingCaseData.caseDate || '').trim();
+                        const tgtDefaultLocationAfter = String(workingCaseData.defaultLocation || '').trim();
+                        const extDefaultDate = String(extCase.caseDate || '').trim();
+                        const extDefaultLocation = String(extCase.defaultLocation || '').trim();
+
+                        const matchedTargetUidsInFile = new Set();
+                        const sourceUidToTargetPhoto = new Map();
+                        const srcUidSet = new Set(manifest.photos.map(p => p?.uid).filter(Boolean));
+                        const extNormalized = manifest.photos.map(saved => {
+                            let materializedDate = String(saved.date || '');
+                            let materializedLocation = String(saved.location || '');
+                            if (!materializedDate.trim() && extDefaultDate && tgtDefaultDateAfter && extDefaultDate !== tgtDefaultDateAfter) {
+                                materializedDate = extDefaultDate;
+                            }
+                            if (!materializedLocation.trim() && extDefaultLocation && tgtDefaultLocationAfter && extDefaultLocation !== tgtDefaultLocationAfter) {
+                                materializedLocation = extDefaultLocation;
+                            }
+                            return {
+                                ...saved,
+                                _materializedDate: materializedDate,
+                                _materializedLocation: materializedLocation
+                            };
+                        });
+
+                        const isSrcChild = (item) => Boolean(item && item.parentUid && srcUidSet.has(item.parentUid) && item.parentUid !== item.uid);
+                        const rootEntries = extNormalized.filter(item => !isSrcChild(item));
+                        const childEntries = extNormalized.filter(item => isSrcChild(item));
+
+                        // 1. 先處理主照片（非局部裁切子圖）
+                        for (let rIdx = 0; rIdx < rootEntries.length; rIdx++) {
+                            this.throwIfProcessingCancelled();
+                            const extSaved = rootEntries[rIdx];
+                            const entry = zip.file(`images/${extSaved.archiveName}`);
+                            if (!entry) throw new Error(`進度檔「${file.name}」缺少照片：${extSaved.name}`);
+
+                            const candidates = workingPhotos.filter(p =>
+                                !this.isLinkedCropChild(p, workingPhotos) &&
+                                !matchedTargetUidsInFile.has(p.uid)
+                            );
+
+                            let matchedTarget = null;
+                            if (extSaved.uid) {
+                                matchedTarget = candidates.find(p => p.uid === extSaved.uid) || null;
+                            }
+
+                            if (!matchedTarget) {
+                                const extNormName = this.normalizePhotoFilenameKey(extSaved.name);
+                                const sameNameCandidates = candidates.filter(p =>
+                                    this.normalizePhotoFilenameKey(p.name) === extNormName
+                                );
+                                if (sameNameCandidates.length > 0) {
+                                    let extFp = extSaved.visualFingerprint || '';
+                                    let extAspect = Number(extSaved.thumbnailAspect) || 0;
+                                    if (!extFp || !extAspect) {
+                                        const blob = await entry.async('blob');
+                                        this.throwIfProcessingCancelled();
+                                        const calc = await this.computeVisualFingerprintFromBlob(blob);
+                                        if (!extFp) extFp = calc.visualFingerprint;
+                                        if (!extAspect) extAspect = calc.aspect || 1;
+                                    }
+                                    let bestScore = Infinity;
+                                    sameNameCandidates.forEach(cand => {
+                                        if (Math.abs((cand.thumbnailAspect || 1) - (extAspect || 1)) > 0.05) return;
+                                        const cmp = this.compareVisualFingerprints(cand.visualFingerprint, extFp);
+                                        if (cmp.match && cmp.score < bestScore) {
+                                            bestScore = cmp.score;
+                                            matchedTarget = cand;
+                                        }
+                                    });
+                                }
+                            }
+
+                            if (matchedTarget) {
+                                matchedTargetUidsInFile.add(matchedTarget.uid);
+                                sourceUidToTargetPhoto.set(extSaved.uid, matchedTarget);
+                                matchedUids.add(matchedTarget.uid);
+                                const targetTsBefore = Number(matchedTarget._effectiveTs) || 0;
+                                // 若較晚的外部檔對此共有照片同樣留空日期／地點，代表繼承新共用預設，解除舊檔暫記預設
+                                if (extTs > targetTsBefore) {
+                                    if (!String(extSaved.date || '').trim()) delete matchedTarget._fallbackCaseDate;
+                                    if (!String(extSaved.location || '').trim()) delete matchedTarget._fallbackDefaultLocation;
+                                }
+                                // 已配對照片只比對單張明確填寫之日期／地點，不以整份專案預設值強蓋目標單張手寫內容
+                                const mergeRes = this.mergeMatchedPhotoRecord(matchedTarget, {
+                                    ...extSaved,
+                                    date: String(extSaved.date || ''),
+                                    location: String(extSaved.location || '')
+                                }, extTs);
+                                if (mergeRes.complemented) complementedUids.add(matchedTarget.uid);
+                                if (mergeRes.overwritten) overwrittenUids.add(matchedTarget.uid);
+                            } else {
+                                const newPhoto = await createNewWorkingPhoto(extSaved, zip, file, extTs, null, isInitialEmptyImport);
+                                workingPhotos.push(newPhoto);
+                                matchedTargetUidsInFile.add(newPhoto.uid);
+                                if (extSaved.uid) sourceUidToTargetPhoto.set(extSaved.uid, newPhoto);
+                                addedCount++;
+                            }
+
+                            completedSteps++;
+                            this.setProgress(`正在智慧彙整 ${parsedSources.length} 份工作進度…`, completedSteps, Math.max(1, totalSteps));
+                            if (completedSteps % 5 === 0) await this.yieldToBrowser();
+                        }
+
+                        // 2. 接著處理局部裁切特寫子圖（緊跟對應母圖並支援多層巢狀）
+                        let pendingChildren = [...childEntries];
+                        let guard = 0;
+                        while (pendingChildren.length > 0 && guard <= childEntries.length + 1) {
+                            guard++;
+                            const nextPending = [];
+                            for (let cIdx = 0; cIdx < pendingChildren.length; cIdx++) {
+                                this.throwIfProcessingCancelled();
+                                const extChild = pendingChildren[cIdx];
+                                const targetParent = sourceUidToTargetPhoto.get(extChild.parentUid);
+                                if (!targetParent) {
+                                    nextPending.push(extChild);
+                                    continue;
+                                }
+
+                                const entry = zip.file(`images/${extChild.archiveName}`);
+                                if (!entry) throw new Error(`進度檔「${file.name}」缺少照片：${extChild.name}`);
+
+                                const childCandidates = workingPhotos.filter(p =>
+                                    p.parentUid === targetParent.uid &&
+                                    !matchedTargetUidsInFile.has(p.uid)
+                                );
+                                let matchedChild = extChild.uid
+                                    ? childCandidates.find(p => p.uid === extChild.uid) || null
+                                    : null;
+
+                                if (!matchedChild && extChild.cropRect) {
+                                    matchedChild = childCandidates.find(p => this.isCropRectSimilar(p.cropRect, extChild.cropRect)) || null;
+                                }
+
+                                if (matchedChild) {
+                                    matchedTargetUidsInFile.add(matchedChild.uid);
+                                    sourceUidToTargetPhoto.set(extChild.uid, matchedChild);
+                                    matchedUids.add(matchedChild.uid);
+                                    const childTsBefore = Number(matchedChild._effectiveTs) || 0;
+                                    if (extTs > childTsBefore) {
+                                        if (!String(extChild.date || '').trim()) delete matchedChild._fallbackCaseDate;
+                                        if (!String(extChild.location || '').trim()) delete matchedChild._fallbackDefaultLocation;
+                                    }
+                                    const mergeRes = this.mergeMatchedPhotoRecord(matchedChild, {
+                                        ...extChild,
+                                        date: String(extChild.date || ''),
+                                        location: String(extChild.location || '')
+                                    }, extTs);
+                                    if (mergeRes.complemented) complementedUids.add(matchedChild.uid);
+                                    if (mergeRes.overwritten) overwrittenUids.add(matchedChild.uid);
+                                } else {
+                                    const newChild = await createNewWorkingPhoto(extChild, zip, file, extTs, targetParent.uid, isInitialEmptyImport);
+                                    workingPhotos.push(newChild);
+                                    matchedTargetUidsInFile.add(newChild.uid);
+                                    if (extChild.uid) sourceUidToTargetPhoto.set(extChild.uid, newChild);
+                                    addedCount++;
+                                }
+
+                                completedSteps++;
+                                this.setProgress(`正在智慧彙整 ${parsedSources.length} 份工作進度…`, completedSteps, Math.max(1, totalSteps));
+                                if (completedSteps % 5 === 0) await this.yieldToBrowser();
+                            }
+                            if (nextPending.length === pendingChildren.length) {
+                                // 若有異常孤兒或循環相依子圖，降為獨立照片加入
+                                for (const orphan of nextPending) {
+                                    const orphanPhoto = await createNewWorkingPhoto(orphan, zip, file, extTs, null, isInitialEmptyImport);
+                                    workingPhotos.push(orphanPhoto);
+                                    if (orphan.uid) sourceUidToTargetPhoto.set(orphan.uid, orphanPhoto);
+                                    addedCount++;
+                                    completedSteps++;
+                                }
+                                break;
+                            }
+                            pendingChildren = nextPending;
+                        }
+                    }
+
+                    workingPhotos.forEach(p => {
+                        if (!String(p.date || '').trim() && p._fallbackCaseDate && p._fallbackCaseDate !== String(workingCaseData.caseDate || '').trim()) {
+                            p.date = p._fallbackCaseDate;
+                        }
+                        if (!String(p.location || '').trim() && p._fallbackDefaultLocation && p._fallbackDefaultLocation !== String(workingCaseData.defaultLocation || '').trim()) {
+                            p.location = p._fallbackDefaultLocation;
+                        }
+                        delete p._fallbackCaseDate;
+                        delete p._fallbackDefaultLocation;
+                        delete p._effectiveTs;
+                    });
+
+                    if (workingPhotos.length === 0 && !hadExistingPhotos) {
+                        newlyCreatedUrls.forEach(url => URL.revokeObjectURL(url));
+                        alert('所選工作進度檔中沒有任何照片。');
+                        return false;
+                    }
+
+                    const anyDataChanged = addedCount > 0 || complementedUids.size > 0 || overwrittenUids.size > 0 || caseDataChanged;
+                    if (!anyDataChanged && hadExistingPhotos) {
+                        newlyCreatedUrls.forEach(url => URL.revokeObjectURL(url));
+                        alert(`已完成比對（${parsedSources.length} 份工作進度），目前 ${this.photos.length} 張照片與說明均完全相同，無須重複加入。`);
+                        return true;
+                    }
+
+                    if (this.isLightboxOpen()) {
+                        this.lightboxNeedsRender = false;
+                        this.closeModal('imageLightboxModal');
+                    }
+                    this.activeFilter = 'all';
+                    this._dupSet = null;
+                    newlyCreatedUrls.forEach(url => this.managedUrls.add(url));
+                    this.photos = workingPhotos;
+                    this.normalizeLinkedChildrenOrder();
+                    this.applyCaseData(workingCaseData);
+
+                    const activeIdx = prevActiveUid ? this.photos.findIndex(p => p.uid === prevActiveUid) : 0;
+                    this.currentIndex = activeIdx >= 0 ? activeIdx : 0;
+                    if (this.photos[this.currentIndex]) {
+                        this.photos.forEach((p, idx) => { p.selected = idx === this.currentIndex; });
+                    }
+                    this.lastSelectedIndex = this.photos.length ? this.currentIndex : null;
+
+                    // 合併後的整合清冊不再綁定原本單一小檔控制代碼，避免 Ctrl+S 誤覆寫來源檔案
+                    this.currentProjectFileHandle = null;
+                    this.currentProjectFileName = '';
+                    this.currentProjectSavedAt = null;
+                    this.lastLocalEditAt = Date.now();
+                    this.hideAutoDraftBanner();
+                    this.recordHistory('彙整工作進度檔');
+                    this.render();
+                    await this.syncAllCompositeThumbnails();
+
+                    const totalAfter = this.photos.length;
+                    const matchedCount = matchedUids.size;
+                    const compCount = complementedUids.size;
+                    const overCount = overwrittenUids.size;
+                    const details = [];
+                    if (hadExistingPhotos) {
+                        details.push(`新加入 ${addedCount} 張`);
+                    }
+                    if (matchedCount > 0) {
+                        details.push(`重複照片合併去重 ${matchedCount} 張`);
+                    }
+                    if (compCount > 0) {
+                        details.push(`自動補齊空白欄位 ${compCount} 張`);
+                    }
+                    if (overCount > 0) {
+                        details.push(`較晚版本更新 ${overCount} 張`);
+                    }
+                    const detailSuffix = details.length ? `（${details.join('、')}）` : '';
+                    alert(`已完成彙整 ${parsedSources.length} 份工作進度，目前共 ${totalAfter} 張照片${detailSuffix}。如需覆寫或另存整合檔，請按 Ctrl+S 儲存。`);
+                    return true;
+                } catch (error) {
+                    newlyCreatedUrls.forEach(url => URL.revokeObjectURL(url));
+                    this.handleProjectError(error, 'merge');
+                    return false;
+                } finally {
+                    this.clearProgress();
+                }
+            }
+
+            handleProjectError(error, action = 'open') {
+                if (error?.message === '使用者已取消處理。') return;
                 console.error(error);
-                alert(`工作進度檔無法開啟：${error?.message || error}`);
+                const prefix = action === 'save'
+                    ? '工作進度無法儲存'
+                    : action === 'merge'
+                        ? '工作進度檔無法合併'
+                        : '工作進度檔無法開啟';
+                alert(`${prefix}：${error?.message || error}`);
+            }
+
+            openAutoDraftDb() {
+                return new Promise((resolve, reject) => {
+                    if (typeof indexedDB === 'undefined') {
+                        return reject(new Error('瀏覽器不支援 IndexedDB'));
+                    }
+                    const request = indexedDB.open(this.autoDraftDbName, 1);
+                    request.onupgradeneeded = () => {
+                        const db = request.result;
+                        if (!db.objectStoreNames.contains(this.autoDraftStoreName)) {
+                            db.createObjectStore(this.autoDraftStoreName);
+                        }
+                    };
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error || new Error('無法開啟自動暫存資料庫'));
+                });
+            }
+
+            scheduleAutoDraftSave() {
+                if (this.isRestoringHistory) return;
+                clearTimeout(this.autoDraftTimer);
+                if (!this.photos.length) return;
+                this.autoDraftTimer = setTimeout(() => {
+                    this.autoDraftTimer = null;
+                    this.saveAutoDraftNow().catch(() => {});
+                }, 1000);
+            }
+
+            async saveAutoDraftNow() {
+                if (!this.photos.length) return false;
+                const totalBytes = this.photos.reduce((sum, p) => sum + (p.file?.size || 0), 0);
+                if (this.photos.length > this.maxAutoDraftPhotos || totalBytes > this.maxAutoDraftBytes) {
+                    return false;
+                }
+                const snapshotPhotos = [];
+                for (let i = 0; i < this.photos.length; i++) {
+                    const photo = this.photos[i];
+                    if (!photo || !photo.file) continue;
+                    const buffer = await photo.file.arrayBuffer();
+                    snapshotPhotos.push({
+                        uid: photo.uid,
+                        name: photo.name,
+                        type: photo.file.type || 'image/jpeg',
+                        buffer,
+                        rotation: photo.rotation || 0,
+                        flipH: Boolean(photo.flipH),
+                        parentUid: photo.parentUid || null,
+                        cropRect: photo.cropRect ? { ...photo.cropRect } : null,
+                        sideCrop: this.cloneSideCrop(photo.sideCrop),
+                        annotations: this.cloneAnnotations(photo.annotations),
+                        exifRotation: photo.exifRotation || 0,
+                        seq: photo.seq,
+                        date: photo.date || '',
+                        time: photo.time || '',
+                        timeAutoDefaulted: Boolean(photo.timeAutoDefaulted),
+                        visualFingerprint: photo.visualFingerprint || '',
+                        thumbnailAspect: Number(photo.thumbnailAspect) || 1,
+                        location: photo.location || '',
+                        desc: photo.desc || '',
+                        selected: Boolean(photo.selected),
+                        stageX: Number.isFinite(photo.stageX) ? photo.stageX : null,
+                        stageY: Number.isFinite(photo.stageY) ? photo.stageY : null
+                    });
+                }
+                if (!snapshotPhotos.length) return false;
+                const payload = {
+                    format: 'photo-report-autodraft',
+                    version: 1,
+                    savedAt: new Date().toISOString(),
+                    caseData: this.getCaseData(),
+                    currentIndex: this.currentIndex,
+                    lastSelectedIndex: this.lastSelectedIndex,
+                    photos: snapshotPhotos
+                };
+                const db = await this.openAutoDraftDb();
+                try {
+                    await new Promise((resolve, reject) => {
+                        const tx = db.transaction(this.autoDraftStoreName, 'readwrite');
+                        tx.objectStore(this.autoDraftStoreName).put(payload, 'latest');
+                        tx.oncomplete = () => resolve();
+                        tx.onerror = () => reject(tx.error);
+                    });
+                    this.lastAutoDraftSavedAt = new Date();
+                    this.updateProjectSaveStatusUi();
+                    return true;
+                } finally {
+                    db.close();
+                }
+            }
+
+            async clearAutoDraftDb() {
+                clearTimeout(this.autoDraftTimer);
+                this.autoDraftTimer = null;
+                this.lastAutoDraftSavedAt = null;
+                this.pendingAutoDraft = null;
+                this.hideAutoDraftBanner();
+                try {
+                    const db = await this.openAutoDraftDb();
+                    try {
+                        await new Promise((resolve, reject) => {
+                            const tx = db.transaction(this.autoDraftStoreName, 'readwrite');
+                            tx.objectStore(this.autoDraftStoreName).delete('latest');
+                            tx.oncomplete = () => resolve();
+                            tx.onerror = () => reject(tx.error);
+                        });
+                    } finally {
+                        db.close();
+                    }
+                } catch {
+                    // 忽略無權限或不支援 IndexedDB 環境
+                }
+            }
+
+            hideAutoDraftBanner() {
+                this.autoDraftBanner?.classList.add('hidden');
+            }
+
+            async checkAndOfferAutoDraft() {
+                try {
+                    const db = await this.openAutoDraftDb();
+                    let draft = null;
+                    try {
+                        draft = await new Promise((resolve, reject) => {
+                            const tx = db.transaction(this.autoDraftStoreName, 'readonly');
+                            const req = tx.objectStore(this.autoDraftStoreName).get('latest');
+                            req.onsuccess = () => resolve(req.result || null);
+                            req.onerror = () => reject(req.error);
+                        });
+                    } finally {
+                        db.close();
+                    }
+                    if (!draft || draft.format !== 'photo-report-autodraft' || !Array.isArray(draft.photos) || !draft.photos.length) {
+                        this.hideAutoDraftBanner();
+                        return false;
+                    }
+                    if (this.photos.length > 0) {
+                        this.hideAutoDraftBanner();
+                        return false;
+                    }
+                    this.pendingAutoDraft = draft;
+                    if (this.autoDraftBanner && this.autoDraftBannerTitle && this.autoDraftBannerMeta) {
+                        const title = draft.caseData?.caseTitle?.trim() || '未命名案件';
+                        const savedDate = draft.savedAt ? new Date(draft.savedAt) : null;
+                        const timeStr = savedDate && !Number.isNaN(savedDate.getTime())
+                            ? savedDate.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })
+                            : '稍早';
+                        this.autoDraftBannerTitle.textContent = `發現上次還沒做完的工作進度（案由：${title}・共 ${draft.photos.length} 張照片）`;
+                        this.autoDraftBannerMeta.textContent = `自動暫存於 ${timeStr}。點「接續上次進度」可立即還原照片、標記與說明。`;
+                        this.autoDraftBanner.classList.remove('hidden');
+                    }
+                    return true;
+                } catch {
+                    this.hideAutoDraftBanner();
+                    return false;
+                }
+            }
+
+            async restoreAutoDraft() {
+                const draft = this.pendingAutoDraft;
+                if (!draft || !Array.isArray(draft.photos) || !draft.photos.length) {
+                    this.hideAutoDraftBanner();
+                    return false;
+                }
+                this.processingCancelled = false;
+                const restored = [];
+                try {
+                    this.setProgress('正在還原自動暫存進度…', 0, draft.photos.length);
+                    for (let index = 0; index < draft.photos.length; index++) {
+                        this.throwIfProcessingCancelled();
+                        const saved = draft.photos[index];
+                        const blobSource = saved.buffer || saved.blob;
+                        if (!blobSource) throw new Error(`草稿缺少照片資料：${saved.name}`);
+                        const imageFile = new File([blobSource], saved.name || `photo_${index + 1}.jpg`, { type: saved.type || 'image/jpeg' });
+                        const src = URL.createObjectURL(imageFile);
+                        let thumbnail;
+                        try {
+                            thumbnail = await this.createThumbnailUrl(imageFile, src);
+                        } catch (thumbErr) {
+                            URL.revokeObjectURL(src);
+                            throw thumbErr;
+                        }
+                        restored.push({
+                            uid: saved.uid || crypto.randomUUID(),
+                            file: imageFile,
+                            name: saved.name || `photo_${index + 1}.jpg`,
+                            src,
+                            thumbnailSrc: thumbnail.src,
+                            thumbnailAspect: Number(saved.thumbnailAspect) || thumbnail.aspect,
+                            visualFingerprint: saved.visualFingerprint || thumbnail.visualFingerprint || '',
+                            rotation: Number(saved.rotation) || 0,
+                            flipH: Boolean(saved.flipH),
+                            parentUid: saved.parentUid || null,
+                            cropRect: saved.cropRect && typeof saved.cropRect === 'object' ? {
+                                x: Number(saved.cropRect.x) || 0,
+                                y: Number(saved.cropRect.y) || 0,
+                                w: Number(saved.cropRect.w) || 0.1,
+                                h: Number(saved.cropRect.h) || 0.1
+                            } : null,
+                            sideCrop: this.cloneSideCrop(saved.sideCrop),
+                            compositeThumbnailSrc: null,
+                            _compositeKey: '',
+                            annotations: this.cloneAnnotations(saved.annotations),
+                            exifRotation: Number(saved.exifRotation) || 0,
+                            seq: String(saved.seq ?? index + 1),
+                            date: saved.date || '',
+                            time: saved.time || '',
+                            timeAutoDefaulted: Boolean(saved.timeAutoDefaulted),
+                            location: saved.location || '',
+                            desc: saved.desc || '',
+                            selected: Boolean(saved.selected),
+                            stageX: Number.isFinite(saved.stageX) ? saved.stageX : null,
+                            stageY: Number.isFinite(saved.stageY) ? saved.stageY : null
+                        });
+                        this.setProgress('正在還原自動暫存進度…', index + 1, draft.photos.length);
+                        this.throwIfProcessingCancelled();
+                        if ((index + 1) % 5 === 0) await this.yieldToBrowser();
+                    }
+
+                    this.activeFilter = 'all';
+                    this._dupSet = null;
+                    this.photos.forEach(photo => this.releasePhotoUrls(photo));
+                    this.history = [];
+                    this.historyIndex = -1;
+                    this.releaseUnusedPhotoUrls();
+                    this.photos = restored;
+                    this.normalizeLinkedChildrenOrder();
+                    restored.forEach(photo => {
+                        this.managedUrls.add(photo.src);
+                        this.managedUrls.add(photo.thumbnailSrc);
+                    });
+                    this.applyCaseData(draft.caseData);
+                    this.currentIndex = Math.max(0, Math.min(Number(draft.currentIndex) || 0, Math.max(0, restored.length - 1)));
+                    this.lastSelectedIndex = draft.lastSelectedIndex ?? this.currentIndex;
+                    if (restored.some(photo => !Number.isFinite(photo.stageX) || !Number.isFinite(photo.stageY))) {
+                        this.placeUnpositionedPhotos();
+                    }
+                    this.currentProjectFileHandle = null;
+                    this.currentProjectFileName = '';
+                    this.currentProjectSavedAt = null;
+                    this.lastLocalEditAt = Date.now();
+                    this.savedPhotosByUid = new Map();
+                    this.pendingAutoDraft = null;
+                    this.lastAutoDraftSavedAt = draft.savedAt ? new Date(draft.savedAt) : new Date();
+                    this.hideAutoDraftBanner();
+                    this.recordHistory('恢復自動暫存進度');
+                    this.render();
+                    await this.syncAllCompositeThumbnails();
+                    return true;
+                } catch (error) {
+                    restored.forEach(item => {
+                        if (item.src) URL.revokeObjectURL(item.src);
+                        if (item.thumbnailSrc) URL.revokeObjectURL(item.thumbnailSrc);
+                    });
+                    this.handleProjectError(error, 'open');
+                    return false;
+                } finally {
+                    this.clearProgress();
+                }
+            }
+
+            async discardAutoDraft() {
+                await this.clearAutoDraftDb();
+                this.updateProjectSaveStatusUi();
             }
 
             setThumbnailSize(size) {
@@ -1871,6 +3364,91 @@
                 this.recordHistory('依檔名整齊排序');
             }
 
+            getPhotoCaptureSortKeys(photo, defaultDate = '') {
+                const rawDate = String(photo?.date || '').trim() || String(defaultDate || '').trim();
+                const dateDigits = rawDate.replace(/[^0-9]/g, '');
+                let dateKey = '99999999';
+                if (dateDigits.length === 7) {
+                    dateKey = `0${dateDigits}`;
+                } else if (dateDigits.length === 6) {
+                    dateKey = `00${dateDigits}`;
+                } else if (dateDigits.length === 8) {
+                    const y = parseInt(dateDigits.slice(0, 4), 10);
+                    if (y >= 1912) {
+                        dateKey = `0${String(y - 1911).padStart(3, '0')}${dateDigits.slice(4, 8)}`;
+                    } else {
+                        dateKey = dateDigits;
+                    }
+                } else if (dateDigits.length > 0) {
+                    dateKey = dateDigits.padStart(8, '0').slice(0, 8);
+                }
+
+                const rawTime = String(photo?.time || '').trim();
+                const timeDigits = rawTime.replace(/[^0-9]/g, '');
+                let timeKey = '999999';
+                if (timeDigits.length === 4) {
+                    timeKey = `${timeDigits}00`;
+                } else if (timeDigits.length >= 6) {
+                    timeKey = timeDigits.slice(0, 6);
+                } else if (timeDigits.length > 0) {
+                    timeKey = timeDigits.padEnd(6, '0').slice(0, 6);
+                }
+
+                return { dateKey, timeKey };
+            }
+
+            sortPhotosByCaptureTime({ confirmBeforeSort = false } = {}) {
+                if (this.photos.length < 2) return;
+                this.finalizeActiveInputsBeforeSave();
+                if (confirmBeforeSort && !confirm('要依採證日期與時間（由早到晚）重新排列全部照片嗎？手動排好的順序會被取代。')) return;
+                const currentPhoto = this.photos[this.currentIndex];
+                const defaultDate = document.getElementById('caseDate')?.value?.trim() || '';
+                const rootCache = new Map();
+                const resolveRoot = (photo) => {
+                    if (!photo) return null;
+                    if (rootCache.has(photo.uid)) return rootCache.get(photo.uid);
+                    let cur = photo;
+                    const visited = new Set([cur.uid]);
+                    while (this.isLinkedCropChild(cur)) {
+                        const parent = this.getValidParentPhoto(cur);
+                        if (!parent || visited.has(parent.uid)) break;
+                        visited.add(parent.uid);
+                        cur = parent;
+                    }
+                    rootCache.set(photo.uid, cur);
+                    return cur;
+                };
+
+                this.photos.sort((a, b) => {
+                    const rootA = resolveRoot(a) || a;
+                    const rootB = resolveRoot(b) || b;
+                    if (rootA !== rootB) {
+                        const keyA = this.getPhotoCaptureSortKeys(rootA, defaultDate);
+                        const keyB = this.getPhotoCaptureSortKeys(rootB, defaultDate);
+                        const dateCmp = keyA.dateKey.localeCompare(keyB.dateKey);
+                        if (dateCmp !== 0) return dateCmp;
+                        const timeCmp = keyA.timeKey.localeCompare(keyB.timeKey);
+                        if (timeCmp !== 0) return timeCmp;
+                        return this.comparePhotoFileOrder(rootA, rootB);
+                    }
+                    if (a === rootA && b !== rootB) return -1;
+                    if (b === rootB && a !== rootA) return 1;
+                    const keyA = this.getPhotoCaptureSortKeys(a, defaultDate);
+                    const keyB = this.getPhotoCaptureSortKeys(b, defaultDate);
+                    const dateCmp = keyA.dateKey.localeCompare(keyB.dateKey);
+                    if (dateCmp !== 0) return dateCmp;
+                    const timeCmp = keyA.timeKey.localeCompare(keyB.timeKey);
+                    if (timeCmp !== 0) return timeCmp;
+                    return this.comparePhotoFileOrder(a, b);
+                });
+
+                this.normalizeLinkedChildrenOrder();
+                this.currentIndex = Math.max(0, this.photos.indexOf(currentPhoto));
+                this.lastSelectedIndex = this.currentIndex;
+                this.render();
+                this.recordHistory('依採證時間排序');
+            }
+
             placeUnpositionedPhotos() {
                 const pending = this.photos.filter(photo => !Number.isFinite(photo.stageX) || !Number.isFinite(photo.stageY));
                 if (!pending.length) return;
@@ -2091,6 +3669,15 @@
                 if (confirm('要清空清冊中的全部照片嗎？（不會刪除電腦裡的原檔）')) {
                     this.photos = [];
                     this.currentIndex = 0;
+                    this.lastSelectedIndex = null;
+                    this.activeFilter = 'all';
+                    this._dupSet = null;
+                    this.currentProjectFileHandle = null;
+                    this.currentProjectFileName = '';
+                    this.currentProjectSavedAt = null;
+                    this.lastLocalEditAt = null;
+                    this.savedPhotosByUid = new Map();
+                    this.clearAutoDraftDb();
                     this.render();
                     this.recordHistory('清空照片');
                 }
@@ -2800,6 +4387,7 @@
                 if (field === 'seq' && this.isLinkedCropChild(photo)) return;
                 this.commitLightboxHistoryIfNeeded();
                 photo[field] = value;
+                if (field === 'time') photo.timeAutoDefaulted = false;
                 this.lightboxNeedsRender = true;
                 if (field === 'seq') {
                     this.syncChildCropSequences();
@@ -3098,6 +4686,7 @@
                 setBtnState('btnParseFilenameTime', hasPhotos);
                 setBtnState('btnBatchRotate', hasPhotos);
                 setBtnState('btnAutoArrangeStage', hasPhotos);
+                setBtnState('btnSortByCaptureTime', hasPhotos);
                 setBtnState('btnClearAll', hasPhotos);
                 setBtnState('btnToggleEditor', hasPhotos);
                 setBtnState('btnExportPdf', hasPhotos);
@@ -3145,6 +4734,7 @@
 
                 document.getElementById('selectAllText').textContent = (totalPhotos > 0 && selectedCount === totalPhotos) ? '全不選' : '全選';
                 this.updateToolbarButtons(totalPhotos, selectedCount);
+                this.updateProjectSaveStatusUi();
 
                 if (totalPhotos === 0) {
                     if (this.isLightboxOpen()) {
@@ -3154,14 +4744,14 @@
                     this.emptyState.classList.remove('hidden');
                     this.workspaceContainer.classList.add('hidden');
                     this.gridContainer.classList.add('hidden');
-                    this.previewContainer.classList.add('hidden');
+                    if (this.previewContainer) this.previewContainer.classList.add('hidden');
                     return;
                 }
 
                 this.emptyState.classList.add('hidden');
                 this.workspaceContainer.classList.toggle('hidden', this.currentView !== 'workspace');
                 this.gridContainer.classList.toggle('hidden', this.currentView !== 'grid');
-                this.previewContainer.classList.toggle('hidden', this.currentView !== 'preview');
+                if (this.previewContainer) this.previewContainer.classList.toggle('hidden', this.currentView !== 'preview');
 
                 if (this.currentIndex >= totalPhotos) this.currentIndex = totalPhotos - 1;
                 if (this.currentIndex < 0) this.currentIndex = 0;
@@ -3354,6 +4944,7 @@
                             <div class="grid ${gridClass} gap-2 mx-auto">${cells}</div>
                         </section>`);
                 }
+                if (!this.previewContainer) return;
                 this.previewContainer.innerHTML = `
                     <div class="mb-3 text-xs text-[#6B7280] flex items-center gap-1.5"><i class="fa-solid fa-circle-info text-[#5B5CE2]"></i> 分頁預覽僅供確認照片順序與分組；實際表格以 Word 匯出為準。</div>
                     <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">${pages.join('')}</div>`;
@@ -3373,6 +4964,7 @@
                 if (!photo) return;
                 if (field === 'seq' && this.isLinkedCropChild(photo)) return;
                 photo[field] = value;
+                if (field === 'time') photo.timeAutoDefaulted = false;
                 if (field === 'seq') {
                     this.syncChildCropSequences();
                     this.refreshSequenceBadgesAndGridInputs();
@@ -5279,9 +6871,9 @@
             }
 
             syncAllCompositeThumbnails() {
-                this.photos.forEach(p => {
-                    if (p && p.sideCrop) this.refreshPhotoCompositeThumbnail(p);
-                });
+                return Promise.all(
+                    this.photos.map(p => (p && p.sideCrop) ? this.refreshPhotoCompositeThumbnail(p) : Promise.resolve())
+                );
             }
 
             syncPhotoRotationToCanvas(index, rotation) {
@@ -5734,6 +7326,7 @@
                         src: sourceUrl,
                         thumbnailSrc: thumbnail.src,
                         thumbnailAspect: thumbnail.aspect,
+                        visualFingerprint: thumbnail.visualFingerprint || '',
                         rotation: 0,
                         flipH: false,
                         parentUid: parentPhoto.uid,
@@ -5751,6 +7344,7 @@
                         seq: `${parentPhoto.seq}-1`,
                         date: parentPhoto.date || '',
                         time: parentPhoto.time || '',
+                        timeAutoDefaulted: Boolean(parentPhoto.timeAutoDefaulted),
                         location: parentPhoto.location || '',
                         desc: parentPhoto.desc ? `${parentPhoto.desc}（局部特寫）` : '',
                         selected: false,

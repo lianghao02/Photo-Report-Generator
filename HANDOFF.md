@@ -3,7 +3,7 @@
 ## 核心元資料 (Metadata)
 - **Repository**：lianghao02/Photo-Report-Generator
 - **Branch**：main
-- **Commit SHA**：承接基準 `03d20ed5e2f09e35554ed6d22811bfa27f5d0dc4`（本輪提交前撰寫，確切最新 SHA 見 `git log -1`）
+- **Commit SHA**：承接基準 `275211027f7c4b07ad95e0e710063f83f5434d95`（本輪提交前撰寫，確切最新 SHA 見 `git log -1`）
 - **Skill Version**：v1.0.0
 - **Task Type**：IMPROVE
 - **Local Path Hint**：04_Photo-Report-Generator
@@ -11,78 +11,81 @@
 ---
 
 ## 目前狀態
-可交付（已完成「大圖燈箱靠左並排＋右側即時編輯欄連動」、「Phase 1：畫黃／紅框＋姓名標籤含角落縮放＋水平鏡像翻轉」、「Phase 2 模式 A：局部裁切特寫自動插入原圖後方並鎖定 `1-1`／`2-1` 子編號連動」、「Phase 2 模式 B 完整版：Word 雙獨立圖匯出＋直式放大上限提升＋燈箱固定三種版面模擬白框與切換列」與「`Delete` 移除快捷鍵＋防誤刪保護／`Ctrl+Z` 復原整合」，已獲使用者確認並通過全套驗證，準備提交與推送至 `origin/main`）。
+可交付（已完成第一階段「工作進度儲存／開啟全方位強化（預設 220 ppi 等級最佳化壓縮）＋ 新增依採證時間排序 ＋ 精簡移除分頁預覽、Excel 與下載 ZIP」，以及第二階段「多 `.photo-report` 工作進度檔智慧彙整合併」全數功能實作，並通過 QA、單元測試 4/4、Golden Baseline 與 Playwright E2E 完整實測，待使用者實測或指示後提交）。
 
 ## 本輪目標
-1. 將上一輪拖曳提示框修復（`03d20ed`）推送至 `origin/main`。
-2. 實作「大圖燈箱靠左並排＋右側即時編輯欄連動」，解決開啟大圖後需關閉燈箱才能回到編輯欄登打的問題。
-3. 實作「Phase 1（畫黃／紅框＋姓名標籤＋水平鏡像翻轉＋姓名標籤角落拉動放大縮小）」及自我審查問題修正。
-4. 實作「Phase 2 模式 A（局部裁切特寫插入原圖後方並鎖定 `1-1`／`2-1` 子編號，往後推或往前拉皆自動跟隨原圖並連動更新編號）」。
-5. 實作並升級「Phase 2 模式 B（框選局部置於原圖右側並排、Word 同格雙獨立圖可單獨拉大、直式高倍放大、以及燈箱固定三種 Word 版面模擬白框）」。
-6. 補齊鍵盤「`Delete` 移除照片」快捷鍵，整合主畫面／大圖燈箱移除行為、文字輸入／彈窗／多選防誤刪保護，以及工具提示與操作說明更新。
+1. 全面改善「儲存／開啟工作進度（`.photo-report`）」之日常操作體驗與底層穩定性：
+   - 採用方案 A：一般「儲存工作進度（`Ctrl+S`）」與「另存新進度檔…（`Ctrl+Shift+S`）」預設自動執行 220 ppi 等級（長邊 `<= 2000px`）圖片最佳化壓縮並以 `STORE` 快速封裝，不另立重複的「儲存輕量進度檔」按鈕，同時 100% 保留黃框、姓名標籤、旋轉翻轉與裁切並排之非破壞性可編輯狀態。
+   - 存檔／開檔／草稿恢復／彙整合併支援進度條「取消」按鈕；修正錯誤提示、補齊 `finally { this.clearProgress(); }`、防止中途失敗之 Object URL 記憶體洩漏，並於開檔與彙整時自動關閉燈箱與重置篩選器為 `all`。
+   - 專案檔名自動過濾非法字元（`sanitizeFilename`）；存檔與合併前自動定稿輸入中欄位（`finalizeActiveInputsBeforeSave`）。
+   - 支援同檔原地覆寫（File System Access API `currentProjectFileHandle`）、`Ctrl+S` 全域快速存檔、頂部導覽列「未儲存／已儲存」即時狀態徽章（`#btnQuickSaveStatus`）、本機 IndexedDB 自動暫存草稿與恢復橫幅（`#autoDraftBanner`），以及直接拖放 `.photo-report` 進畫面開檔。
+2. 支援多 `.photo-report` 工作進度檔智慧彙整合併：
+   - 提供「檔案 ▾ → 併入其他工作進度…」（`#mergeProjectInput`，支援複選）與一次拖放 2 個以上 `.photo-report` 進畫面直接自動彙整之雙入口。
+   - 支援同源 `uid` 配對與跨電腦／經過 2000px 重壓縮之雙重身分識別（正規化檔名 ＋ 長寬比 ＋ 16×16 dHash 與 2×2 象限色彩視覺指紋 `visualFingerprint`），同時避免同檔名不同畫面照片誤合併。
+   - 依使用者定案規則進行無衝突預設自動合併：「一空白、一有字 ➔ 自動補齊」、「兩邊都有且不同 ➔ 以比較晚存檔／編輯的那一份覆蓋」，並具備單張未存修改防護（沒存檔的新修改不會被較舊進度檔蓋回）、未手動寫入真實時間預設 `12:00`（`timeAutoDefaulted`）不誤蓋真實時間、不同案件預設日期／地點保護、子特寫緊跟母圖去重或續編、新照片依序接續與 `Ctrl+Z` 完整復原等安全防護。
+3. 在「更多 ▾ → 排序與編號」選單新增 **「依採證時間排序」**（`#btnSortByCaptureTime`），依每張照片之採證日期（空白時繼承案件日期）與採證時間由早到晚排序，並維持 `-1`、`-2` 子特寫緊跟母圖連動。
+4. 依使用者指示精簡介面：移除不再需要的「分頁預覽」、「從 Excel 匯入說明」、「匯出 Excel 清單」與「下載處理後照片 (ZIP)」選單項目。
 
 ## 基準與已確認事實 (Baseline & Confirmed Facts)
-- 前一輪修復 `03d20ed` 已推送至 `origin/main`。
-- `historySignature` 與 `projectSignature` 同時存在於 `js/history.js` 與 `js/app.js`（由 `tests/unit/app-bridge.js` 擷取比對），新增之 `flipH`、`parentUid`、`cropRect`、`sideCrop`（含 `sourceAnnId`）與 `annotations`（含 `scale`）欄位已在兩處保持完全一致之簽名結構。
-- 未標記、未翻轉、無裁切子關聯且未設定 `sideCrop` 之一般照片，經過 `processImageToBlob` 與匯出邏輯維持與 Golden Baseline 100% 相容。
+- 前一輪 Commit `275211027f7c4b07ad95e0e710063f83f5434d95` 已推送至 `origin/main`。
+- `tests/e2e/photo-report.spec.js` 第 `1A` 節要求 `btnSaveProject`、`mergeProjectInput` 等控制項位於 `details.app-menu` 內，因此頂部導覽列快捷存檔狀態徽章使用獨立 ID `#btnQuickSaveStatus`。
+- 未標記、無裁切之一般匯出流程與 `.photo-report` 新舊格式維持 100% 向下相容。
 
 ## 已完成 (Completed)
-- **大圖燈箱靠左並排＋右側即時編輯欄連動**：
-  - `index.html`、`css/app.css`、`js/app.js`：將 `#imageLightboxModal` 擴展為雙欄彈性佈局（`#lightboxDialog.lightbox-shell` 最大寬度 `1440px`），開啟燈箱時將 `#editorCard` 動態掛載至 `#lightboxEditorMount`、關閉時歸還 `#editorPanel`，實現燈箱切圖與編輯欄雙向即時同步及兩段式 `ESC` 防護。
-- **Phase 1：畫黃／紅框＋姓名標籤（含角落縮放）＋水平鏡像翻轉**：
-  - `index.html`、`css/app.css`、`js/app.js`：新增 `#btnLightboxFlipH`（`H`）、`#lightboxAnnotationToolbar`（`移動/縮放 [V]`、`畫黃框 [Y]`、`畫紅框 [M]`、`加姓名標籤 [T]`＋黃／紅標籤樣式、`清除標記`）與對齊旋轉尺寸的 `#lightboxAnnotationLayer`。
-  - 支援姓名標籤右下角圓形控制點手動拖曳放大縮小（`scale: 0.5–3.0`），透過 `--label-scale` 即時矢量縮放並同步繪製於 `drawAnnotationsOnCanvas` 匯出圖檔與 `.photo-report` 專案存檔；標記框右上角新增「一鍵局部裁切」快捷鈕 `[data-ann-crop]` 與「一鍵放到右側並排」快捷鈕 `[data-ann-sidecrop]`。
-- **Phase 2 模式 A：局部裁切特寫與 `1-1`／`2-1` 子編號鎖定連動**：
-  - `index.html`、`css/app.css`、`js/app.js`、`js/history.js`：新增「局部裁切 [C]」與現有標記框「一鍵裁切」功能，生成高解析乾淨局部特寫插在原圖後方並鎖定為 `${parent.seq}-1` 唯讀子編號；搬移、拖曳或重排時自動跟隨原圖後方並即時連動更新編號。
-- **Phase 2 模式 B：原圖右側同格並排＋Word 雙獨立圖匯出＋燈箱固定三版面模擬白框**：
-  - `js/app.js`、`js/exporters/docx-exporter.js`：
-    - 修復自審 3 項問題：補齊 `handleLightboxPointerUp` 拖放提交 Undo 與縮圖同步、修正寬圖窄框強制被撐寬變形、建立 `sourceAnnId` 來源框雙向連動與防重複重繪機制。
-    - 升級 Word（`buildPhotoCellParagraph`）匯出：當照片含 `sideCrop` 時，於 Word 單一照片儲存格內並排寫入 2 個獨立 `ImageRun`（左原圖＋右局部放大圖），讓使用者進 Word 後仍可單獨點選右側特寫拖拉調整大小；PDF、ZIP 與工作台縮圖仍輸出高解析單張合成圖。
-    - 放寬直式原圖（`baseAspect < 0.85`）右側並排預設寬度比至 `1.45`（最高 `2.5`），並於裁切範圍內的非來源標記（如姓名標籤）同步高解析繪製至右側放大圖；維持預設保留黃框，亦可切換黃框／紅框／無框。
-  - `index.html`、`css/app.css`、`js/app.js`（**本輪最終定案強化**）：
-    - 一般單張照片（未開啟 `sideCrop`）維持現有最大化顯示；一旦啟用右側並排，於舞台上方自動顯示 `#lightboxSideLayoutBar`（「模擬表格框：上下兩張 / 左右兩張 / 橫式三張」切換列與 `#layoutSelect` 雙向連動，搭配右側即時空間狀態徽章）。
-    - `#lightboxCanvasFrame.has-side-crop` 改為固定依三種 Word 清冊版面儲存格比例（`535×365` / `315×690` / `335×535`）模擬外圍白框，採靠左對齊（`justify-content: flex-start`）讓左圖位置／寬高於未溢出時 100% 鎖死不動，拖拉右圖不再發生外框忽大忽小問題；靠近單格右緣時提供輕微磁吸與即時提示，超寬時整組等比縮放並警示建議改用 `-1` 模式 A。
-- **`Delete` 移除照片快捷鍵與 `Ctrl+Z` 復原整合**：
-  - `js/app.js`：新增 `hasBlockingModalOpen()` 與 `handleDeleteShortcut()`，並強化 `removePhoto()` 與 `removeSelectedPhotos()`。大圖燈箱開啟時及主畫面單張聚焦／單選狀態按 `Delete` 即時從清冊移出（並自動選取補位照片方便連續整理，不會刪除本機原檔，主畫面與燈箱內皆可按 `Ctrl+Z` / `Ctrl+Y` 復原重做）；主畫面同時勾選多張按 `Delete` 則先確認防誤刪；輸入欄位（含行內姓名標籤）、輔助彈窗開啟及篩選無對應可見項目時均阻斷觸發；移除前自動提交待儲存之文字與燈箱旋轉歷史。
-  - `index.html`：更新 `#btnRemoveSelected`、`#btnDeleteCurrent` 提示文字與 `#shortcutsModal` 快速鍵一覽。
-- **測試與資產建置更新**：
-  - `tests/unit/history.test.js`：新增 `flipH`、`parentUid`、`cropRect`、`annotations` 與 `sideCrop` 簽名測試及暫存縮圖隔離驗證。
-  - `tests/e2e/photo-report.spec.js`：涵蓋 `2B`（並排編輯）、`2C`（Phase 1）、`2D`（模式 A `1-1`／`2-1` 連動與修正洩漏的 `window.confirm` 模擬）、`2E`（模式 B 全流程：Word 雙獨立圖 `drawingCount === 4`、直式 `9:16` 固定白框不晃動、靠左鎖死、三種版面切換同步與恢復單張最大化檢視）與第 4 節（`Delete` 主畫面／燈箱移除、輸入與彈窗防護、多選確認、全刪自動關燈箱及 `Ctrl+Z`／`Ctrl+Y` 復原重做）。
+- **底層穩定度與預設 220 ppi 最佳化壓縮**：
+  - `js/app.js`（`saveProject`、`createLitePhotoEntry`、`openProjectFromFile`、`handleProjectError`、`sanitizeFilename`、`finalizeActiveInputsBeforeSave`）：
+    - `saveProject()` 預設啟用 `createLitePhotoEntry(photo, 2000, 0.88)`，自動將超過 `2000px` 之超大原圖依 EXIF 轉正並縮放為長邊 `<= 2000px` JPEG（同時將存入的 `exifRotation` 歸零避免二次旋轉，並完整保留 `rotation`、`flipH`、`annotations`、`cropRect`、`sideCrop` 與 `visualFingerprint`），再以 `compression: 'STORE'` 直接封裝並於 `manifest.json` 寫入 ISO `savedAt`。
+    - 存檔、開檔、彙整合併與自動草稿恢復迴圈皆接入 `this.throwIfProcessingCancelled()`，支援進度條「取消」按鈕並於取消或異常時即時釋放中途建立之 Object URL。
+    - 補齊 `saveProject`、`openProjectFromFile` 與 `mergeProjectFiles` 的 `finally { this.clearProgress(); }`，修正 `handleProjectError(error, action)` 區分「無法儲存／無法開啟／無法合併」，並自動關閉燈箱、重置 `activeFilter = 'all'`、等待 `await this.syncAllCompositeThumbnails()` 完成。
+    - 新增 `sanitizeFilename()` 清洗案由中的 `[\\/:*?"<>|]` 等非法檔名字元；新增 `finalizeActiveInputsBeforeSave()` 於存檔、合併與排序前自動觸發輸入中欄位的 `blur()` 與歷史紀錄提交。
+- **日常操作體驗強化、新增「依採證時間排序」與選單精簡**：
+  - `index.html`、`css/app.css`、`vendor/tailwind.css`、`js/app.js`：
+    - 頂部導覽列新增 `#btnQuickSaveStatus` 即時顯示琥珀色「還有修改沒存（Ctrl+S）・已自動暫存」或翠綠色「工作進度已儲存／已儲存：檔名」（對比度 > 8:1），點擊即可存檔；全域攔截 `Ctrl+S`（存檔）與 `Ctrl+Shift+S`（另存新檔）。
+    - 「檔案 ▾」選單精簡為「開啟工作進度…」、「併入其他工作進度…」、「儲存工作進度（Ctrl+S）」與「另存新進度檔…」（移除重複的輕量存檔鈕、Excel 匯入／匯出與下載 ZIP）。
+    - 「更多 ▾」選單新增 `#btnSortByCaptureTime`（「依採證時間排序」），實作 `getPhotoCaptureSortKeys()` 與 `sortPhotosByCaptureTime()`，依採證日期（空白時自動採用案件預設日期）與時間由早到晚排列，同時確保局部特寫子圖緊跟母圖且保留原編號格式；並從選單與畫面移除「分頁預覽」。
+    - 擴充 `bindExternalFileDropTarget()` 支援拖放單一 `.photo-report` 開啟與 2 個以上 `.photo-report` 自動彙整；實作 IndexedDB `PhotoReportAutoDraftDB` 背景自動暫存與 `#autoDraftBanner` 恢復橫幅。
+- **多 `.photo-report` 工作進度檔智慧彙整合併**：
+  - `index.html`、`js/app.js`（`mergeProjects`、`mergeProjectFiles`、`mergeMatchedPhotoRecord`、`computeVisualFingerprintFromCanvas`、`computeVisualFingerprintFromBlob`、`compareVisualFingerprints`、`normalizePhotoFilenameKey`、`allocateMergedMainSeq`、`markProjectSaved`、`getPhotoContentSignature`）：
+    - 實作雙重照片身分比對：優先以 `uid` 配對，未命中時再比對正規化檔名、長寬比（誤差 `<= 0.05`）與 256-bit dHash ＋ 2×2 象限 RGB 色彩 `visualFingerprint`，跨電腦或經過 2000px 重壓縮之相同照片可精準合併去重，同檔名不同畫面照片各自保留不誤合。
+    - 依存檔時間由早到晚處理多份來源，並追蹤目前工作台各照片是否相較最近存檔異動過（`savedPhotosByUid`）：畫面上未存檔的局部修改優先保護，未動過的照片則依較晚時間公平更新。
+    - 保護不同 `caseDate`／`defaultLocation` 案件之專屬照片顯示不互染，新增主照順延編號不撞號、子特寫緊跟母圖（依 `cropRect` 近似配對去重或新增 `-2`）；合併後清除 `currentProjectFileHandle` 防 `Ctrl+S` 誤蓋來源小檔並推入完整 `recordHistory('彙整工作進度檔')` 供 `Ctrl+Z` 一鍵退回。
+- **測試與驗證擴充**：
+  - `tests/e2e/photo-report.spec.js`：更新 `1A` 資訊架構檢查（含 `btnSortByCaptureTime`、`btnSaveProjectAs`、`mergeProjectInput` 與已移除項目確認），並於第 5 節（`5A`～`5G`）完整覆蓋狀態徽章、`Ctrl+S`、檔名非法字元清洗、時間遮罩自動定稿、原地覆寫 File Handle、預設 2000px 最佳化壓縮與標記保留、拖放單檔開啟、依採證時間排序、損毀檔案防漏 URL、IndexedDB 自動草稿，以及**多 `.photo-report` 進度檔跨機重壓縮去重／防誤合／一空一有補齊／較晚覆蓋／未存保護／子特寫合併／壞檔防護／`Ctrl+Z` 復原**全套 E2E 驗證。
 
 ## 異動檔案 (Changed Files)
-index.html、css/app.css、js/app.js、js/exporters/docx-exporter.js、js/history.js、vendor/tailwind.css、tests/unit/history.test.js、tests/e2e/photo-report.spec.js、HANDOFF.md。
+index.html、css/app.css、js/app.js、vendor/tailwind.css、tests/e2e/photo-report.spec.js、HANDOFF.md。
 
 ## 刻意未修改 (Do Not Do / Deliberately Omitted)
-工作台多選兩張獨立截圖左右合併、Word／PDF／Excel 外框表格結構、`js/app.js` 模組拆分瘦身（待使用者實測完 Phase 2B 再決定時機）、版本號與桌面版 Tauri 安裝檔打包（待實測定案後處理）。
+Word／PDF／Excel 匯出結構、版本號與 Tauri 桌面版安裝檔打包（待使用者確認後處理）。
 
 ## 尚未完成 (Remaining Work)
 - **P1 (阻斷/必須)**：無。
 - **P2 (重要/當次)**：無。
-- **P3 (改善建議/暫緩)**：日後再依使用情境評估是否維持 Tauri 免安裝桌面版或收斂為純網頁版維護，並視需要評估升版與 `js/app.js` 模組拆分。
+- **P3 (改善建議/暫緩)**：視後續需求決定是否升版或執行 `js/app.js` 模組拆分。
 
 ## 驗證結果 (Validation)
 ### 已執行測試與結果
+- `node --check js/app.js`：通過。
 - `powershell -ExecutionPolicy Bypass -File scripts\qa.ps1`：通過（含 `git diff --check`）。
 - `npm test`（`node tests/run-all-unit.js`）：4/4 通過。
 - `npm run test:baseline`（`node tests/run-baseline-test.js`）：Word／Excel／PDF 結構與 3 種版型全部通過。
-- `npm run test:e2e`（`node tests/e2e/photo-report.spec.js`）：全部通過（含直式 `9:16` 固定白框防晃動、三版面切換同步、Word `<w:drawing>` 雙獨立圖實測，以及 `Delete` 移除快捷鍵＋防誤刪／`Ctrl+Z` 復原重做實測）。
-- Playwright 燈箱實機截圖檢查（`preview_fixed_updown.png`）：確認模擬表格框列與左右導覽鈕零重疊、白框模擬比例精準、左圖固定滿高與右圖留白清楚易讀。
+- `npm run test:e2e`（`node tests/e2e/photo-report.spec.js`）：全部通過（含第 `5A`～`5G` 節全套實測）。
 ### 尚未驗證項目
 未重新升版或建置 Tauri 桌面版安裝檔。
 ### 已知風險 (Known Risks)
 無本輪已知阻斷性問題。
 
 ## Git 狀態
-- Commit：承接基準 `03d20ed5e2f09e35554ed6d22811bfa27f5d0dc4`，本輪核對無誤後於同次提交（不將提交本身的 SHA 寫入同一份提交，最新 SHA 見 `git log -1`）。
-- Push：前一輪 `03d20ed` 已 Push；本輪提交完成後依使用者指示推送 `origin/main`。
-- Working Tree：預計提交本輪 9 個檔案（`index.html`、`css/app.css`、`js/app.js`、`js/exporters/docx-exporter.js`、`js/history.js`、`vendor/tailwind.css`、`tests/unit/history.test.js`、`tests/e2e/photo-report.spec.js`、`HANDOFF.md`），推送完成後恢復 Clean。
+- Commit：承接基準 `275211027f7c4b07ad95e0e710063f83f5434d95`（本輪修改尚未 Commit，待使用者確認）。
+- Push：前一輪 `2752110` 已 Push；本輪修改待使用者指示後再 Commit 與 Push。
+- Working Tree：有本輪未提交修改（`index.html`、`css/app.css`、`js/app.js`、`vendor/tailwind.css`、`tests/e2e/photo-report.spec.js`、`HANDOFF.md`）。
 - Branch：main。
 
 ## 下一步建議動作 (Next Recommended Action)
-確認 `main` 推送後 GitHub Pages 線上版更新狀況；後續依實際需求決定是否精簡 Tauri 桌面版打包流程、升版或安排 `js/app.js` 模組拆分。
+請使用者實測本輪工作進度強化、依採證時間排序與多進度檔智慧彙整功能，確認無誤後執行 Commit 與 Push。
 
 ## 發布狀態 (Release Status)
-可交付並已依指示安排提交推送（Web 本機功能與全套測試通過；未升版、未建置桌面版）。
+可交付（Web 本機功能與全套測試通過；待使用者確認後提交推送）。
 ---
 
 以下為先前交接紀錄，現況以本輪狀態與 Git 為準。

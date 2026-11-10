@@ -38,10 +38,12 @@ async function runE2eTests() {
         const exportBar = byId('exportBar');
         const caseSection = byId('caseTitle')?.closest('section');
         return {
-            requiredControlsPresent: ['layoutSelect', 'btnSaveProject', 'importProjectInput', 'btnExportExcel', 'importExcelInput', 'btnExportZip', 'btnExportPdf', 'btnExportDocx']
+            requiredControlsPresent: ['layoutSelect', 'btnSaveProject', 'btnSaveProjectAs', 'importProjectInput', 'mergeProjectInput', 'btnSortByCaptureTime', 'btnExportPdf', 'btnExportDocx']
                 .every(id => Boolean(byId(id))),
+            removedControlsAbsent: ['btnViewPreview', 'previewContainer', 'btnSaveProjectLite', 'importExcelInput', 'btnExportExcel', 'btnExportZip']
+                .every(id => !byId(id)),
             layoutInExportBar: Boolean(exportBar?.querySelector('#layoutSelect')) && Boolean(exportBar?.querySelector('#btnExportDocx')) && Boolean(exportBar?.querySelector('#btnExportPdf')),
-            rareActionsInMenus: ['btnSaveProject', 'importProjectInput', 'btnExportExcel', 'importExcelInput', 'btnExportZip', 'btnParseFilenameTime', 'btnViewPreview']
+            rareActionsInMenus: ['btnSaveProject', 'btnSaveProjectAs', 'importProjectInput', 'mergeProjectInput', 'btnAutoArrangeStage', 'btnSortByCaptureTime', 'btnParseFilenameTime']
                 .every(id => Boolean(byId(id)?.closest('details.app-menu'))),
             caseSectionTitle: caseSection?.querySelector('h2')?.textContent?.trim(),
             layoutInCaseSection: Boolean(caseSection?.querySelector('#layoutSelect')),
@@ -49,9 +51,10 @@ async function runE2eTests() {
             initialDescription: byId('layoutDescription')?.textContent?.trim()
         };
     });
-    if (!exportUi.requiredControlsPresent) throw new Error('既有專案／匯出控制項 ID 不完整');
+    if (!exportUi.requiredControlsPresent) throw new Error('專案／排序／匯出控制項 ID 不完整');
+    if (!exportUi.removedControlsAbsent) throw new Error('已精簡移除之分頁預覽、Excel、ZIP 與獨立輕量存檔鈕不應再出現在 DOM');
     if (!exportUi.layoutInExportBar) throw new Error('版型與 Word／PDF 匯出應集中在底部匯出列');
-    if (!exportUi.rareActionsInMenus) throw new Error('專案檔、Excel、ZIP、檔名時間與分頁預覽應收在選單內');
+    if (!exportUi.rareActionsInMenus) throw new Error('專案檔與排序／檔名時間操作應收在選單內');
     if (!exportUi.caseSectionTitle?.includes('案件資料')) throw new Error(`案件區標題不正確：${exportUi.caseSectionTitle}`);
     if (exportUi.layoutInCaseSection) throw new Error('清冊版型不應留在案件資料區');
     if (!exportUi.wordIsPrimary) throw new Error('Word 清冊應維持主要操作按鈕');
@@ -1514,6 +1517,644 @@ async function runE2eTests() {
         throw new Error(`刪光關閉燈箱後於主畫面按 Ctrl+Z 應恢復照片並結束空白狀態: ${JSON.stringify(afterEmptyUndo)}`);
     }
     console.log('  ✅ Delete 移除快捷鍵（主畫面／燈箱／輸入與彈窗防護／多選確認／Ctrl+Z 復原）驗證成功');
+
+    // 5. 驗證工作進度儲存／開啟全方位強化（Ctrl+S、狀態徽章、原地覆寫、輕量進度檔、拖放開檔、取消與防漏、IndexedDB 自動暫存）
+    // 5A. 測試未儲存狀態徽章、遮罩輸入自動定稿、非法檔名字元清洗與 Ctrl+S 快捷鍵（含輸入框與燈箱內）
+    await page.evaluate(() => {
+        const titleInput = document.getElementById('caseTitle');
+        titleInput.value = '115/11/10:竊盜案*測試?';
+        titleInput.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    const unsavedBadgeState = await page.evaluate(() => {
+        const btn = document.getElementById('btnQuickSaveStatus');
+        return {
+            visible: btn && !btn.classList.contains('hidden'),
+            unsavedClass: btn?.classList.contains('project-save-badge--unsaved'),
+            text: document.getElementById('quickSaveStatusText')?.textContent?.trim()
+        };
+    });
+    if (!unsavedBadgeState.visible || !unsavedBadgeState.unsavedClass || !unsavedBadgeState.text?.includes('還有修改沒存')) {
+        throw new Error(`修改案由後頂部應立即顯示未儲存狀態徽章: ${JSON.stringify(unsavedBadgeState)}`);
+    }
+
+    // 聚焦時間欄輸入 4 碼 '1645'（未離開欄位），直接按 Ctrl+S 應自動完成遮罩格式化並儲存
+    await page.evaluate(() => {
+        window.app.photos.forEach((p, idx) => { p.selected = idx === 0; });
+        window.app.currentIndex = 0;
+        window.app.render();
+        window.__ctrlSSaved = [];
+        window.__origSaveAs5 = window.saveAs;
+        window.saveAs = (blob, name) => window.__ctrlSSaved.push({ blob, name });
+    });
+    await page.click('#editTime');
+    await page.keyboard.type('1645');
+    await page.keyboard.press('Control+s');
+    await page.waitForFunction(() => Array.isArray(window.__ctrlSSaved) && window.__ctrlSSaved.length === 1);
+
+    const afterCtrlS = await page.evaluate(async () => {
+        const saved = window.__ctrlSSaved[0];
+        const zip = await window.JSZip.loadAsync(saved.blob);
+        const manifest = JSON.parse(await zip.file('manifest.json').async('text'));
+        const btn = document.getElementById('btnQuickSaveStatus');
+        return {
+            fileName: saved.name,
+            photoTimeInApp: window.app.photos[0]?.time,
+            photoTimeInManifest: manifest.photos[0]?.time,
+            savedClass: btn?.classList.contains('project-save-badge--saved'),
+            badgeText: document.getElementById('quickSaveStatusText')?.textContent?.trim(),
+            unsavedNow: window.app.hasUnsavedProjectChanges()
+        };
+    });
+    if (
+        afterCtrlS.fileName !== '115_11_10_竊盜案_測試__照片清冊專案.photo-report' ||
+        afterCtrlS.photoTimeInApp !== '16:45' ||
+        afterCtrlS.photoTimeInManifest !== '16:45' ||
+        !afterCtrlS.savedClass ||
+        afterCtrlS.unsavedNow
+    ) {
+        throw new Error(`Ctrl+S 應自動完成時間遮罩定稿、清洗檔名並更新為已儲存狀態: ${JSON.stringify(afterCtrlS)}`);
+    }
+
+    // 開啟燈箱旋轉照片後，在燈箱內按 Ctrl+S 也應正常存檔
+    await page.evaluate(() => window.app.openLightboxByIndex(0));
+    await page.waitForFunction(() => !document.getElementById('imageLightboxModal').classList.contains('hidden'));
+    await page.keyboard.press('r');
+    await page.keyboard.press('Control+s');
+    await page.waitForFunction(() => Array.isArray(window.__ctrlSSaved) && window.__ctrlSSaved.length === 2);
+    await page.keyboard.press('Escape');
+
+    // 5B. 測試同檔原地覆寫（currentProjectFileHandle）與 Ctrl+Shift+S 另存新檔
+    const handleOverwriteResult = await page.evaluate(async () => {
+        const writes = [];
+        window.app.currentProjectFileHandle = {
+            name: 'linked_case.photo-report',
+            createWritable: async () => ({
+                write: async (blob) => { writes.push(blob); },
+                close: async () => {}
+            })
+        };
+        window.app.currentProjectFileName = 'linked_case.photo-report';
+        window.app.saveAs = window.app.initialSaveAs;
+        window.saveAs = window.app.initialSaveAs;
+
+        window.app.photos[0].desc = '原地覆寫測試說明';
+        window.app.recordHistory('修改說明');
+        const unsavedBefore = window.app.hasUnsavedProjectChanges();
+        await window.app.saveProject({ fromUserPicker: true });
+        const badgeAfterOverwrite = document.getElementById('quickSaveStatusText')?.textContent?.trim();
+        const menuTextAfterOverwrite = document.getElementById('saveProjectMenuText')?.textContent?.trim();
+
+        // 測試另存新檔（saveAsNew: true）會走 saveAs 而非覆寫原 handle
+        const saveAsNewFiles = [];
+        window.saveAs = (blob, name) => saveAsNewFiles.push({ blob, name });
+        await window.app.saveProject({ saveAsNew: true });
+
+        window.app.currentProjectFileHandle = null;
+        return {
+            unsavedBefore,
+            writeCount: writes.length,
+            writtenSize: writes[0]?.size || 0,
+            unsavedAfter: window.app.hasUnsavedProjectChanges(),
+            badgeAfterOverwrite,
+            menuTextAfterOverwrite,
+            saveAsNewCount: saveAsNewFiles.length
+        };
+    });
+    if (
+        !handleOverwriteResult.unsavedBefore ||
+        handleOverwriteResult.writeCount !== 1 ||
+        handleOverwriteResult.writtenSize <= 0 ||
+        handleOverwriteResult.unsavedAfter ||
+        !handleOverwriteResult.badgeAfterOverwrite?.includes('linked_case.photo-report') ||
+        !handleOverwriteResult.menuTextAfterOverwrite?.includes('linked_case.photo-report') ||
+        handleOverwriteResult.saveAsNewCount !== 1
+    ) {
+        throw new Error(`同檔原地覆寫與另存新檔行為異常: ${JSON.stringify(handleOverwriteResult)}`);
+    }
+
+    // 5C & 5D. 測試「預設自動 220 ppi 級（長邊 2000px）最佳化壓縮且保留標記／翻轉／並排」、「直接拖放 .photo-report 進度檔開啟」與「依採證時間排序」
+    const liteAndDropResult = await page.evaluate(async () => {
+        const origAlert = window.alert;
+        const origConfirm = window.confirm;
+        const alerts = [];
+        window.alert = msg => alerts.push(String(msg));
+        window.confirm = () => true;
+        try {
+            // 建立一張 2600x1800 的高解析度彩色測試圖
+            const bigCanvas = document.createElement('canvas');
+            bigCanvas.width = 2600;
+            bigCanvas.height = 1800;
+            const bctx = bigCanvas.getContext('2d');
+            bctx.fillStyle = '#1E3A8A';
+            bctx.fillRect(0, 0, 2600, 1800);
+            for (let i = 0; i < 40; i++) {
+                bctx.fillStyle = `hsl(${(i * 19) % 360}, 80%, 55%)`;
+                bctx.fillRect((i * 63) % 2400, (i * 41) % 1600, 180, 140);
+            }
+            const bigBlob = await new Promise(r => bigCanvas.toBlob(r, 'image/jpeg', 0.98));
+            const bigFile = new File([bigBlob], 'highres_scene.jpg', { type: 'image/jpeg' });
+
+            window.app.photos = [];
+            await window.app.handleFiles([bigFile]);
+            const p = window.app.photos[0];
+            p.rotation = 90;
+            p.flipH = true;
+            p.desc = '高解析度輕量專案測試';
+            p.annotations = [
+                { id: 'ann_lite_1', type: 'rect', color: 'yellow', x: 0.2, y: 0.25, w: 0.35, h: 0.3 },
+                { id: 'ann_lite_2', type: 'label', color: 'red', x: 0.5, y: 0.2, scale: 1.4, text: '關鍵證物' }
+            ];
+            p.sideCrop = {
+                cropRect: { x: 0.2, y: 0.25, w: 0.35, h: 0.3 },
+                widthRatio: 0.85,
+                offsetY: 0.5,
+                borderColor: 'yellow',
+                sourceAnnId: 'ann_lite_1'
+            };
+
+            const outFiles = [];
+            window.saveAs = (blob, name) => outFiles.push({ blob, name });
+            // 未縮圖原始大小對照組 vs 預設 saveProject() 自動最佳化壓縮
+            await window.app.saveProject({ lite: false });
+            await window.app.saveProject();
+
+            const fullProj = outFiles[0];
+            const liteProj = outFiles[1];
+
+            // 先清空工作台，測試直接拖放（drop）liteProj 到 #emptyState 開啟
+            window.app.photos = [];
+            window.app.activeFilter = 'missingDesc';
+            window.app.render();
+
+            const dt = new DataTransfer();
+            const droppedFile = new File([liteProj.blob], liteProj.name, { type: 'application/zip' });
+            dt.items.add(droppedFile);
+            const emptyStateEl = document.getElementById('emptyState');
+            emptyStateEl.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+
+            await new Promise((resolve, reject) => {
+                const deadline = Date.now() + 5000;
+                const check = () => {
+                    if (
+                        window.app.photos.length === 1 &&
+                        window.app.photos[0].desc === '高解析度輕量專案測試' &&
+                        alerts.some(msg => msg.includes('已開啟工作進度'))
+                    ) {
+                        return resolve();
+                    }
+                    if (Date.now() > deadline) return reject(new Error('拖放 .photo-report 開啟逾時'));
+                    setTimeout(check, 30);
+                };
+                check();
+            });
+
+            const restoredPhoto = window.app.photos[0];
+            const restoredImg = await window.app.loadImage(restoredPhoto.src);
+
+            // 測試「依採證時間排序」（含子特寫緊跟母圖連動）
+            const basePhoto = window.app.photos[0];
+            document.getElementById('caseDate').value = '115/11/10';
+            window.app.photos = [
+                { ...basePhoto, uid: 't_late', name: 'A_01.jpg', seq: '1', date: '115/11/10', time: '15:30', parentUid: null, cropRect: null },
+                { ...basePhoto, uid: 't_late_child', name: 'A_01_特寫1.jpg', seq: '1-1', date: '115/11/10', time: '08:00', parentUid: 't_late', cropRect: { x: 0.1, y: 0.1, w: 0.3, h: 0.3 } },
+                { ...basePhoto, uid: 't_early', name: 'Z_99.jpg', seq: '2', date: '', time: '09:15:20', parentUid: null, cropRect: null },
+                { ...basePhoto, uid: 't_prev_day', name: 'M_50.jpg', seq: '3', date: '115/11/09', time: '22:10', parentUid: null, cropRect: null }
+            ];
+            window.app.sortPhotosByCaptureTime({ confirmBeforeSort: true });
+            const sortedTimeUids = window.app.photos.map(item => item.uid);
+            const sortedTimeSeqs = window.app.photos.map(item => item.seq);
+
+            // 恢復單張照片供後續 5E / 5F 測試
+            window.app.photos = [restoredPhoto];
+            window.app.currentIndex = 0;
+            window.app.render();
+
+            return {
+                fullSize: fullProj.blob.size,
+                liteSize: liteProj.blob.size,
+                liteName: liteProj.name,
+                restoredMaxDim: Math.max(restoredImg.naturalWidth || restoredImg.width, restoredImg.naturalHeight || restoredImg.height),
+                restoredRotation: restoredPhoto.rotation,
+                restoredFlipH: restoredPhoto.flipH,
+                restoredAnnCount: restoredPhoto.annotations?.length || 0,
+                restoredSideCropRatio: restoredPhoto.sideCrop?.widthRatio,
+                filterResetToAll: window.app.activeFilter === 'all',
+                sortedTimeUids,
+                sortedTimeSeqs
+            };
+        } finally {
+            window.alert = origAlert;
+            window.confirm = origConfirm;
+        }
+    });
+    if (
+        !liteAndDropResult.liteName.endsWith('_照片清冊專案.photo-report') ||
+        liteAndDropResult.liteSize >= liteAndDropResult.fullSize ||
+        liteAndDropResult.restoredMaxDim > 2000 ||
+        liteAndDropResult.restoredRotation !== 90 ||
+        !liteAndDropResult.restoredFlipH ||
+        liteAndDropResult.restoredAnnCount !== 2 ||
+        liteAndDropResult.restoredSideCropRatio !== 0.85 ||
+        !liteAndDropResult.filterResetToAll ||
+        liteAndDropResult.sortedTimeUids.join(',') !== 't_prev_day,t_early,t_late,t_late_child' ||
+        liteAndDropResult.sortedTimeSeqs.join(',') !== '3,2,1,1-1'
+    ) {
+        throw new Error(`預設最佳化壓縮、拖放開啟或依採證時間排序結果不符預期: ${JSON.stringify(liteAndDropResult)}`);
+    }
+
+    // 5E. 測試錯誤提示區分（無法儲存 vs 無法開啟）、中途失敗不洩漏 URL 與取消處理保護
+    const errorAndCancelCheck = await page.evaluate(async () => {
+        const origAlert = window.alert;
+        const origConfirm = window.confirm;
+        const alerts = [];
+        window.alert = msg => alerts.push(String(msg));
+        window.confirm = () => true;
+        try {
+            const urlsBefore = window.app.managedUrls.size;
+            window.app.handleProjectError(new Error('磁碟已滿'), 'save');
+            window.app.handleProjectError(new Error('使用者已取消處理。'), 'save');
+
+            // 構造缺少第 2 張圖檔的損壞專案檔，驗證失敗時釋放第 1 張暫存 URL 且保留原工作台照片
+            const badZip = new window.JSZip();
+            const firstPhoto = window.app.photos[0];
+            badZip.file('images/0001_ok.jpg', firstPhoto.file);
+            badZip.file('manifest.json', JSON.stringify({
+                format: 'photo-report-project',
+                version: 1,
+                caseData: window.app.getCaseData(),
+                photos: [
+                    { uid: 'u1', archiveName: '0001_ok.jpg', name: 'ok.jpg', type: 'image/jpeg', seq: '1' },
+                    { uid: 'u2', archiveName: '0002_missing.jpg', name: 'missing.jpg', type: 'image/jpeg', seq: '2' }
+                ]
+            }));
+            const badBlob = await badZip.generateAsync({ type: 'blob' });
+            const badFile = new File([badBlob], 'corrupted.photo-report', { type: 'application/zip' });
+            const openOk = await window.app.openProjectFromFile(badFile);
+            const urlsAfter = window.app.managedUrls.size;
+            const progressHidden = document.getElementById('processingStatus').classList.contains('hidden');
+            return {
+                alerts,
+                openOk,
+                urlsBefore,
+                urlsAfter,
+                progressHidden,
+                stillHasOriginalPhoto: window.app.photos.length === 1 && window.app.photos[0].desc === '高解析度輕量專案測試'
+            };
+        } finally {
+            window.alert = origAlert;
+            window.confirm = origConfirm;
+        }
+    });
+    if (
+        errorAndCancelCheck.openOk !== false ||
+        errorAndCancelCheck.urlsAfter !== errorAndCancelCheck.urlsBefore ||
+        !errorAndCancelCheck.progressHidden ||
+        !errorAndCancelCheck.stillHasOriginalPhoto ||
+        !errorAndCancelCheck.alerts[0]?.startsWith('工作進度無法儲存：') ||
+        !errorAndCancelCheck.alerts[1]?.startsWith('工作進度檔無法開啟：')
+    ) {
+        throw new Error(`專案儲存／開啟錯誤處理與 URL 防洩漏檢查未通過: ${JSON.stringify(errorAndCancelCheck)}`);
+    }
+
+    // 5F. 測試本機 IndexedDB 自動暫存草稿（寫入、啟動偵測橫幅、一鍵接續進度與捨棄草稿）
+    const autoDraftCheck = await page.evaluate(async () => {
+        document.getElementById('caseTitle').value = '自動暫存恢復測試案';
+        const savedOk = await window.app.saveAutoDraftNow();
+
+        // 模擬重新整理後的空白初始工作台
+        window.app.photos.forEach(p => window.app.releasePhotoUrls(p));
+        window.app.photos = [];
+        window.app.render();
+
+        const offered = await window.app.checkAndOfferAutoDraft();
+        const bannerVisibleAfterOffer = !document.getElementById('autoDraftBanner').classList.contains('hidden');
+        const bannerTitle = document.getElementById('autoDraftBannerTitle')?.textContent?.trim();
+
+        // 點擊「接續上次進度」
+        await window.app.restoreAutoDraft();
+        const bannerHiddenAfterRestore = document.getElementById('autoDraftBanner').classList.contains('hidden');
+        const restoredCount = window.app.photos.length;
+        const restoredTitle = document.getElementById('caseTitle').value;
+        const restoredDesc = window.app.photos[0]?.desc;
+        const restoredAnnCount = window.app.photos[0]?.annotations?.length || 0;
+
+        // 測試「捨棄草稿」清除 IndexedDB
+        await window.app.discardAutoDraft();
+        window.app.photos = [];
+        const offeredAfterDiscard = await window.app.checkAndOfferAutoDraft();
+
+        // 復原 window.saveAs
+        if (window.__origSaveAs5) window.saveAs = window.__origSaveAs5;
+
+        return {
+            savedOk,
+            offered,
+            bannerVisibleAfterOffer,
+            bannerTitle,
+            bannerHiddenAfterRestore,
+            restoredCount,
+            restoredTitle,
+            restoredDesc,
+            restoredAnnCount,
+            offeredAfterDiscard
+        };
+    });
+    if (
+        !autoDraftCheck.savedOk ||
+        !autoDraftCheck.offered ||
+        !autoDraftCheck.bannerVisibleAfterOffer ||
+        !autoDraftCheck.bannerTitle?.includes('自動暫存恢復測試案') ||
+        !autoDraftCheck.bannerHiddenAfterRestore ||
+        autoDraftCheck.restoredCount !== 1 ||
+        autoDraftCheck.restoredTitle !== '自動暫存恢復測試案' ||
+        autoDraftCheck.restoredDesc !== '高解析度輕量專案測試' ||
+        autoDraftCheck.restoredAnnCount !== 2 ||
+        autoDraftCheck.offeredAfterDiscard !== false
+    ) {
+        throw new Error(`IndexedDB 自動暫存草稿儲存、恢復或捨棄驗證失敗: ${JSON.stringify(autoDraftCheck)}`);
+    }
+    console.log('  ✅ 工作進度全方位強化（Ctrl+S、狀態徽章、原地覆寫、輕量進度檔、拖放開檔、防漏與自動暫存）驗證成功');
+
+    // 5G. 測試多 .photo-report 工作進度檔智慧彙整合併（跨電腦重壓縮識別、撞號不同圖不誤合、一空一有補齊、較晚覆蓋、未存修改保護、子特寫合併與 Ctrl+Z 復原）
+    const mergeCheck = await page.evaluate(async () => {
+        const origAlert = window.alert;
+        const origConfirm = window.confirm;
+        const origSaveAs = window.saveAs;
+        const alerts = [];
+        window.alert = msg => alerts.push(String(msg));
+        window.confirm = () => true;
+
+        const makeSceneFile = async (filename, drawFn, width = 2400, height = 1600) => {
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            drawFn(ctx, width, height);
+            const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.94));
+            return new File([blob], filename, { type: 'image/jpeg' });
+        };
+
+        const stampManifestTime = async (blob, savedAtIso) => {
+            const zip = await window.JSZip.loadAsync(blob);
+            const manifest = JSON.parse(await zip.file('manifest.json').async('text'));
+            manifest.savedAt = savedAtIso;
+            zip.file('manifest.json', JSON.stringify(manifest), { compression: 'DEFLATE', compressionOptions: { level: 6 } });
+            return zip.generateAsync({ type: 'blob' });
+        };
+
+        try {
+            // 建立測試照片（2400x1600，存成專案時皆會經過 2000px 自動最佳化壓縮）
+            const fileScene1 = await makeSceneFile('cam_scene_1.jpg', (ctx, w, h) => {
+                ctx.fillStyle = '#0F172A';
+                ctx.fillRect(0, 0, w, h);
+                ctx.fillStyle = '#F59E0B';
+                ctx.fillRect(160, 140, 820, 900);
+                ctx.fillStyle = '#38BDF8';
+                ctx.beginPath();
+                ctx.arc(1700, 950, 420, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            const fileScene2 = await makeSceneFile('cam_scene_2.jpg', (ctx, w, h) => {
+                ctx.fillStyle = '#ECFDF5';
+                ctx.fillRect(0, 0, w, h);
+                ctx.fillStyle = '#059669';
+                ctx.fillRect(220, 220, 1960, 420);
+                ctx.fillStyle = '#DC2626';
+                ctx.fillRect(900, 760, 620, 620);
+            });
+            const fileSharedBlue = await makeSceneFile('IMG_8888.jpg', (ctx, w, h) => {
+                ctx.fillStyle = '#1D4ED8';
+                ctx.fillRect(0, 0, w, h);
+                ctx.fillStyle = '#FACC15';
+                ctx.fillRect(120, 120, 600, 1200);
+            });
+            const fileSharedGreenDiff = await makeSceneFile('IMG_8888.jpg', (ctx, w, h) => {
+                ctx.fillStyle = '#15803D';
+                ctx.fillRect(0, 0, w, h);
+                ctx.fillStyle = '#F43F5E';
+                ctx.fillRect(1400, 260, 820, 980);
+            });
+            const fileScene3 = await makeSceneFile('cam_scene_3.jpg', (ctx, w, h) => {
+                ctx.fillStyle = '#7C2D12';
+                ctx.fillRect(0, 0, w, h);
+                ctx.fillStyle = '#E2E8F0';
+                ctx.fillRect(420, 320, 1520, 920);
+            });
+
+            const savedOutput = [];
+            window.saveAs = (blob, name) => savedOutput.push({ blob, name });
+
+            // 1. 模擬人員 A（較早）各自開新網頁匯入照片並編輯存檔
+            await window.app.clearAll(true);
+            document.getElementById('caseTitle').value = '聯合作業測試案';
+            document.getElementById('caseDate').value = '115/11/09';
+            document.getElementById('defaultLocation').value = '舊預設地點';
+            await window.app.handleFiles([fileScene1, fileScene2, fileSharedBlue]);
+            window.app.photos[0].desc = '早期說明';
+            window.app.photos[0].location = '台北市中正區';
+            window.app.photos[0].time = '09:30';
+            window.app.photos[0].timeAutoDefaulted = false;
+            window.app.photos[0].annotations = [{ id: 'a_red', type: 'rect', color: 'red', x: 0.1, y: 0.1, w: 0.2, h: 0.2 }];
+            // photos[1] (cam_scene_2) 刻意維持空白與自動預設 time='12:00'
+            window.app.photos[2].desc = '早檔藍圖';
+            // 為早檔藍圖建立一張子特寫（uid 保留供後續第三份檔測試同/異特寫）
+            const blueParentUid = window.app.photos[2].uid;
+            const cropChild = await window.app.createDetailCropPhoto(2, { x: 0.1, y: 0.1, w: 0.35, h: 0.35 });
+            cropChild.desc = '早檔藍圖特寫1';
+            const childCropUid = cropChild.uid;
+            await window.app.saveProject({ lite: true });
+            const earlyBlob = await stampManifestTime(savedOutput.pop().blob, '2026-11-10T08:00:00.000Z');
+
+            // 2. 模擬人員 B（較晚）各自重開網頁匯入同批高解析原圖（完全不同 uid）與撞號綠圖
+            await window.app.clearAll(true);
+            document.getElementById('caseTitle').value = '聯合作業測試案';
+            document.getElementById('caseDate').value = '115/11/10';
+            document.getElementById('defaultLocation').value = '新案件現場';
+            await window.app.handleFiles([fileScene1, fileScene2, fileSharedGreenDiff, fileScene3]);
+            window.app.photos[0].desc = '較晚完整說明';
+            window.app.photos[0].location = ''; // 留空應保留早檔「台北市中正區」
+            window.app.photos[0].annotations = [
+                { id: 'b_yellow', type: 'rect', color: 'yellow', x: 0.25, y: 0.25, w: 0.3, h: 0.3 },
+                { id: 'b_lbl', type: 'label', color: 'yellow', x: 0.3, y: 0.2, scale: 1.2, text: '陳某' }
+            ];
+            window.app.photos[1].desc = '補齊空白說明';
+            window.app.photos[1].location = '大安區路段';
+            window.app.photos[1].time = '14:25';
+            window.app.photos[1].timeAutoDefaulted = false;
+            window.app.photos[1].sideCrop = { cropRect: { x: 0.2, y: 0.2, w: 0.4, h: 0.4 }, widthRatio: 0.72, offsetY: 0.5, borderColor: 'yellow' };
+            window.app.photos[2].desc = '晚檔撞號綠圖';
+            window.app.photos[3].desc = '第三現場補充';
+            await window.app.saveProject({ lite: true });
+            const lateBlob = await stampManifestTime(savedOutput.pop().blob, '2026-11-10T10:00:00.000Z');
+
+            // 3. 製作第三份進度檔（基於早檔衍生或同原圖但更晚於 10:00，測試已開啟專案併入與未存修改保護）
+            const thirdZip = await window.JSZip.loadAsync(earlyBlob);
+            const thirdManifest = JSON.parse(await thirdZip.file('manifest.json').async('text'));
+            thirdManifest.savedAt = '2026-11-10T12:00:00.000Z';
+            thirdManifest.photos[0].desc = '不該蓋掉畫面未存的第1張';
+            thirdManifest.photos[1].desc = '第三手最新修訂第2張';
+            thirdManifest.photos[3].desc = '第三手更新同特寫1';
+            // 再加一張同母圖但不同 cropRect 的新特寫
+            const extraChildArchive = '0099_extra_crop.jpg';
+            const blueOrigEntry = thirdZip.file(new RegExp(`images/.*${blueParentUid}.*`))[0] || thirdZip.file(`images/${thirdManifest.photos[2].archiveName}`);
+            const blueOrigBytes = await blueOrigEntry.async('uint8array');
+            thirdZip.file(`images/${extraChildArchive}`, blueOrigBytes, { compression: 'STORE' });
+            thirdManifest.photos.push({
+                uid: 'third_new_child_2',
+                archiveName: extraChildArchive,
+                name: 'IMG_8888_特寫2.jpg',
+                type: 'image/jpeg',
+                rotation: 0,
+                flipH: false,
+                parentUid: blueParentUid,
+                cropRect: { x: 0.5, y: 0.45, w: 0.3, h: 0.3 },
+                sideCrop: null,
+                annotations: [],
+                exifRotation: 0,
+                seq: '3-2',
+                date: '',
+                time: '12:00',
+                timeAutoDefaulted: true,
+                location: '',
+                desc: '第三手新增第二特寫',
+                selected: false
+            });
+            thirdZip.file('manifest.json', JSON.stringify(thirdManifest));
+            const thirdBlob = await thirdZip.generateAsync({ type: 'blob' });
+
+            // 4. 清空工作台，模擬一次拖放「2 份進度檔」（故意把較晚檔放前面、較早檔放後面）
+            await window.app.clearAll(true);
+            const dt = new DataTransfer();
+            dt.items.add(new File([lateBlob], 'B_late.photo-report', { type: 'application/zip' }));
+            dt.items.add(new File([earlyBlob], 'A_early.photo-report', { type: 'application/zip' }));
+            document.getElementById('emptyState').dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+
+            await new Promise((resolve, reject) => {
+                const deadline = Date.now() + 8000;
+                const tick = () => {
+                    if (window.app.photos.length === 6 && alerts.some(m => m.includes('已完成彙整 2 份工作進度'))) return resolve();
+                    if (Date.now() > deadline) return reject(new Error('拖放多份 .photo-report 彙整逾時'));
+                    setTimeout(tick, 30);
+                };
+                tick();
+            });
+
+            const afterTwoDrop = {
+                count: window.app.photos.length,
+                seqs: window.app.photos.map(p => p.seq),
+                p0Desc: window.app.photos[0].desc,
+                p0Loc: window.app.photos[0].location,
+                p0Anns: window.app.photos[0].annotations.map(a => `${a.type}:${a.color}`).join(','),
+                p1Desc: window.app.photos[1].desc,
+                p1Loc: window.app.photos[1].location,
+                p1Time: window.app.photos[1].time,
+                p1SideCropRatio: window.app.photos[1].sideCrop?.widthRatio || 0,
+                blueLoc: window.app.photos.find(p => p.desc === '早檔藍圖')?.location,
+                hasGreenCollisionKept: window.app.photos.some(p => p.desc === '晚檔撞號綠圖'),
+                hasScene3: window.app.photos.some(p => p.desc === '第三現場補充'),
+                handleCleared: window.app.currentProjectFileHandle === null
+            };
+
+            // 5. 模擬工作台目前已先鎖定為 10:00 存檔狀態，只手動改第 1 張（未 Ctrl+S），再併入 12:00 的 thirdBlob
+            window.app.markProjectSaved(Date.parse('2026-11-10T10:00:00.000Z'));
+            window.app.photos[0].desc = '畫面剛改還沒按CtrlS';
+            window.app.lastLocalEditAt = Date.parse('2026-11-10T14:00:00.000Z');
+            window.app.recordHistory('準備測試未存保護併入');
+
+            const mergeInput = document.getElementById('mergeProjectInput');
+            const mergeDt = new DataTransfer();
+            mergeDt.items.add(new File([thirdBlob], 'C_third.photo-report', { type: 'application/zip' }));
+            mergeInput.files = mergeDt.files;
+            mergeInput.dispatchEvent(new Event('change', { bubbles: true }));
+            await new Promise((resolve, reject) => {
+                const deadline = Date.now() + 8000;
+                const tick = () => {
+                    if (window.app.photos.length === 7 && alerts.some(m => m.includes('已完成彙整 1 份工作進度'))) return resolve();
+                    if (Date.now() > deadline) return reject(new Error('選單併入第三份 .photo-report 逾時'));
+                    setTimeout(tick, 30);
+                };
+                tick();
+            });
+            const afterThirdMerge = {
+                count: window.app.photos.length,
+                seqs: window.app.photos.map(p => p.seq),
+                p0Desc: window.app.photos[0].desc,
+                p1Desc: window.app.photos[1].desc,
+                updatedChildDesc: window.app.photos.find(p => p.uid === childCropUid)?.desc,
+                addedSecondChildDesc: window.app.photos.find(p => p.name === 'IMG_8888_特寫2.jpg')?.desc,
+                addedSecondChildSeq: window.app.photos.find(p => p.name === 'IMG_8888_特寫2.jpg')?.seq
+            };
+
+            // 6. 測試損壞進度檔合併失敗時保護原工作台與 URL 不洩漏
+            const urlsBeforeBadMerge = window.app.managedUrls.size;
+            const badMergeZip = new window.JSZip();
+            badMergeZip.file('manifest.json', JSON.stringify({
+                format: 'photo-report-project',
+                version: 1,
+                caseData: {},
+                photos: [{ uid: 'bad1', archiveName: 'missing.jpg', name: 'missing.jpg', seq: '1' }]
+            }));
+            const badMergeOk = await window.app.mergeProjectFiles([new File([await badMergeZip.generateAsync({ type: 'blob' })], 'bad.photo-report', { type: 'application/zip' })]);
+            const urlsAfterBadMerge = window.app.managedUrls.size;
+
+            // 7. 測試 Ctrl+Z 復原最後一次彙整（應回到 6 張與第 2 張被第三手修訂前的狀態）
+            window.app.undo();
+            const afterUndoMerge = {
+                count: window.app.photos.length,
+                p1Desc: window.app.photos[1].desc,
+                hasSecondChild: window.app.photos.some(p => p.name === 'IMG_8888_特寫2.jpg')
+            };
+
+            // 收尾清除並復原乾淨狀態
+            await window.app.clearAll(true);
+            return {
+                afterTwoDrop,
+                afterThirdMerge,
+                badMergeOk,
+                badMergeErrorAlert: alerts.at(-1) || '',
+                urlsLeaked: urlsAfterBadMerge !== urlsBeforeBadMerge,
+                afterUndoMerge
+            };
+        } finally {
+            window.alert = origAlert;
+            window.confirm = origConfirm;
+            window.saveAs = origSaveAs;
+        }
+    });
+
+    if (
+        mergeCheck.afterTwoDrop.count !== 6 ||
+        mergeCheck.afterTwoDrop.p0Desc !== '較晚完整說明' ||
+        mergeCheck.afterTwoDrop.p0Loc !== '台北市中正區' ||
+        mergeCheck.afterTwoDrop.p0Anns !== 'rect:yellow,label:yellow' ||
+        mergeCheck.afterTwoDrop.p1Desc !== '補齊空白說明' ||
+        mergeCheck.afterTwoDrop.p1Loc !== '大安區路段' ||
+        mergeCheck.afterTwoDrop.p1Time !== '14:25' ||
+        mergeCheck.afterTwoDrop.p1SideCropRatio !== 0.72 ||
+        mergeCheck.afterTwoDrop.blueLoc !== '舊預設地點' ||
+        !mergeCheck.afterTwoDrop.hasGreenCollisionKept ||
+        !mergeCheck.afterTwoDrop.hasScene3 ||
+        !mergeCheck.afterTwoDrop.handleCleared
+    ) {
+        throw new Error(`雙進度檔跨機智慧彙整結果異常: ${JSON.stringify(mergeCheck.afterTwoDrop)}`);
+    }
+    if (
+        mergeCheck.afterThirdMerge.count !== 7 ||
+        mergeCheck.afterThirdMerge.p0Desc !== '畫面剛改還沒按CtrlS' ||
+        mergeCheck.afterThirdMerge.p1Desc !== '第三手最新修訂第2張' ||
+        mergeCheck.afterThirdMerge.updatedChildDesc !== '第三手更新同特寫1' ||
+        mergeCheck.afterThirdMerge.addedSecondChildDesc !== '第三手新增第二特寫' ||
+        !String(mergeCheck.afterThirdMerge.addedSecondChildSeq).endsWith('-2') ||
+        mergeCheck.badMergeOk !== false ||
+        !mergeCheck.badMergeErrorAlert.startsWith('工作進度檔無法合併：') ||
+        mergeCheck.urlsLeaked ||
+        mergeCheck.afterUndoMerge.count !== 6 ||
+        mergeCheck.afterUndoMerge.p1Desc !== '補齊空白說明' ||
+        mergeCheck.afterUndoMerge.hasSecondChild
+    ) {
+        throw new Error(`後續併入未存修改保護、子特寫合併、錯誤防護或 Ctrl+Z 復原失敗: ${JSON.stringify(mergeCheck)}`);
+    }
+    console.log('  ✅ 多 .photo-report 工作進度檔智慧彙整（跨機重壓縮去重、防誤合、自動補齊、較晚覆蓋、未存保護、子特寫與復原）驗證成功');
 
     if (pageErrors.length > 0) {
         console.warn('⚠️ 頁面出現 Uncaught Error:', pageErrors);
