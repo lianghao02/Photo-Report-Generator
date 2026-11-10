@@ -3,64 +3,86 @@
 ## 核心元資料 (Metadata)
 - **Repository**：lianghao02/Photo-Report-Generator
 - **Branch**：main
-- **Commit SHA**：53f7c180bfbdc2f048b486dbfc627a2b9e13dd54（本輪修改前基準；本輪交付提交以最新 Git 記錄為準）
+- **Commit SHA**：承接基準 `03d20ed5e2f09e35554ed6d22811bfa27f5d0dc4`（本輪提交前撰寫，確切最新 SHA 見 `git log -1`）
 - **Skill Version**：v1.0.0
-- **Task Type**：FIX
+- **Task Type**：IMPROVE
 - **Local Path Hint**：04_Photo-Report-Generator
 
 ---
 
 ## 目前狀態
-可交付（已完成修復與全套驗證；使用者授權先提交本輪修復，尚未推送遠端）。
+可交付（已完成「大圖燈箱靠左並排＋右側即時編輯欄連動」、「Phase 1：畫黃／紅框＋姓名標籤含角落縮放＋水平鏡像翻轉」、「Phase 2 模式 A：局部裁切特寫自動插入原圖後方並鎖定 `1-1`／`2-1` 子編號連動」、「Phase 2 模式 B 完整版：Word 雙獨立圖匯出＋直式放大上限提升＋燈箱固定三種版面模擬白框與切換列」與「`Delete` 移除快捷鍵＋防誤刪保護／`Ctrl+Z` 復原整合」，已獲使用者確認並通過全套驗證，準備提交與推送至 `origin/main`）。
 
 ## 本輪目標
-修復照片數量較多、縮圖區（`#thumbGrid`）產生垂直捲動時，外部檔案拖曳提示框（`📥 放開以加入照片`）因絕對定位受限於可視高度且隨內容捲動而只覆蓋上半部的問題。
+1. 將上一輪拖曳提示框修復（`03d20ed`）推送至 `origin/main`。
+2. 實作「大圖燈箱靠左並排＋右側即時編輯欄連動」，解決開啟大圖後需關閉燈箱才能回到編輯欄登打的問題。
+3. 實作「Phase 1（畫黃／紅框＋姓名標籤＋水平鏡像翻轉＋姓名標籤角落拉動放大縮小）」及自我審查問題修正。
+4. 實作「Phase 2 模式 A（局部裁切特寫插入原圖後方並鎖定 `1-1`／`2-1` 子編號，往後推或往前拉皆自動跟隨原圖並連動更新編號）」。
+5. 實作並升級「Phase 2 模式 B（框選局部置於原圖右側並排、Word 同格雙獨立圖可單獨拉大、直式高倍放大、以及燈箱固定三種 Word 版面模擬白框）」。
+6. 補齊鍵盤「`Delete` 移除照片」快捷鍵，整合主畫面／大圖燈箱移除行為、文字輸入／彈窗／多選防誤刪保護，以及工具提示與操作說明更新。
 
 ## 基準與已確認事實 (Baseline & Confirmed Facts)
-- 起始為 `main`（`53f7c18`），工作目錄乾淨，版本 `v2.4.1`。
-- 實測載入 43 張照片並捲動 `#thumbGrid` 後，`scrollHeight` 超過 `600px`，原本直接掛在 `#thumbGrid::after` 的虛線提示框停留在頂端 `0～590px`，導致下方照片露出框外。
+- 前一輪修復 `03d20ed` 已推送至 `origin/main`。
+- `historySignature` 與 `projectSignature` 同時存在於 `js/history.js` 與 `js/app.js`（由 `tests/unit/app-bridge.js` 擷取比對），新增之 `flipH`、`parentUid`、`cropRect`、`sideCrop`（含 `sourceAnnId`）與 `annotations`（含 `scale`）欄位已在兩處保持完全一致之簽名結構。
+- 未標記、未翻轉、無裁切子關聯且未設定 `sideCrop` 之一般照片，經過 `processImageToBlob` 與匯出邏輯維持與 Golden Baseline 100% 相容。
 
 ## 已完成 (Completed)
-- `index.html`：於 `#thumbGrid` 外層新增不捲動定位容器 `#thumbGridDropZone`（沿用既有 `relative rounded-xl`）。
-- `css/app.css`：將外部拖曳提示框 `::after` 改掛於 `#thumbGridDropZone`，並設定 `z-index: 10` 以維持在底部 `.export-bar`（`z-index: 20`）之下。
-- `js/app.js`：更新 `bindExternalFileDropTarget` 同步切換 `#thumbGrid` 與 `#thumbGridDropZone` 的 `.external-file-drag-over`。
-- `tests/e2e/photo-report.spec.js`：新增 24 張照片捲動至底部的外部檔案拖曳提示框覆蓋高度與拖離清除 E2E 回歸驗證。
+- **大圖燈箱靠左並排＋右側即時編輯欄連動**：
+  - `index.html`、`css/app.css`、`js/app.js`：將 `#imageLightboxModal` 擴展為雙欄彈性佈局（`#lightboxDialog.lightbox-shell` 最大寬度 `1440px`），開啟燈箱時將 `#editorCard` 動態掛載至 `#lightboxEditorMount`、關閉時歸還 `#editorPanel`，實現燈箱切圖與編輯欄雙向即時同步及兩段式 `ESC` 防護。
+- **Phase 1：畫黃／紅框＋姓名標籤（含角落縮放）＋水平鏡像翻轉**：
+  - `index.html`、`css/app.css`、`js/app.js`：新增 `#btnLightboxFlipH`（`H`）、`#lightboxAnnotationToolbar`（`移動/縮放 [V]`、`畫黃框 [Y]`、`畫紅框 [M]`、`加姓名標籤 [T]`＋黃／紅標籤樣式、`清除標記`）與對齊旋轉尺寸的 `#lightboxAnnotationLayer`。
+  - 支援姓名標籤右下角圓形控制點手動拖曳放大縮小（`scale: 0.5–3.0`），透過 `--label-scale` 即時矢量縮放並同步繪製於 `drawAnnotationsOnCanvas` 匯出圖檔與 `.photo-report` 專案存檔；標記框右上角新增「一鍵局部裁切」快捷鈕 `[data-ann-crop]` 與「一鍵放到右側並排」快捷鈕 `[data-ann-sidecrop]`。
+- **Phase 2 模式 A：局部裁切特寫與 `1-1`／`2-1` 子編號鎖定連動**：
+  - `index.html`、`css/app.css`、`js/app.js`、`js/history.js`：新增「局部裁切 [C]」與現有標記框「一鍵裁切」功能，生成高解析乾淨局部特寫插在原圖後方並鎖定為 `${parent.seq}-1` 唯讀子編號；搬移、拖曳或重排時自動跟隨原圖後方並即時連動更新編號。
+- **Phase 2 模式 B：原圖右側同格並排＋Word 雙獨立圖匯出＋燈箱固定三版面模擬白框**：
+  - `js/app.js`、`js/exporters/docx-exporter.js`：
+    - 修復自審 3 項問題：補齊 `handleLightboxPointerUp` 拖放提交 Undo 與縮圖同步、修正寬圖窄框強制被撐寬變形、建立 `sourceAnnId` 來源框雙向連動與防重複重繪機制。
+    - 升級 Word（`buildPhotoCellParagraph`）匯出：當照片含 `sideCrop` 時，於 Word 單一照片儲存格內並排寫入 2 個獨立 `ImageRun`（左原圖＋右局部放大圖），讓使用者進 Word 後仍可單獨點選右側特寫拖拉調整大小；PDF、ZIP 與工作台縮圖仍輸出高解析單張合成圖。
+    - 放寬直式原圖（`baseAspect < 0.85`）右側並排預設寬度比至 `1.45`（最高 `2.5`），並於裁切範圍內的非來源標記（如姓名標籤）同步高解析繪製至右側放大圖；維持預設保留黃框，亦可切換黃框／紅框／無框。
+  - `index.html`、`css/app.css`、`js/app.js`（**本輪最終定案強化**）：
+    - 一般單張照片（未開啟 `sideCrop`）維持現有最大化顯示；一旦啟用右側並排，於舞台上方自動顯示 `#lightboxSideLayoutBar`（「模擬表格框：上下兩張 / 左右兩張 / 橫式三張」切換列與 `#layoutSelect` 雙向連動，搭配右側即時空間狀態徽章）。
+    - `#lightboxCanvasFrame.has-side-crop` 改為固定依三種 Word 清冊版面儲存格比例（`535×365` / `315×690` / `335×535`）模擬外圍白框，採靠左對齊（`justify-content: flex-start`）讓左圖位置／寬高於未溢出時 100% 鎖死不動，拖拉右圖不再發生外框忽大忽小問題；靠近單格右緣時提供輕微磁吸與即時提示，超寬時整組等比縮放並警示建議改用 `-1` 模式 A。
+- **`Delete` 移除照片快捷鍵與 `Ctrl+Z` 復原整合**：
+  - `js/app.js`：新增 `hasBlockingModalOpen()` 與 `handleDeleteShortcut()`，並強化 `removePhoto()` 與 `removeSelectedPhotos()`。大圖燈箱開啟時及主畫面單張聚焦／單選狀態按 `Delete` 即時從清冊移出（並自動選取補位照片方便連續整理，不會刪除本機原檔，主畫面與燈箱內皆可按 `Ctrl+Z` / `Ctrl+Y` 復原重做）；主畫面同時勾選多張按 `Delete` 則先確認防誤刪；輸入欄位（含行內姓名標籤）、輔助彈窗開啟及篩選無對應可見項目時均阻斷觸發；移除前自動提交待儲存之文字與燈箱旋轉歷史。
+  - `index.html`：更新 `#btnRemoveSelected`、`#btnDeleteCurrent` 提示文字與 `#shortcutsModal` 快速鍵一覽。
+- **測試與資產建置更新**：
+  - `tests/unit/history.test.js`：新增 `flipH`、`parentUid`、`cropRect`、`annotations` 與 `sideCrop` 簽名測試及暫存縮圖隔離驗證。
+  - `tests/e2e/photo-report.spec.js`：涵蓋 `2B`（並排編輯）、`2C`（Phase 1）、`2D`（模式 A `1-1`／`2-1` 連動與修正洩漏的 `window.confirm` 模擬）、`2E`（模式 B 全流程：Word 雙獨立圖 `drawingCount === 4`、直式 `9:16` 固定白框不晃動、靠左鎖死、三種版面切換同步與恢復單張最大化檢視）與第 4 節（`Delete` 主畫面／燈箱移除、輸入與彈窗防護、多選確認、全刪自動關燈箱及 `Ctrl+Z`／`Ctrl+Y` 復原重做）。
 
 ## 異動檔案 (Changed Files)
-index.html、css/app.css、js/app.js、tests/e2e/photo-report.spec.js、HANDOFF.md。
+index.html、css/app.css、js/app.js、js/exporters/docx-exporter.js、js/history.js、vendor/tailwind.css、tests/unit/history.test.js、tests/e2e/photo-report.spec.js、HANDOFF.md。
 
 ## 刻意未修改 (Do Not Do / Deliberately Omitted)
-Word／PDF／Excel 匯出格式與 Golden Baseline 結構、版本號、`vendor/tailwind.css`（無新增樣式類別）。
+工作台多選兩張獨立截圖左右合併、Word／PDF／Excel 外框表格結構、`js/app.js` 模組拆分瘦身（待使用者實測完 Phase 2B 再決定時機）、版本號與桌面版 Tauri 安裝檔打包（待實測定案後處理）。
 
 ## 尚未完成 (Remaining Work)
 - **P1 (阻斷/必須)**：無。
-- **P2 (重要/當次)**：待使用者決定是否推送 `origin/main`（觸發 GitHub Pages 自動部署）。
-- **P3 (改善建議/暫緩)**：已依據使用者實際採證 Word 檔完成「非破壞性圖片標記（黃／紅框＋姓名文字標籤）＋ 水平鏡像翻轉 ＋ 局部裁切特寫」（Phase 1～3）方向評估，待使用者確認啟動規格；若後續發布桌面版再另行執行 Tauri 建置驗收。
+- **P2 (重要/當次)**：無。
+- **P3 (改善建議/暫緩)**：日後再依使用情境評估是否維持 Tauri 免安裝桌面版或收斂為純網頁版維護，並視需要評估升版與 `js/app.js` 模組拆分。
 
 ## 驗證結果 (Validation)
 ### 已執行測試與結果
+- `powershell -ExecutionPolicy Bypass -File scripts\qa.ps1`：通過（含 `git diff --check`）。
 - `npm test`（`node tests/run-all-unit.js`）：4/4 通過。
 - `npm run test:baseline`（`node tests/run-baseline-test.js`）：Word／Excel／PDF 結構與 3 種版型全部通過。
-- `npm run test:e2e`（`node tests/e2e/photo-report.spec.js`）：全部通過（含新增大量照片捲動拖曳提示框回歸檢查）。
-- `powershell -ExecutionPolicy Bypass -File scripts\qa.ps1` 與 `git diff --check`：通過。
-- Playwright 截圖實測（43 張照片捲動至底及頁面頂端狀態）：確認提示框完整覆蓋可視縮圖區且未遮擋底部匯出列。
+- `npm run test:e2e`（`node tests/e2e/photo-report.spec.js`）：全部通過（含直式 `9:16` 固定白框防晃動、三版面切換同步、Word `<w:drawing>` 雙獨立圖實測，以及 `Delete` 移除快捷鍵＋防誤刪／`Ctrl+Z` 復原重做實測）。
+- Playwright 燈箱實機截圖檢查（`preview_fixed_updown.png`）：確認模擬表格框列與左右導覽鈕零重疊、白框模擬比例精準、左圖固定滿高與右圖留白清楚易讀。
 ### 尚未驗證項目
-未建置或操作 Tauri 桌面版；本輪尚未推送遠端。
+未重新升版或建置 Tauri 桌面版安裝檔。
 ### 已知風險 (Known Risks)
-無本輪已知阻斷性問題；在極舊不支援 CSS `:has()` 之瀏覽器仍可透過 `js/app.js` 同步切換 `#thumbGridDropZone` 類別正常運作。
+無本輪已知阻斷性問題。
 
 ## Git 狀態
-- Commit：本輪修正提交於 `main`（交付提交訊息為「fix: 修復大量照片捲動時外部拖曳提示框截斷問題」，實際 SHA 以 Git 記錄為準）。
-- Push：否（依指示先執行本機提交，待確認推送）。
-- Working Tree：提交後維持 Clean。
+- Commit：承接基準 `03d20ed5e2f09e35554ed6d22811bfa27f5d0dc4`，本輪核對無誤後於同次提交（不將提交本身的 SHA 寫入同一份提交，最新 SHA 見 `git log -1`）。
+- Push：前一輪 `03d20ed` 已 Push；本輪提交完成後依使用者指示推送 `origin/main`。
+- Working Tree：預計提交本輪 9 個檔案（`index.html`、`css/app.css`、`js/app.js`、`js/exporters/docx-exporter.js`、`js/history.js`、`vendor/tailwind.css`、`tests/unit/history.test.js`、`tests/e2e/photo-report.spec.js`、`HANDOFF.md`），推送完成後恢復 Clean。
 - Branch：main。
 
 ## 下一步建議動作 (Next Recommended Action)
-確認是否推送 `origin/main`；若確認展開 Phase 1（畫黃／紅框＋人名文字標籤＋水平鏡像翻轉），先確認規格細節再實作。
+確認 `main` 推送後 GitHub Pages 線上版更新狀況；後續依實際需求決定是否精簡 Tauri 桌面版打包流程、升版或安排 `js/app.js` 模組拆分。
 
 ## 發布狀態 (Release Status)
-Web 本機功能與全套測試通過，未升版、未建置桌面版或推送部署。
-
+可交付並已依指示安排提交推送（Web 本機功能與全套測試通過；未升版、未建置桌面版）。
 ---
 
 以下為先前交接紀錄，現況以本輪狀態與 Git 為準。

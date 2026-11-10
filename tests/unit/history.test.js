@@ -71,7 +71,13 @@ const dataFieldsToTest = [
     { field: 'desc', value: '特寫' },
     { field: 'selected', value: false },
     { field: 'stageX', value: 150 },
-    { field: 'stageY', value: 250 }
+    { field: 'stageY', value: 250 },
+    { field: 'flipH', value: true },
+    { field: 'parentUid', value: 'photo-0' },
+    { field: 'cropRect', value: { x: 0.2, y: 0.2, w: 0.4, h: 0.4 } },
+    { field: 'annotations', value: [{ id: 'ann_1', type: 'rect', color: 'yellow', x: 0.1, y: 0.2, w: 0.3, h: 0.4 }] },
+    { field: 'annotations', value: [{ id: 'ann_2', type: 'label', color: 'yellow', x: 0.5, y: 0.5, scale: 1.65, text: '測試' }] },
+    { field: 'sideCrop', value: { cropRect: { x: 0.1, y: 0.1, w: 0.3, h: 0.4 }, widthRatio: 0.6, offsetY: 0.5, borderColor: 'yellow' } }
 ];
 
 dataFieldsToTest.forEach(({ field, value }) => {
@@ -159,5 +165,22 @@ assert.strictEqual(manager.canRedo(), true, 'Undo 後應可 Redo');
 const redoneState = manager.redo();
 assert.strictEqual(historySignature(redoneState), historySignature(stateWithCaseDataChange), 'Redo 應回到最新狀態');
 assert.strictEqual(manager.canRedo(), false, 'Redo 後無後續步驟，不可再 Redo');
+
+// 8. 測試：包含 sideCrop 時 App fallback 與 History 模組計算一致，且暫存預覽屬性不影響簽名
+const stateWithSideCrop = JSON.parse(JSON.stringify(baseState));
+stateWithSideCrop.photos[0].sideCrop = { cropRect: { x: 0.15, y: 0.2, w: 0.3, h: 0.45 }, widthRatio: 0.55, offsetY: 0.25, borderColor: 'red' };
+const stateWithSideCropThumb = JSON.parse(JSON.stringify(stateWithSideCrop));
+stateWithSideCropThumb.photos[0].compositeThumbnailSrc = 'blob:fake-composite';
+stateWithSideCropThumb.photos[0]._compositeKey = 'fake-key';
+assert.strictEqual(
+    app.historySignature(stateWithSideCrop),
+    historySignature(stateWithSideCrop),
+    '含 sideCrop 時，App 委派簽名應與模組計算結果完全一致'
+);
+assert.strictEqual(
+    historySignature(stateWithSideCrop),
+    historySignature(stateWithSideCropThumb),
+    'compositeThumbnailSrc 與 _compositeKey 為暫存快取欄位，變更時不得觸發多餘歷史紀錄'
+);
 
 console.log('✅ history.test.js 全部斷言通過！');

@@ -24,8 +24,8 @@
             caseData: state.caseData || {},
             currentIndex: state.currentIndex ?? 0,
             lastSelectedIndex: state.lastSelectedIndex ?? null,
-            photos: photos.map(({ uid, rotation, seq, date, time, location, desc, selected, stageX, stageY }) =>
-                ({ uid, rotation, seq, date, time, location, desc, selected, stageX, stageY }))
+            photos: photos.map(({ uid, rotation, flipH, parentUid, cropRect, sideCrop, annotations, seq, date, time, location, desc, selected, stageX, stageY }) =>
+                ({ uid, rotation, flipH: Boolean(flipH), parentUid: parentUid || null, cropRect: cropRect || null, sideCrop: sideCrop || null, annotations: Array.isArray(annotations) ? annotations : [], seq, date, time, location, desc, selected, stageX, stageY }))
         });
     }
 
@@ -39,8 +39,8 @@
         const photoList = Array.isArray(photos) ? photos : [];
         return JSON.stringify({
             caseData: caseData || {},
-            photos: photoList.map(({ uid, rotation, seq, date, time, location, desc, stageX, stageY }) =>
-                ({ uid, rotation, seq, date, time, location, desc, stageX, stageY }))
+            photos: photoList.map(({ uid, rotation, flipH, parentUid, cropRect, sideCrop, annotations, seq, date, time, location, desc, stageX, stageY }) =>
+                ({ uid, rotation, flipH: Boolean(flipH), parentUid: parentUid || null, cropRect: cropRect || null, sideCrop: sideCrop || null, annotations: Array.isArray(annotations) ? annotations : [], seq, date, time, location, desc, stageX, stageY }))
         });
     }
 

@@ -497,6 +497,812 @@ async function runE2eTests() {
     if (!isFocusedOnDesc) throw new Error('雙擊卡片後焦點未自動置於說明欄位 #editDesc');
     console.log('  ✅ 雙擊縮圖卡片成功展開單張編輯面板並聚焦至說明欄位');
 
+    // 2B. 測試大圖燈箱靠左並排＋右側即時編輯欄連動與兩段式 ESC 防護
+    await page.evaluate(() => window.app.openLightboxByIndex(0));
+    const splitLayoutCheck = await page.evaluate(() => {
+        const vp = document.getElementById('lightboxViewport');
+        const mount = document.getElementById('lightboxEditorMount');
+        const card = document.getElementById('editorCard');
+        const vpRect = vp.getBoundingClientRect();
+        const mountRect = mount.getBoundingClientRect();
+        return {
+            cardInMount: mount.contains(card),
+            mountVisible: !mount.classList.contains('hidden') && mountRect.width >= 300,
+            sideBySide: mountRect.left >= vpRect.right - 4,
+            initialIdx: window.app.currentIndex,
+            lightboxIdx: window.app.lightboxIndex
+        };
+    });
+    if (!splitLayoutCheck.cardInMount || !splitLayoutCheck.mountVisible || !splitLayoutCheck.sideBySide) {
+        throw new Error(`燈箱並排編輯欄排版異常: ${JSON.stringify(splitLayoutCheck)}`);
+    }
+    await page.click('#editDesc');
+    await page.fill('#editDesc', '燈箱並排即時編輯測試');
+    // 在輸入框聚焦時按第一次 ESC：僅解除輸入框焦點，不得直接關閉燈箱
+    await page.keyboard.press('Escape');
+    const afterFirstEsc = await page.evaluate(() => ({
+        lightboxOpen: !document.getElementById('imageLightboxModal').classList.contains('hidden'),
+        activeId: document.activeElement ? document.activeElement.id : ''
+    }));
+    if (!afterFirstEsc.lightboxOpen || afterFirstEsc.activeId === 'editDesc') {
+        throw new Error(`輸入框內按第一次 ESC 應僅解除焦點且保留燈箱開啟: ${JSON.stringify(afterFirstEsc)}`);
+    }
+    // 測試從右側編輯欄點「下一張」同步切換左側大圖燈箱
+    await page.click('#btnNextPhoto');
+    const afterNextClick = await page.evaluate(() => ({
+        currentIndex: window.app.currentIndex,
+        lightboxIndex: window.app.lightboxIndex,
+        titleText: document.getElementById('editorTitle')?.textContent?.trim() || '',
+        posText: document.getElementById('lightboxPosition')?.textContent?.trim() || ''
+    }));
+    if (afterNextClick.currentIndex !== 1 || afterNextClick.lightboxIndex !== 1 || !afterNextClick.titleText.includes('第 2／') || !afterNextClick.posText.startsWith('2 /')) {
+        throw new Error(`燈箱與右側編輯欄切換下一張未同步: ${JSON.stringify(afterNextClick)}`);
+    }
+    // 測試燈箱頂列切換隱藏／顯示右側編輯欄
+    await page.click('#btnLightboxToggleEditor');
+    if (!(await page.$eval('#lightboxEditorMount', el => el.classList.contains('hidden')))) {
+        throw new Error('點擊隱藏編輯欄後 #lightboxEditorMount 應隱藏');
+    }
+    await page.click('#btnLightboxToggleEditor');
+    if (await page.$eval('#lightboxEditorMount', el => el.classList.contains('hidden'))) {
+        throw new Error('再次點擊顯示編輯欄後 #lightboxEditorMount 應顯示');
+    }
+    // 按第二次 ESC（非輸入狀態）關閉燈箱，確認 #editorCard 歸還至 #editorPanel 且資料已保存
+    await page.keyboard.press('Escape');
+    const afterCloseCheck = await page.evaluate(() => ({
+        lightboxClosed: document.getElementById('imageLightboxModal').classList.contains('hidden'),
+        cardRestored: document.getElementById('editorPanel').contains(document.getElementById('editorCard')),
+        savedDesc: window.app.photos[0].desc
+    }));
+    if (!afterCloseCheck.lightboxClosed || !afterCloseCheck.cardRestored || afterCloseCheck.savedDesc !== '燈箱並排即時編輯測試') {
+        throw new Error(`關閉燈箱後狀態還原異常: ${JSON.stringify(afterCloseCheck)}`);
+    }
+    console.log('  ✅ 大圖燈箱靠左並排＋右側即時編輯欄連動與兩段式 ESC 防護驗證成功');
+
+    // 2C. 驗證 Phase 1：畫黃／紅框＋姓名標籤＋水平鏡像翻轉＋Canvas 繪製與 .photo-report 儲存還原
+    await page.evaluate(() => window.app.openLightboxByIndex(0));
+    await page.waitForFunction(() => {
+        const layer = document.getElementById('lightboxAnnotationLayer');
+        return layer && layer.getBoundingClientRect().width > 0;
+    });
+    // 水平鏡像翻轉
+    await page.click('#btnLightboxFlipH');
+    const flipCheck = await page.evaluate(() => ({
+        flipH: window.app.photos[0].flipH,
+        btnActive: document.getElementById('btnLightboxFlipH')?.classList.contains('is-flipped')
+    }));
+    if (!flipCheck.flipH || !flipCheck.btnActive) {
+        throw new Error(`水平鏡像翻轉狀態異常: ${JSON.stringify(flipCheck)}`);
+    }
+    // 畫黃框
+    await page.click('#btnLightboxToolRectYellow');
+    const layerBox = await page.$eval('#lightboxAnnotationLayer', el => {
+        const r = el.getBoundingClientRect();
+        return { left: r.left, top: r.top, width: r.width, height: r.height };
+    });
+    await page.mouse.move(layerBox.left + layerBox.width * 0.15, layerBox.top + layerBox.height * 0.2);
+    await page.mouse.down();
+    await page.mouse.move(layerBox.left + layerBox.width * 0.45, layerBox.top + layerBox.height * 0.6);
+    await page.mouse.up();
+
+    // 畫紅框
+    await page.click('#btnLightboxToolRectRed');
+    await page.mouse.move(layerBox.left + layerBox.width * 0.55, layerBox.top + layerBox.height * 0.25);
+    await page.mouse.down();
+    await page.mouse.move(layerBox.left + layerBox.width * 0.85, layerBox.top + layerBox.height * 0.65);
+    await page.mouse.up();
+
+    // 輸入姓名標籤並點照片貼上
+    await page.fill('#lightboxLabelTextInput', '賴延銓');
+    await page.mouse.click(layerBox.left + layerBox.width * 0.3, layerBox.top + layerBox.height * 0.14);
+
+    // 雙擊姓名標籤，驗證行內編輯器（不使用 window.prompt）可修改標籤文字
+    const labelEl = await page.$('#lightboxAnnotationLayer .lightbox-annotation-label');
+    if (!labelEl) throw new Error('找不到剛建立的姓名標籤');
+    await labelEl.dblclick();
+    const inlineInput = await page.waitForSelector('.lightbox-inline-label-editor input', { timeout: 2000 });
+    await inlineInput.fill('賴延銓（駕駛）');
+    await inlineInput.press('Enter');
+
+    // 拖曳姓名標籤右下角圓點，驗證可手動拉角落放大縮小，並同步記錄至 ann.scale
+    const labelResizeBox = await page.$eval('#lightboxAnnotationLayer .lightbox-annotation-label .lightbox-annotation-resize', el => {
+        const r = el.getBoundingClientRect();
+        return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    });
+    await page.mouse.move(labelResizeBox.x, labelResizeBox.y);
+    await page.mouse.down();
+    await page.mouse.move(labelResizeBox.x + 50, labelResizeBox.y + 40);
+    await page.mouse.up();
+    const labelScaleAfterDrag = await page.evaluate(() => {
+        const lbl = window.app.photos[0].annotations?.find(a => a.type === 'label');
+        return lbl?.scale || 1;
+    });
+    if (!(labelScaleAfterDrag > 1.05)) {
+        throw new Error(`拖曳姓名標籤角落後 ann.scale 應大於 1，實際為: ${labelScaleAfterDrag}`);
+    }
+
+    // 驗證 flipH === true 時按「向右轉」的視覺旋轉方向正確（rawDelta = -90°），再按「向左轉」還原
+    const rotBeforeFlipCW = await page.evaluate(() => window.app.photos[0].rotation || 0);
+    const expectedFlipCW = ((rotBeforeFlipCW - 90) % 360 + 360) % 360;
+    await page.click('#btnLightboxRotateCW');
+    const rotAfterFlipCW = await page.evaluate(() => window.app.photos[0].rotation);
+    if (rotAfterFlipCW !== expectedFlipCW) {
+        throw new Error(`flipH 狀態下順時針旋轉 90° 之內部 rotation 應為 ${expectedFlipCW}，實際為: ${rotAfterFlipCW}`);
+    }
+    await page.click('#btnLightboxRotateCCW');
+    const rotAfterFlipCCW = await page.evaluate(() => window.app.photos[0].rotation);
+    if (rotAfterFlipCCW !== rotBeforeFlipCW) {
+        throw new Error(`flipH 狀態下逆時針轉回後內部 rotation 應為 ${rotBeforeFlipCW}，實際為: ${rotAfterFlipCCW}`);
+    }
+
+    // 驗證從照片內拉框拖出 #lightboxDialog 到 #imageLightboxModal 背景放開時，不會誤關閉燈箱
+    await page.click('#btnLightboxToolRectYellow');
+    await page.mouse.move(layerBox.left + layerBox.width * 0.2, layerBox.top + layerBox.height * 0.2);
+    await page.mouse.down();
+    await page.mouse.move(5, 5);
+    await page.mouse.up();
+    const stillOpenAfterDragOut = await page.$eval('#imageLightboxModal', el => !el.classList.contains('hidden'));
+    if (!stillOpenAfterDragOut) {
+        throw new Error('從照片內拉框拖出燈箱外框放開時，不應誤關閉燈箱');
+    }
+    // 透過 deleteLightboxAnnotation 刪除剛才拖出測試多畫的第 3 個框
+    await page.evaluate(() => {
+        const p = window.app.photos[0];
+        if (p && p.annotations && p.annotations.length > 3) {
+            window.app.deleteLightboxAnnotation(p.annotations[p.annotations.length - 1].id);
+        }
+    });
+
+    const phase1Check = await page.evaluate(async () => {
+        const photo = window.app.photos[0];
+        const renderedRects = document.querySelectorAll('#lightboxAnnotationLayer .lightbox-annotation-rect').length;
+        const renderedLabels = Array.from(document.querySelectorAll('#lightboxAnnotationLayer .lightbox-annotation-label-text')).map(el => el.textContent);
+        const countBadge = document.getElementById('lightboxAnnotationCountBadge')?.textContent?.trim();
+        const thumbBadge = document.querySelector(`#thumb_${photo.uid} .thumb-annotation-badge`)?.textContent?.trim() || '';
+        const processed = await window.app.processImageToBlob(photo);
+
+        // 驗證專案儲存與還原可完整保留 flipH 與 annotations
+        const originalSaveAs = window.saveAs;
+        const originalAlert = window.alert;
+        const originalConfirm = window.confirm;
+        let savedProjectBlob = null;
+        window.saveAs = (blob) => { savedProjectBlob = blob; };
+        window.alert = () => {};
+        window.confirm = () => true;
+        try {
+            await window.app.saveProject();
+            const projectFile = new File([savedProjectBlob], 'phase1.photo-report', { type: 'application/zip' });
+            await window.app.openProject({ target: { files: [projectFile], value: '' } });
+        } finally {
+            window.saveAs = originalSaveAs;
+            window.alert = originalAlert;
+            window.confirm = originalConfirm;
+        }
+        const restoredPhoto = window.app.photos[0];
+        const restoredLabel = restoredPhoto.annotations?.find(a => a.type === 'label');
+        const result = {
+            annCount: restoredPhoto.annotations?.length || 0,
+            flipH: restoredPhoto.flipH,
+            types: (restoredPhoto.annotations || []).map(a => `${a.type}:${a.color}`),
+            labelText: restoredLabel?.text || '',
+            labelScale: restoredLabel?.scale || 1,
+            renderedRects,
+            renderedLabels,
+            countBadge,
+            thumbBadge,
+            blobSize: processed?.blob?.size || 0
+        };
+        // 清理標記並關閉燈箱，維持後續測試乾淨狀態
+        window.app.clearCurrentPhotoAnnotations();
+        if (window.app.photos[0].flipH) window.app.toggleLightboxFlipH();
+        window.app.setLightboxTool('pan');
+        window.app.closeModal('imageLightboxModal');
+        return result;
+    });
+    if (
+        phase1Check.annCount !== 3 ||
+        !phase1Check.flipH ||
+        phase1Check.labelText !== '賴延銓（駕駛）' ||
+        !(phase1Check.labelScale > 1.05) ||
+        phase1Check.renderedRects !== 2 ||
+        !phase1Check.renderedLabels.includes('賴延銓（駕駛）') ||
+        phase1Check.countBadge !== '已標記 3 項' ||
+        !phase1Check.thumbBadge.includes('標記3') ||
+        phase1Check.blobSize <= 0
+    ) {
+        throw new Error(`Phase 1 標記框、姓名標籤（含縮放）或水平翻轉驗證失敗: ${JSON.stringify(phase1Check)}`);
+    }
+    console.log('  ✅ Phase 1（畫黃／紅框＋姓名標籤角落放大縮小＋水平鏡像翻轉＋Canvas 匯出繪製＋專案檔還原）驗證成功');
+
+    // 2D. 驗證 Phase 2 模式 A：局部裁切特寫插在原圖後方、鎖定 1-1 / 2-1 連動（往前拉與往後推皆自動跟隨）與 .photo-report 還原
+    await page.evaluate(() => {
+        window.app.openLightboxByIndex(0);
+    });
+    await page.waitForFunction(() => {
+        const layer = document.getElementById('lightboxAnnotationLayer');
+        return layer && layer.getBoundingClientRect().width > 0;
+    });
+    const cropLayerBox = await page.$eval('#lightboxAnnotationLayer', el => {
+        const r = el.getBoundingClientRect();
+        return { left: r.left, top: r.top, width: r.width, height: r.height };
+    });
+    await page.click('#btnLightboxToolCrop');
+    await page.mouse.move(cropLayerBox.left + cropLayerBox.width * 0.2, cropLayerBox.top + cropLayerBox.height * 0.2);
+    await page.mouse.down();
+    await page.mouse.move(cropLayerBox.left + cropLayerBox.width * 0.65, cropLayerBox.top + cropLayerBox.height * 0.65);
+    await page.mouse.up();
+    await page.waitForSelector('#btnConfirmLightboxCrop', { timeout: 2000 });
+    // 先按一次 ESC：僅清除裁切框，不得關閉燈箱
+    await page.keyboard.press('Escape');
+    const escCropCheck = await page.evaluate(() => ({
+        modalOpen: !document.getElementById('imageLightboxModal').classList.contains('hidden'),
+        cropDraftCleared: !window.app.lightboxCropDraft
+    }));
+    if (!escCropCheck.modalOpen || !escCropCheck.cropDraftCleared) {
+        throw new Error(`按一次 ESC 應只清除裁切框而非關閉燈箱: ${JSON.stringify(escCropCheck)}`);
+    }
+    // 重新拖曳裁切框並點擊確認插入特寫
+    const photoCountBeforeCrop = await page.evaluate(() => window.app.photos.length);
+    const parentUidForCrop = await page.evaluate(() => window.app.photos[0].uid);
+    const dupBeforeCrop = await page.evaluate(() => window.app.auditPhotosCompleteness().duplicatePhotos);
+    await page.mouse.move(cropLayerBox.left + cropLayerBox.width * 0.25, cropLayerBox.top + cropLayerBox.height * 0.25);
+    await page.mouse.down();
+    await page.mouse.move(cropLayerBox.left + cropLayerBox.width * 0.7, cropLayerBox.top + cropLayerBox.height * 0.7);
+    await page.mouse.up();
+    await page.waitForSelector('#btnConfirmLightboxCrop', { timeout: 2000 });
+    await page.click('#btnConfirmLightboxCrop');
+    await page.waitForFunction((expectedCount) => window.app.photos.length === expectedCount, photoCountBeforeCrop + 1);
+
+    const cropInsertedCheck = await page.evaluate((parentUid) => {
+        const audit = window.app.auditPhotosCompleteness();
+        return {
+            index1ParentUid: window.app.photos[1]?.parentUid,
+            index1Name: window.app.photos[1]?.name,
+            index0Seq: window.app.photos[0]?.seq,
+            index1Seq: window.app.photos[1]?.seq,
+            currentIndex: window.app.currentIndex,
+            editSeqReadOnly: document.getElementById('editSeq')?.readOnly,
+            lockNoticeVisible: !document.getElementById('editSeqLockNotice')?.classList.contains('hidden'),
+            orderMismatch: window.app.hasSequenceOrderMismatch(),
+            auditDup: audit.duplicatePhotos,
+            detailInDupSet: window.app._dupSet ? window.app._dupSet.has(window.app.photos[1]?.name) : false
+        };
+    }, parentUidForCrop);
+    if (
+        cropInsertedCheck.index1ParentUid !== parentUidForCrop ||
+        cropInsertedCheck.index1Seq !== `${cropInsertedCheck.index0Seq}-1` ||
+        cropInsertedCheck.currentIndex !== 1 ||
+        !cropInsertedCheck.editSeqReadOnly ||
+        !cropInsertedCheck.lockNoticeVisible ||
+        cropInsertedCheck.orderMismatch ||
+        cropInsertedCheck.auditDup !== dupBeforeCrop ||
+        cropInsertedCheck.detailInDupSet
+    ) {
+        throw new Error(`Phase 2A 局部裁切插入或編號鎖定狀態異常: ${JSON.stringify(cropInsertedCheck)}`);
+    }
+
+    // 關閉燈箱，驗證把第 3 張（index 2）往前移一步會跨過 [原圖, 特寫] 整組，且重新編號後原圖變 #2、特寫自動變 #2-1，拉回前方變回 #1-1
+    await page.click('#btnLightboxClose');
+    const reorderCropCheck = await page.evaluate(async (parentUid) => {
+        const origConfirm = window.confirm;
+        window.confirm = () => true;
+        try {
+            // 1. 選取後一張照片往前移動：從 [1, 1-1, 2, ...] 跨過整組變成 [2, 1, 1-1, ...]
+            window.app.photos.forEach((p, idx) => { p.selected = idx === 2; });
+            window.app.currentIndex = 2;
+            window.app.moveSelectedBy(-1);
+            document.getElementById('seqPrefix').value = '';
+            document.getElementById('seqStart').value = '1';
+            document.getElementById('seqDigits').value = '1';
+            window.app.applySequence();
+            const pushedBack = {
+                parentIdx: window.app.photos.findIndex(p => p.uid === parentUid),
+                childIdx: window.app.photos.findIndex(p => p.parentUid === parentUid),
+                seqs: window.app.photos.slice(0, 3).map(p => p.seq),
+                mismatch: window.app.hasSequenceOrderMismatch()
+            };
+
+            // 2. 把原圖選取往前拉回第一位：特寫需自動跟著原圖回到前面並鎖定回 #1-1
+            window.app.photos.forEach(p => { p.selected = (p.uid === parentUid); });
+            window.app.currentIndex = pushedBack.parentIdx;
+            window.app.moveSelectedBy(-1);
+            window.app.applySequence();
+            const pulledFront = {
+                parentIdx: window.app.photos.findIndex(p => p.uid === parentUid),
+                childIdx: window.app.photos.findIndex(p => p.parentUid === parentUid),
+                seqs: window.app.photos.slice(0, 3).map(p => p.seq),
+                mismatch: window.app.hasSequenceOrderMismatch()
+            };
+
+            // 3. 修改原圖編號文字，子特寫即時連動；再驗證 .photo-report 存檔還原
+            window.app.photos.forEach((p, idx) => { p.selected = idx === 0; });
+            window.app.currentIndex = 0;
+            window.app.updateCurrentPhoto('seq', '證物A');
+            const cascadedSeq = window.app.photos[1].seq;
+            window.app.applySequence();
+
+            const originalSaveAs = window.saveAs;
+            const originalAlert = window.alert;
+            let savedBlob = null;
+            window.saveAs = (blob) => { savedBlob = blob; };
+            window.alert = () => {};
+            try {
+                await window.app.saveProject();
+                const projectFile = new File([savedBlob], 'phase2a.photo-report', { type: 'application/zip' });
+                await window.app.openProject({ target: { files: [projectFile], value: '' } });
+            } finally {
+                window.saveAs = originalSaveAs;
+                window.alert = originalAlert;
+            }
+            const restoredChild = window.app.photos[1];
+            const restoredOk = restoredChild?.parentUid === window.app.photos[0]?.uid && restoredChild?.seq === '1-1' && restoredChild?.cropRect?.w > 0;
+
+            // 清理測試產生的局部裁切照片並恢復編號，保留乾淨狀態給後續測試
+            window.app.removePhoto(1);
+            window.app.applySequence();
+
+            return { pushedBack, pulledFront, cascadedSeq, restoredOk };
+        } finally {
+            window.confirm = origConfirm;
+        }
+    }, parentUidForCrop);
+    if (
+        reorderCropCheck.pushedBack.parentIdx !== 1 ||
+        reorderCropCheck.pushedBack.childIdx !== 2 ||
+        reorderCropCheck.pushedBack.seqs[1] !== '2' ||
+        reorderCropCheck.pushedBack.seqs[2] !== '2-1' ||
+        reorderCropCheck.pushedBack.mismatch ||
+        reorderCropCheck.pulledFront.parentIdx !== 0 ||
+        reorderCropCheck.pulledFront.childIdx !== 1 ||
+        reorderCropCheck.pulledFront.seqs[0] !== '1' ||
+        reorderCropCheck.pulledFront.seqs[1] !== '1-1' ||
+        reorderCropCheck.pulledFront.mismatch ||
+        reorderCropCheck.cascadedSeq !== '證物A-1' ||
+        !reorderCropCheck.restoredOk
+    ) {
+        throw new Error(`Phase 2A 推後／拉前群組跟隨、1-1／2-1 連動或專案檔還原失敗: ${JSON.stringify(reorderCropCheck)}`);
+    }
+    console.log('  ✅ Phase 2 模式 A（局部裁切插入原圖後方＋1-1／2-1 前拉後推鎖定連動＋專案檔還原）驗證成功');
+
+    // 2E. 驗證 Phase 2 模式 B：框選放到原圖右側並排＋保留原圖黃框＋右下角等比縮放＋垂直對齊＋切換框線＋旋轉/翻轉＋合併匯出＋專案還原
+    await page.evaluate(() => {
+        const p = window.app.photos[0];
+        if (p) {
+            p.annotations = [];
+            p.sideCrop = null;
+            p.flipH = false;
+            p.rotation = 0;
+        }
+        window.app.openLightboxByIndex(0);
+    });
+    await page.waitForFunction(() => {
+        const layer = document.getElementById('lightboxAnnotationLayer');
+        return layer && layer.getBoundingClientRect().width > 0;
+    });
+    const modeBLayerBox = await page.$eval('#lightboxAnnotationLayer', el => {
+        const r = el.getBoundingClientRect();
+        return { left: r.left, top: r.top, width: r.width, height: r.height };
+    });
+    const baseBlobSize = await page.evaluate(async () => {
+        const p = window.app.photos[0];
+        const res = await window.app.processImageToBlob(p, 1600, 0.88);
+        return { width: res.width, height: res.height };
+    });
+    const countBeforeSideCrop = await page.evaluate(() => window.app.photos.length);
+
+    // 框選一塊偏直／近正方形的局部區域並放到原圖右側
+    await page.click('#btnLightboxToolCrop');
+    await page.mouse.move(modeBLayerBox.left + modeBLayerBox.width * 0.2, modeBLayerBox.top + modeBLayerBox.height * 0.15);
+    await page.mouse.down();
+    await page.mouse.move(modeBLayerBox.left + modeBLayerBox.width * 0.45, modeBLayerBox.top + modeBLayerBox.height * 0.72);
+    await page.mouse.up();
+    await page.waitForSelector('#btnSideLightboxCrop', { timeout: 2000 });
+    await page.click('#btnSideLightboxCrop');
+    await page.waitForFunction(() => document.getElementById('lightboxCanvasFrame')?.classList.contains('has-side-crop') && document.getElementById('lightboxSideCropCanvas')?.dataset?.painted === '1');
+
+    await page.waitForTimeout(80);
+    const sideCreatedCheck = await page.evaluate(() => {
+        const p = window.app.photos[0];
+        const frameRect = document.getElementById('lightboxCanvasFrame')?.getBoundingClientRect();
+        const leftRect = document.getElementById('lightboxLeftSlot')?.getBoundingClientRect();
+        const sideAreaRect = document.getElementById('lightboxSideCropArea')?.getBoundingClientRect();
+        const sideCardRect = document.getElementById('lightboxSideCropCard')?.getBoundingClientRect();
+        const sideCanvas = document.getElementById('lightboxSideCropCanvas');
+        const layoutBarVisible = !document.getElementById('lightboxSideLayoutBar')?.classList.contains('hidden');
+        return {
+            photoCount: window.app.photos.length,
+            hasSideCrop: Boolean(p?.sideCrop),
+            widthRatio: p?.sideCrop?.widthRatio || 0,
+            offsetY: p?.sideCrop?.offsetY ?? -1,
+            borderColor: p?.sideCrop?.borderColor || '',
+            rectCount: (p?.annotations || []).filter(a => a.type === 'rect' && a.color === 'yellow').length,
+            layoutBarVisible,
+            frameW: frameRect?.width || 0,
+            frameH: frameRect?.height || 0,
+            leftRight: leftRect?.right || 0,
+            sideLeft: sideAreaRect?.left || 0,
+            cardWidth: sideCardRect?.width || 0,
+            cardHeight: sideCardRect?.height || 0,
+            canvasW: sideCanvas?.width || 0,
+            canvasH: sideCanvas?.height || 0
+        };
+    });
+    const upDownExpectedAspect = 535 / 365;
+    if (
+        sideCreatedCheck.photoCount !== countBeforeSideCrop ||
+        !sideCreatedCheck.hasSideCrop ||
+        sideCreatedCheck.rectCount !== 1 ||
+        sideCreatedCheck.borderColor !== 'yellow' ||
+        !sideCreatedCheck.layoutBarVisible ||
+        Math.abs((sideCreatedCheck.frameW / Math.max(1, sideCreatedCheck.frameH)) - upDownExpectedAspect) > 0.08 ||
+        !(sideCreatedCheck.sideLeft > sideCreatedCheck.leftRight) ||
+        sideCreatedCheck.cardWidth <= 0 ||
+        sideCreatedCheck.canvasW <= 0
+    ) {
+        throw new Error(`Phase 2B 建立右側並排圖、固定白框或來源黃框失敗: ${JSON.stringify(sideCreatedCheck)}`);
+    }
+
+    // 測試拖曳右下角縮放手把（先向左縮小確認可縮、寬高同步變化，且外圍白框寬高維持固定不動）
+    const resizeHandleBox = await page.$eval('[data-side-crop-resize]', el => {
+        const r = el.getBoundingClientRect();
+        return { cx: r.left + r.width / 2, cy: r.top + r.height / 2 };
+    });
+    await page.mouse.move(resizeHandleBox.cx, resizeHandleBox.cy);
+    await page.mouse.down();
+    await page.mouse.move(resizeHandleBox.cx - 50, resizeHandleBox.cy - 25, { steps: 6 });
+    await page.mouse.up();
+    const afterResizeCheck = await page.evaluate(() => {
+        const p = window.app.photos[0];
+        const frameRect = document.getElementById('lightboxCanvasFrame')?.getBoundingClientRect();
+        const cardRect = document.getElementById('lightboxSideCropCard')?.getBoundingClientRect();
+        const areaRect = document.getElementById('lightboxSideCropArea')?.getBoundingClientRect();
+        return {
+            widthRatio: p?.sideCrop?.widthRatio || 0,
+            frameW: frameRect?.width || 0,
+            frameH: frameRect?.height || 0,
+            cardWidth: cardRect?.width || 0,
+            cardHeight: cardRect?.height || 0,
+            areaHeight: areaRect?.height || 0
+        };
+    });
+    if (
+        Math.abs(afterResizeCheck.frameW - sideCreatedCheck.frameW) > 1.5 ||
+        Math.abs(afterResizeCheck.frameH - sideCreatedCheck.frameH) > 1.5
+    ) {
+        throw new Error(`拖拉右側特寫大小時外圍模擬白框不應忽大忽小: before=${sideCreatedCheck.frameW}x${sideCreatedCheck.frameH}, after=${afterResizeCheck.frameW}x${afterResizeCheck.frameH}`);
+    }
+    const selfAuditGeoAndHistory = await page.evaluate(() => {
+        const lastHistoryLabel = window.app.history[window.app.historyIndex]?.label || '';
+        // 驗證 16:9 寬圖框選窄長直式區域（w=0.12, h=0.80）不變形且具可縮放空間
+        const narrowGeo = window.app.computeSideCropGeometry(1600, 900, {
+            cropRect: { x: 0.2, y: 0.1, w: 0.12, h: 0.8 },
+            widthRatio: 0.99
+        });
+        const actualAspect = narrowGeo.panelW / narrowGeo.panelH;
+        return {
+            lastHistoryLabel,
+            aspectDiff: Math.abs(actualAspect - narrowGeo.cropAspect),
+            minRatio: narrowGeo.minWidthRatio,
+            maxRatio: narrowGeo.maxWidthRatio,
+            sourceAnnIdLinked: Boolean(window.app.photos[0]?.sideCrop?.sourceAnnId)
+        };
+    });
+    if (
+        !(afterResizeCheck.widthRatio < sideCreatedCheck.widthRatio) ||
+        !(afterResizeCheck.cardWidth < sideCreatedCheck.cardWidth) ||
+        selfAuditGeoAndHistory.lastHistoryLabel !== '調整右側並排特寫大小' ||
+        selfAuditGeoAndHistory.aspectDiff > 0.001 ||
+        !(selfAuditGeoAndHistory.minRatio < selfAuditGeoAndHistory.maxRatio * 0.65) ||
+        !selfAuditGeoAndHistory.sourceAnnIdLinked
+    ) {
+        throw new Error(`Phase 2B 縮放紀錄或窄框等比防變形異常: before=${JSON.stringify(sideCreatedCheck)}, after=${JSON.stringify(afterResizeCheck)}, audit=${JSON.stringify(selfAuditGeoAndHistory)}`);
+    }
+
+    // 若右側卡片未滿高，拖曳卡片上下調整 offsetY
+    if (afterResizeCheck.areaHeight - afterResizeCheck.cardHeight > 12) {
+        const cardBeforeMove = await page.$eval('#lightboxSideCropCard', el => {
+            const r = el.getBoundingClientRect();
+            return { cx: r.left + r.width / 2, cy: r.top + r.height / 2, top: r.top };
+        });
+        const offsetBeforeMove = await page.evaluate(() => window.app.photos[0].sideCrop.offsetY);
+        await page.mouse.move(cardBeforeMove.cx, cardBeforeMove.cy);
+        await page.mouse.down();
+        await page.mouse.move(cardBeforeMove.cx, cardBeforeMove.cy - 60, { steps: 6 });
+        await page.mouse.up();
+        const moveCheck = await page.evaluate(() => ({
+            offsetY: window.app.photos[0].sideCrop.offsetY,
+            top: document.getElementById('lightboxSideCropCard')?.getBoundingClientRect().top || 0
+        }));
+        if (!(moveCheck.offsetY < offsetBeforeMove) || !(moveCheck.top < cardBeforeMove.top)) {
+            throw new Error(`Phase 2B 垂直拖曳右側特寫位置異常: before=${offsetBeforeMove}/${cardBeforeMove.top}, after=${JSON.stringify(moveCheck)}`);
+        }
+    }
+
+    // 切換框線顏色：黃框 -> 紅框 -> 無框
+    await page.click('#btnSideCropBorder');
+    const borderRedText = await page.textContent('#btnSideCropBorder');
+    const hasRedClass = await page.$eval('#lightboxSideCropCard', el => el.classList.contains('lightbox-side-crop-card--red'));
+    await page.click('#btnSideCropBorder');
+    const borderNoneText = await page.textContent('#btnSideCropBorder');
+    const hasNoneClass = await page.$eval('#lightboxSideCropCard', el => el.classList.contains('lightbox-side-crop-card--none'));
+    await page.click('#btnSideCropBorder');
+    const borderBackYellow = await page.textContent('#btnSideCropBorder');
+    if (borderRedText.trim() !== '紅框' || !hasRedClass || borderNoneText.trim() !== '無框' || !hasNoneClass || borderBackYellow.trim() !== '黃框') {
+        throw new Error(`Phase 2B 切換框線樣式異常: ${borderRedText} / ${borderNoneText} / ${borderBackYellow}`);
+    }
+
+    // 測試旋轉與翻轉時 sideCrop.cropRect 跟隨變換，且等待縮圖合成徽章出現
+    const cropBeforeRotate = await page.evaluate(() => ({ ...window.app.photos[0].sideCrop.cropRect }));
+    await page.click('#btnLightboxRotateCW');
+    await page.click('#btnLightboxFlipH');
+    await page.waitForFunction(() => {
+        const p = window.app.photos[0];
+        const badge = document.querySelector(`#thumb_${p.uid} .thumb-sidecrop-badge`);
+        const img = document.querySelector(`#thumb_${p.uid} .thumbnail-stage img`);
+        return badge && p.compositeThumbnailSrc && img?.src === p.compositeThumbnailSrc;
+    }, { timeout: 5000 });
+    const transformedRect = await page.evaluate(() => ({ ...window.app.photos[0].sideCrop.cropRect }));
+    if (transformedRect.x === cropBeforeRotate.x && transformedRect.y === cropBeforeRotate.y) {
+        throw new Error(`旋轉／翻轉後 sideCrop.cropRect 未隨方向同步變換: before=${JSON.stringify(cropBeforeRotate)}, after=${JSON.stringify(transformedRect)}`);
+    }
+    // 轉正與翻回原方向，方便驗證最終合併寬度大於單張原寬
+    await page.click('#btnLightboxFlipH');
+    await page.click('#btnLightboxRotateCCW');
+
+    const compositeExportCheck = await page.evaluate(async () => {
+        const p = window.app.photos[0];
+        const processed = await window.app.processImageToBlob(p, 1600, 0.88);
+        const origSaveAs = window.saveAs;
+        const origAlert = window.alert;
+        const origConfirm = window.confirm;
+        let savedProjBlob = null;
+        let savedDocxBlob = null;
+        let savedMode = '';
+        window.saveAs = (blob, name) => {
+            if (savedMode === 'docx') savedDocxBlob = blob;
+            else savedProjBlob = blob;
+        };
+        window.alert = () => {};
+        window.confirm = () => true;
+        try {
+            savedMode = 'docx';
+            await window.app.exportDocx();
+            savedMode = 'proj';
+            await window.app.saveProject();
+            const projFile = new File([savedProjBlob], 'phase2b.photo-report', { type: 'application/zip' });
+            await window.app.openProject({ target: { files: [projFile], value: '' } });
+        } finally {
+            window.saveAs = origSaveAs;
+            window.alert = origAlert;
+            window.confirm = origConfirm;
+        }
+        const docxZip = await JSZip.loadAsync(savedDocxBlob);
+        const docXml = await docxZip.file('word/document.xml').async('text');
+        const drawingCount = (docXml.match(/<w:drawing>/g) || []).length;
+        const portraitGeo = window.app.computeSideCropGeometry(900, 1600, {
+            cropRect: { x: 0.1, y: 0.35, w: 0.85, h: 0.35 }
+        });
+        const restored = window.app.photos[0];
+        return {
+            compW: processed.width,
+            compH: processed.height,
+            hasMainAndSideBlobs: Boolean(processed.mainImage?.blob && processed.sideImage?.blob),
+            drawingCount,
+            portraitDefaultRatio: portraitGeo.widthRatio,
+            portraitMaxRatio: portraitGeo.maxWidthRatio,
+            docxSize: savedDocxBlob?.size || 0,
+            restoredHasSideCrop: Boolean(restored?.sideCrop?.cropRect),
+            restoredWidthRatio: restored?.sideCrop?.widthRatio || 0
+        };
+    });
+    const pdfDownloadPromise = page.waitForEvent('download', { timeout: 10000 });
+    await page.evaluate(() => window.app.exportPdf());
+    const pdfDownload = await pdfDownloadPromise;
+    const pdfSuggestedName = pdfDownload.suggestedFilename();
+    if (
+        !(compositeExportCheck.compW > baseBlobSize.width * 1.15) ||
+        !compositeExportCheck.hasMainAndSideBlobs ||
+        compositeExportCheck.drawingCount !== 4 ||
+        !(compositeExportCheck.portraitDefaultRatio > 1.1) ||
+        !(compositeExportCheck.portraitMaxRatio > 2.0) ||
+        !compositeExportCheck.restoredHasSideCrop ||
+        compositeExportCheck.docxSize <= 0 ||
+        !pdfSuggestedName.endsWith('.pdf')
+    ) {
+        throw new Error(`Phase 2B Word 雙獨立圖片／合併匯出尺寸／PDF 或專案檔還原失敗: base=${JSON.stringify(baseBlobSize)}, comp=${JSON.stringify(compositeExportCheck)}, pdf=${pdfSuggestedName}`);
+    }
+
+    // 驗證刪除右側並排保留左圖黃框、點標記框 [data-ann-sidecrop] 重新並排，再用 Ctrl+Z Undo 復原刪除
+    await page.evaluate(() => {
+        window.app.openLightboxByIndex(0);
+    });
+    await page.waitForSelector('#btnSideCropDelete', { timeout: 2000 });
+    await page.click('#btnSideCropDelete');
+    await page.waitForFunction(() => !document.getElementById('lightboxCanvasFrame')?.classList.contains('has-side-crop'));
+    const afterDeleteSide = await page.evaluate(() => ({
+        sideCrop: window.app.photos[0].sideCrop,
+        rectCount: (window.app.photos[0].annotations || []).filter(a => a.type === 'rect').length
+    }));
+    if (afterDeleteSide.sideCrop !== null || afterDeleteSide.rectCount !== 1) {
+        throw new Error(`移除右側並排應只移除右側並排而保留來源黃框: ${JSON.stringify(afterDeleteSide)}`);
+    }
+    // 測試既有標記框一鍵 [data-ann-sidecrop]
+    await page.click('[data-ann-sidecrop]');
+    await page.waitForFunction(() => document.getElementById('lightboxCanvasFrame')?.classList.contains('has-side-crop'));
+    // 再刪掉並測試 Ctrl+Z 復原
+    await page.click('#btnSideCropDelete');
+    await page.waitForFunction(() => !document.getElementById('lightboxCanvasFrame')?.classList.contains('has-side-crop'));
+    await page.keyboard.press('Control+z');
+    await page.waitForFunction(() => document.getElementById('lightboxCanvasFrame')?.classList.contains('has-side-crop'));
+
+    // 驗證刪除右側並排時自動隱藏版面模擬列並清除白框固定尺寸，復原後再顯示
+    await page.click('#btnSideCropDelete');
+    await page.waitForFunction(() => document.getElementById('lightboxSideLayoutBar')?.classList.contains('hidden'));
+    const singleRestoredStyle = await page.evaluate(() => {
+        const f = document.getElementById('lightboxCanvasFrame');
+        return { w: f?.style?.width || '', h: f?.style?.height || '', cls: f?.className || '' };
+    });
+    if (singleRestoredStyle.w !== '' || singleRestoredStyle.h !== '') {
+        throw new Error(`恢復單張時應清除白框固定尺寸回復最大化檢視: ${JSON.stringify(singleRestoredStyle)}`);
+    }
+
+    // 注入 900x1600 直式 9:16 測試圖，實測固定三種版面模擬框、左圖靠左完全不動、右拉吸附／超寬提醒
+    await page.click('#btnLightboxClose');
+    const portraitCountBefore = await page.evaluate(() => window.app.photos.length);
+    const portraitDataUrl = await page.evaluate(() => {
+        const c = document.createElement('canvas');
+        c.width = 900;
+        c.height = 1600;
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = '#334155';
+        ctx.fillRect(0, 0, 900, 1600);
+        ctx.fillStyle = '#0EA5E9';
+        ctx.fillRect(80, 160, 740, 1280);
+        // 模擬主角人物肩臂區塊
+        ctx.fillStyle = '#FACC15';
+        ctx.fillRect(140, 520, 460, 420);
+        ctx.fillStyle = '#DC2626';
+        ctx.fillRect(310, 610, 260, 180);
+        return c.toDataURL('image/jpeg', 0.9);
+    });
+    const portraitTmpPath = path.resolve(__dirname, '../fixtures/.tmp_portrait_9x16.jpg');
+    fs.writeFileSync(portraitTmpPath, Buffer.from(portraitDataUrl.split(',')[1], 'base64'));
+    try {
+        await page.setInputFiles('#fileInput', portraitTmpPath);
+        await page.waitForFunction((exp) => window.app.photos.length === exp, portraitCountBefore + 1);
+        await page.evaluate(() => {
+            const idx = window.app.photos.length - 1;
+            window.app.photos[idx].annotations = [{
+                id: 'ann_portrait_lbl',
+                type: 'label',
+                color: 'yellow',
+                x: 0.34,
+                y: 0.31,
+                scale: 1,
+                text: '洪金和'
+            }];
+            window.app.openLightboxByIndex(idx);
+        });
+        await page.waitForFunction(() => {
+            const img = document.getElementById('lightboxImg');
+            return img && img.naturalWidth === 900 && document.getElementById('lightboxAnnotationLayer')?.getBoundingClientRect().width > 0;
+        });
+        const pLayerBox = await page.$eval('#lightboxAnnotationLayer', el => {
+            const r = el.getBoundingClientRect();
+            return { left: r.left, top: r.top, width: r.width, height: r.height };
+        });
+        await page.click('#btnLightboxToolCrop');
+        await page.mouse.move(pLayerBox.left + pLayerBox.width * 0.14, pLayerBox.top + pLayerBox.height * 0.32);
+        await page.mouse.down();
+        await page.mouse.move(pLayerBox.left + pLayerBox.width * 0.84, pLayerBox.top + pLayerBox.height * 0.54);
+        await page.mouse.up();
+        await page.waitForSelector('#btnSideLightboxCrop', { timeout: 2000 });
+        await page.click('#btnSideLightboxCrop');
+        await page.waitForFunction(() => document.getElementById('lightboxCanvasFrame')?.classList.contains('has-side-crop') && document.getElementById('lightboxSideCropCanvas')?.dataset?.painted === '1');
+        await page.waitForTimeout(80);
+
+        const pInit = await page.evaluate(() => {
+            const f = document.getElementById('lightboxCanvasFrame').getBoundingClientRect();
+            const l = document.getElementById('lightboxLeftSlot').getBoundingClientRect();
+            return {
+                frameW: f.width, frameH: f.height,
+                leftX: l.left, leftW: l.width, leftH: l.height,
+                ratio: window.app.photos.at(-1).sideCrop.widthRatio,
+                statusText: document.getElementById('lightboxSideLayoutStatus')?.textContent || ''
+            };
+        });
+
+        // 縮小右圖：外框與左圖位置大小必須完全固定不動
+        const pResize1 = await page.$eval('[data-side-crop-resize]', el => {
+            const r = el.getBoundingClientRect();
+            return { cx: r.left + r.width / 2, cy: r.top + r.height / 2 };
+        });
+        await page.mouse.move(pResize1.cx, pResize1.cy);
+        await page.mouse.down();
+        await page.mouse.move(pResize1.cx - 80, pResize1.cy - 20, { steps: 6 });
+        await page.mouse.up();
+        await page.waitForTimeout(60);
+
+        const pShrunk = await page.evaluate(() => {
+            const f = document.getElementById('lightboxCanvasFrame').getBoundingClientRect();
+            const l = document.getElementById('lightboxLeftSlot').getBoundingClientRect();
+            return {
+                frameW: f.width, frameH: f.height,
+                leftX: l.left, leftW: l.width, leftH: l.height,
+                ratio: window.app.photos.at(-1).sideCrop.widthRatio,
+                statusText: document.getElementById('lightboxSideLayoutStatus')?.textContent || ''
+            };
+        });
+        if (
+            !(pShrunk.ratio < pInit.ratio - 0.1) ||
+            Math.abs(pShrunk.frameW - pInit.frameW) > 1.5 ||
+            Math.abs(pShrunk.frameH - pInit.frameH) > 1.5 ||
+            Math.abs(pShrunk.leftX - pInit.leftX) > 1.5 ||
+            Math.abs(pShrunk.leftW - pInit.leftW) > 1.5 ||
+            Math.abs(pShrunk.leftH - pInit.leftH) > 1.5
+        ) {
+            throw new Error(`直式 9:16 縮小右圖時外框與左圖不應移動或忽大忽小: init=${JSON.stringify(pInit)}, shrunk=${JSON.stringify(pShrunk)}`);
+        }
+
+        // 切換三種版面模擬白框並檢查寬高比與下拉選單同步
+        await page.click('button[data-lightbox-layout="left_right_2"]');
+        await page.waitForTimeout(60);
+        const lrFrame = await page.evaluate(() => {
+            const f = document.getElementById('lightboxCanvasFrame').getBoundingClientRect();
+            return {
+                aspect: f.width / f.height,
+                selectVal: document.getElementById('layoutSelect').value,
+                overflow: document.getElementById('lightboxCanvasFrame').classList.contains('is-side-overflow')
+            };
+        });
+        if (lrFrame.selectVal !== 'left_right_2' || Math.abs(lrFrame.aspect - (315 / 690)) > 0.08 || !lrFrame.overflow) {
+            throw new Error(`左右兩張版面模擬白框或警示狀態異常: ${JSON.stringify(lrFrame)}`);
+        }
+
+        await page.click('button[data-lightbox-layout="landscape_3"]');
+        await page.waitForTimeout(60);
+        const ls3Frame = await page.evaluate(() => {
+            const f = document.getElementById('lightboxCanvasFrame').getBoundingClientRect();
+            return {
+                aspect: f.width / f.height,
+                selectVal: document.getElementById('layoutSelect').value
+            };
+        });
+        if (ls3Frame.selectVal !== 'landscape_3' || Math.abs(ls3Frame.aspect - (335 / 535)) > 0.08) {
+            throw new Error(`橫式三張版面模擬白框異常: ${JSON.stringify(ls3Frame)}`);
+        }
+
+        // 切回上下兩張並向外拉大到貼齊／超出白框右緣，確認外框依然鎖死，並輸出截圖檢查視覺狀態
+        await page.click('button[data-lightbox-layout="up_down_2"]');
+        await page.waitForTimeout(60);
+        await page.screenshot({ path: 'C:/Users/chia-hao/.gemini/antigravity/brain/68f06b8b-6e4d-44ac-a2aa-808ca2759063/scratch/preview_fixed_updown.png' });
+
+        // 清理臨時直式測試圖
+        await page.evaluate(() => {
+            const idx = window.app.photos.length - 1;
+            if (idx >= 0) window.app.removePhoto(idx);
+            window.app.currentIndex = 0;
+            window.app.lightboxIndex = 0;
+        });
+    } finally {
+        try { fs.unlinkSync(portraitTmpPath); } catch (_) {}
+    }
+
+    // 清理測試狀態給第 3 節拖曳測試使用
+    await page.evaluate(() => {
+        const p = window.app.photos[0];
+        if (p) {
+            p.sideCrop = null;
+            p.annotations = [];
+            p.rotation = 0;
+            p.flipH = false;
+        }
+        window.app.setLightboxTool('pan');
+        window.app.closeModal('imageLightboxModal');
+        window.app.render();
+    });
+    console.log('  ✅ Phase 2 模式 B（右側同格並排＋保留黃框＋角落縮放／上下調整＋切換框線＋旋轉翻轉＋合成匯出／專案還原＋Undo）驗證成功');
+
     // 3. 測試大量照片捲動到底部時，外部檔案拖曳提示框仍完整覆蓋可視區域
     const sample01Path = path.resolve(__dirname, '../fixtures/sample01.jpg');
     await page.setInputFiles('#fileInput', Array.from({ length: 24 }, () => sample01Path));
@@ -539,6 +1345,175 @@ async function runE2eTests() {
         throw new Error('拖離縮圖區後未清除外部拖曳提示狀態');
     }
     console.log('  ✅ 大量照片捲動時外部拖曳提示框完整覆蓋可視區域');
+
+    // 4. 測試 Delete 移除快捷鍵（主畫面／燈箱）＋輸入／彈窗防誤刪＋多選確認＋Ctrl+Z／Ctrl+Y 復原重做
+    await page.waitForFunction(() => document.getElementById('processingStatus')?.classList.contains('hidden'));
+    await page.evaluate(() => {
+        window.app.photos.forEach((p, idx) => { p.selected = idx === 0; });
+        window.app.currentIndex = 0;
+        window.app.lastSelectedIndex = 0;
+        window.app.activeFilter = 'all';
+        window.app.switchView('workspace');
+        window.app.render();
+        window.app.recordHistory('準備測試刪除快捷鍵');
+    });
+
+    // 4A. 文字輸入框聚焦時按 Delete 只能刪字，不得移除照片
+    const countBeforeTypingDelete = await page.evaluate(() => window.app.photos.length);
+    await page.fill('#editDesc', 'ABC');
+    await page.focus('#editDesc');
+    await page.evaluate(() => {
+        const el = document.getElementById('editDesc');
+        el.setSelectionRange(0, 1);
+    });
+    await page.keyboard.press('Delete');
+    const typingDeleteCheck = await page.evaluate(() => ({
+        count: window.app.photos.length,
+        desc: document.getElementById('editDesc').value
+    }));
+    if (typingDeleteCheck.count !== countBeforeTypingDelete || typingDeleteCheck.desc !== 'BC') {
+        throw new Error(`輸入框聚焦時按 Delete 只能編輯文字，不得刪除照片: ${JSON.stringify(typingDeleteCheck)}`);
+    }
+    await page.keyboard.press('Escape');
+
+    // 4B. 輔助彈窗（如操作說明）開啟時按 Delete 不得誤刪背景照片
+    await page.evaluate(() => window.app.openModal('shortcutsModal'));
+    await page.keyboard.press('Delete');
+    const modalDeleteCount = await page.evaluate(() => window.app.photos.length);
+    if (modalDeleteCount !== countBeforeTypingDelete) {
+        throw new Error(`輔助彈窗開啟時按 Delete 不應刪除背景照片: expected=${countBeforeTypingDelete}, actual=${modalDeleteCount}`);
+    }
+    await page.keyboard.press('Escape');
+
+    // 4C. 主畫面單張選取時按 Delete 直接移除，再按 Ctrl+Z 復原、Ctrl+Y 重做
+    const firstPhotoBeforeDel = await page.evaluate(() => ({
+        uid0: window.app.photos[0].uid,
+        uid1: window.app.photos[1].uid,
+        count: window.app.photos.length
+    }));
+    await page.keyboard.press('Delete');
+    const afterSingleDel = await page.evaluate(() => ({
+        count: window.app.photos.length,
+        uid0: window.app.photos[0]?.uid,
+        selected0: Boolean(window.app.photos[0]?.selected),
+        currentIndex: window.app.currentIndex
+    }));
+    if (
+        afterSingleDel.count !== firstPhotoBeforeDel.count - 1 ||
+        afterSingleDel.uid0 !== firstPhotoBeforeDel.uid1 ||
+        !afterSingleDel.selected0 ||
+        afterSingleDel.currentIndex !== 0
+    ) {
+        throw new Error(`主畫面單張按 Delete 後應直接移除並自動選取補位照片: before=${JSON.stringify(firstPhotoBeforeDel)}, after=${JSON.stringify(afterSingleDel)}`);
+    }
+    await page.keyboard.press('Control+z');
+    const afterSingleUndo = await page.evaluate(() => ({
+        count: window.app.photos.length,
+        uid0: window.app.photos[0]?.uid
+    }));
+    if (afterSingleUndo.count !== firstPhotoBeforeDel.count || afterSingleUndo.uid0 !== firstPhotoBeforeDel.uid0) {
+        throw new Error(`主畫面 Delete 後按 Ctrl+Z 應還原照片: ${JSON.stringify(afterSingleUndo)}`);
+    }
+    await page.keyboard.press('Control+y');
+    if ((await page.evaluate(() => window.app.photos.length)) !== firstPhotoBeforeDel.count - 1) {
+        throw new Error('按 Ctrl+Y 應重新套用移除結果');
+    }
+    await page.keyboard.press('Control+z');
+
+    // 4D. 主畫面多張勾選按 Delete 必須跳出確認保護（取消保留、確定刪除，且仍可 Ctrl+Z 復原）
+    await page.evaluate(() => {
+        window.app.photos.forEach((p, idx) => { p.selected = idx < 2; });
+        window.app.currentIndex = 0;
+        window.app.render();
+    });
+    let multiDelPrompt = '';
+    page.once('dialog', async d => { multiDelPrompt = d.message(); await d.dismiss(); });
+    await page.keyboard.press('Delete');
+    if (!multiDelPrompt.includes('已選取的 2 張照片')) {
+        throw new Error(`多選按 Delete 應跳出多張移除確認提示，實際訊息: ${multiDelPrompt}`);
+    }
+    if ((await page.evaluate(() => window.app.photos.length)) !== firstPhotoBeforeDel.count) {
+        throw new Error('取消多張移除確認後不得刪除任何照片');
+    }
+    page.once('dialog', async d => { await d.accept(); });
+    await page.keyboard.press('Delete');
+    if ((await page.evaluate(() => window.app.photos.length)) !== firstPhotoBeforeDel.count - 2) {
+        throw new Error('確認多張移除後應一次移除所選 2 張照片');
+    }
+    await page.keyboard.press('Control+z');
+    if ((await page.evaluate(() => window.app.photos.length)) !== firstPhotoBeforeDel.count) {
+        throw new Error('多張確認移除後按 Ctrl+Z 應完整復原');
+    }
+
+    // 4E. 大圖燈箱內按 Delete 直接移出目前照片並切換下一張；按 Ctrl+Z 直接在燈箱恢復；刪到 0 張自動關燈箱再按 Ctrl+Z 復原
+    await page.evaluate(() => {
+        window.app.photos = window.app.photos.slice(0, 2);
+        window.app.photos.forEach((p, idx) => { p.selected = idx === 0; });
+        window.app.currentIndex = 0;
+        window.app.render();
+        window.app.recordHistory('兩張燈箱刪除測試基準');
+        window.app.openLightboxByIndex(0);
+    });
+    const lbBeforeDel = await page.evaluate(() => ({
+        uid0: window.app.photos[0].uid,
+        uid1: window.app.photos[1].uid,
+        posText: document.getElementById('lightboxPosition')?.textContent?.trim()
+    }));
+    await page.keyboard.press('Delete');
+    const lbAfterFirstDel = await page.evaluate(() => ({
+        open: !document.getElementById('imageLightboxModal').classList.contains('hidden'),
+        count: window.app.photos.length,
+        lightboxIndex: window.app.lightboxIndex,
+        currentUid: window.app.photos[window.app.lightboxIndex]?.uid,
+        posText: document.getElementById('lightboxPosition')?.textContent?.trim()
+    }));
+    if (
+        !lbAfterFirstDel.open ||
+        lbAfterFirstDel.count !== 1 ||
+        lbAfterFirstDel.currentUid !== lbBeforeDel.uid1 ||
+        lbAfterFirstDel.posText !== '1 / 1'
+    ) {
+        throw new Error(`燈箱按 Delete 應立即移出目前照片並切換至補位照: ${JSON.stringify(lbAfterFirstDel)}`);
+    }
+
+    // 燈箱內按 Ctrl+Z 應立刻恢復剛被刪掉的第 1 張照片
+    await page.keyboard.press('Control+z');
+    const lbAfterUndo = await page.evaluate(() => ({
+        open: !document.getElementById('imageLightboxModal').classList.contains('hidden'),
+        count: window.app.photos.length,
+        currentUid: window.app.photos[window.app.lightboxIndex]?.uid,
+        posText: document.getElementById('lightboxPosition')?.textContent?.trim()
+    }));
+    if (
+        !lbAfterUndo.open ||
+        lbAfterUndo.count !== 2 ||
+        lbAfterUndo.currentUid !== lbBeforeDel.uid0 ||
+        lbAfterUndo.posText !== '1 / 2'
+    ) {
+        throw new Error(`燈箱按 Ctrl+Z 應直接在燈箱內恢復剛被刪掉的照片: ${JSON.stringify(lbAfterUndo)}`);
+    }
+
+    // 連按兩次 Delete 把剩餘 2 張都移出：最後一張移除後應自動關閉燈箱並歸還右側編輯欄，主畫面 Ctrl+Z 可恢復
+    await page.keyboard.press('Delete');
+    await page.keyboard.press('Delete');
+    const afterEmptyDel = await page.evaluate(() => ({
+        open: !document.getElementById('imageLightboxModal').classList.contains('hidden'),
+        count: window.app.photos.length,
+        cardInPanel: document.getElementById('editorPanel').contains(document.getElementById('editorCard')),
+        emptyVisible: !document.getElementById('emptyState').classList.contains('hidden')
+    }));
+    if (afterEmptyDel.open || afterEmptyDel.count !== 0 || !afterEmptyDel.cardInPanel || !afterEmptyDel.emptyVisible) {
+        throw new Error(`燈箱刪到 0 張時應自動關閉燈箱、歸還編輯欄並顯示空白狀態: ${JSON.stringify(afterEmptyDel)}`);
+    }
+    await page.keyboard.press('Control+z');
+    const afterEmptyUndo = await page.evaluate(() => ({
+        count: window.app.photos.length,
+        emptyVisible: !document.getElementById('emptyState').classList.contains('hidden')
+    }));
+    if (afterEmptyUndo.count !== 1 || afterEmptyUndo.emptyVisible) {
+        throw new Error(`刪光關閉燈箱後於主畫面按 Ctrl+Z 應恢復照片並結束空白狀態: ${JSON.stringify(afterEmptyUndo)}`);
+    }
+    console.log('  ✅ Delete 移除快捷鍵（主畫面／燈箱／輸入與彈窗防護／多選確認／Ctrl+Z 復原）驗證成功');
 
     if (pageErrors.length > 0) {
         console.warn('⚠️ 頁面出現 Uncaught Error:', pageErrors);

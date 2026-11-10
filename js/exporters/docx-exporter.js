@@ -66,16 +66,89 @@
         for (let i = 0; i < photos.length; i++) {
             const item = photos[i];
             const processed = await processImageToBlob(item, 1600, 0.88);
-            const arrayBuffer = await processed.blob.arrayBuffer();
-            processedPhotos.push({
-                data: new Uint8Array(arrayBuffer),
-                w: processed.width,
-                h: processed.height,
-                item: item
-            });
+            if (processed.mainImage && processed.sideImage) {
+                const [mainBuf, sideBuf] = await Promise.all([
+                    processed.mainImage.blob.arrayBuffer(),
+                    processed.sideImage.blob.arrayBuffer()
+                ]);
+                processedPhotos.push({
+                    data: new Uint8Array(mainBuf),
+                    w: processed.mainImage.width,
+                    h: processed.mainImage.height,
+                    side: {
+                        data: new Uint8Array(sideBuf),
+                        w: processed.sideImage.width,
+                        h: processed.sideImage.height,
+                        widthRatio: Number(processed.sideImage.widthRatio) || 1
+                    },
+                    item: item
+                });
+            } else {
+                const arrayBuffer = await processed.blob.arrayBuffer();
+                processedPhotos.push({
+                    data: new Uint8Array(arrayBuffer),
+                    w: processed.width,
+                    h: processed.height,
+                    side: null,
+                    item: item
+                });
+            }
             setProgress('正在壓縮照片並建立 Word 報表…', i + 1, photos.length);
             throwIfCancelled();
             if ((i + 1) % 5 === 0) await yieldToBrowser();
+        }
+
+        function buildPhotoCellParagraph(p, maxW, maxH) {
+            if (!p) {
+                return new Paragraph({
+                    alignment: AlignmentType.CENTER,
+                    children: [new TextRun({ text: "（無照片）", font: "標楷體", size: 20 })]
+                });
+            }
+            if (p.side && p.side.data) {
+                const gapPx = 8;
+                const widthRatio = Math.max(0.15, Math.min(2.5, Number(p.side.widthRatio) || 1));
+                const rawMainW = Math.max(1, p.w);
+                const rawMainH = Math.max(1, p.h);
+                const sideAspect = Math.max(0.1, Math.min(10, p.side.w / Math.max(1, p.side.h)));
+                const rawSideW = rawMainW * widthRatio;
+                const rawSideH = Math.min(rawMainH, rawSideW / sideAspect);
+                const totalRawW = rawMainW + rawSideW;
+                const totalRawH = Math.max(rawMainH, rawSideH);
+                const scale = Math.min(Math.max(40, maxW - gapPx) / totalRawW, maxH / totalRawH);
+                const mainW = Math.max(16, Math.round(rawMainW * scale));
+                const mainH = Math.max(16, Math.round(rawMainH * scale));
+                const sideW = Math.max(16, Math.round(rawSideW * scale));
+                const sideH = Math.max(16, Math.min(mainH, Math.round(rawSideH * scale)));
+                return new Paragraph({
+                    alignment: AlignmentType.CENTER,
+                    children: [
+                        new ImageRun({
+                            data: p.data,
+                            transformation: { width: mainW, height: mainH }
+                        }),
+                        new TextRun({ text: " ", font: "標楷體", size: 12 }),
+                        new ImageRun({
+                            data: p.side.data,
+                            transformation: { width: sideW, height: sideH }
+                        })
+                    ]
+                });
+            }
+            let imgW = p.w;
+            let imgH = p.h;
+            const ratio = Math.min(maxW / imgW, maxH / imgH);
+            imgW = Math.round(imgW * ratio);
+            imgH = Math.round(imgH * ratio);
+            return new Paragraph({
+                alignment: AlignmentType.CENTER,
+                children: [
+                    new ImageRun({
+                        data: p.data,
+                        transformation: { width: imgW, height: imgH }
+                    })
+                ]
+            });
         }
 
         let docSections = [];
@@ -126,15 +199,7 @@
                                             borders: bordersAllSingle,
                                             verticalAlign: VerticalAlign.CENTER,
                                             children: [
-                                                new Paragraph({
-                                                    alignment: AlignmentType.CENTER,
-                                                    children: [
-                                                        new ImageRun({
-                                                            data: p.data,
-                                                            transformation: { width: imgW, height: imgH },
-                                                        })
-                                                    ]
-                                                })
+                                                buildPhotoCellParagraph(p, MAX_IMG_W, MAX_IMG_H)
                                             ]
                                         })
                                     ]
@@ -305,17 +370,14 @@
                                             columnSpan: 2,
                                             borders: bordersAllSingle,
                                             verticalAlign: VerticalAlign.CENTER,
-                                            children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new ImageRun({ data: p1.data, transformation: { width: w1, height: h1 } })] })]
+                                            children: [buildPhotoCellParagraph(p1, MAX_IMG_W, MAX_IMG_H)]
                                         }),
                                         new TableCell({
                                             width: { size: 4932, type: WidthType.DXA },
                                             columnSpan: 2,
                                             borders: bordersAllSingle,
                                             verticalAlign: VerticalAlign.CENTER,
-                                            children: [
-                                                p2 ? new Paragraph({ alignment: AlignmentType.CENTER, children: [new ImageRun({ data: p2.data, transformation: { width: w2, height: h2 } })] })
-                                                   : new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "（無照片）", font: "標楷體", size: 20 })] })
-                                            ]
+                                            children: [buildPhotoCellParagraph(p2, MAX_IMG_W, MAX_IMG_H)]
                                         })
                                     ]
                                 }),
@@ -445,9 +507,9 @@
                                 new TableRow({
                                     height: { value: 8254, rule: HeightRule.EXACT },
                                     children: [
-                                        new TableCell({ width: { size: 5216, type: WidthType.DXA }, columnSpan: 2, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new ImageRun({ data: p1.data, transformation: { width: s1.w, height: s1.h } })] })] }),
-                                        new TableCell({ width: { size: 5216, type: WidthType.DXA }, columnSpan: 2, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [p2 ? new Paragraph({ alignment: AlignmentType.CENTER, children: [new ImageRun({ data: p2.data, transformation: { width: s2.w, height: s2.h } })] }) : new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "（無照片）", font: "標楷體", size: 20 })] })] }),
-                                        new TableCell({ width: { size: 5216, type: WidthType.DXA }, columnSpan: 2, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [p3 ? new Paragraph({ alignment: AlignmentType.CENTER, children: [new ImageRun({ data: p3.data, transformation: { width: s3.w, height: s3.h } })] }) : new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "（無照片）", font: "標楷體", size: 20 })] })] }),
+                                        new TableCell({ width: { size: 5216, type: WidthType.DXA }, columnSpan: 2, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [buildPhotoCellParagraph(p1, MAX_IMG_W, MAX_IMG_H)] }),
+                                        new TableCell({ width: { size: 5216, type: WidthType.DXA }, columnSpan: 2, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [buildPhotoCellParagraph(p2, MAX_IMG_W, MAX_IMG_H)] }),
+                                        new TableCell({ width: { size: 5216, type: WidthType.DXA }, columnSpan: 2, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [buildPhotoCellParagraph(p3, MAX_IMG_W, MAX_IMG_H)] }),
                                     ]
                                 }),
                                 // Row 4: 照片說明 | [說明1] | 照片說明 | [說明2] | 照片說明 | [說明3]

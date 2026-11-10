@@ -32,6 +32,7 @@
                 this.maxRecommendedBytes = 2 * 1024 * 1024 * 1024;
                 this.thumbnailSize = Math.max(90, Math.min(480, this.loadWorkspacePreference('thumbnailSize', 150)));
                 this.editorCollapsed = this.loadWorkspacePreference('editorCollapsed', false);
+                this.lightboxEditorCollapsed = this.loadWorkspacePreference('lightboxEditorCollapsed', false);
                 this.sidePanelWidth = Math.max(280, Math.min(560, this.loadWorkspacePreference('sidePanelWidth', 300)));
                 this.panelResizeState = null;
                 this.marqueeState = null;
@@ -39,6 +40,7 @@
                 this.historyIndex = -1;
                 this.historyLimit = 50;
                 this.historyTimer = null;
+                this.pendingHistoryLabel = '';
                 this.isRestoringHistory = false;
                 this.managedUrls = new Set();
                 this.processingCancelled = false;
@@ -98,9 +100,14 @@
                 this.checkUpdateText = document.getElementById('checkUpdateText');
 
                 // 右側編輯器元件
+                this.editorCard = document.getElementById('editorCard');
                 this.editorTitle = document.getElementById('editorTitle');
                 this.editorModeBadge = document.getElementById('editorModeBadge');
                 this.editSeq = document.getElementById('editSeq');
+                this.editSeqLockNotice = document.getElementById('editSeqLockNotice');
+                this.editSeqLockText = document.getElementById('editSeqLockText');
+                this.btnJumpToParentPhoto = document.getElementById('btnJumpToParentPhoto');
+                this.btnUnlinkChildPhoto = document.getElementById('btnUnlinkChildPhoto');
                 this.editDate = document.getElementById('editDate');
                 this.editTime = document.getElementById('editTime');
                 this.editLocation = document.getElementById('editLocation');
@@ -142,13 +149,48 @@
                 this.btnLightboxRotateCW = document.getElementById('btnLightboxRotateCW');
                 this.btnLightboxPrev = document.getElementById('btnLightboxPrev');
                 this.btnLightboxNext = document.getElementById('btnLightboxNext');
+                this.lightboxEditorMount = document.getElementById('lightboxEditorMount');
+                this.btnLightboxToggleEditor = document.getElementById('btnLightboxToggleEditor');
+                this.lightboxToggleEditorText = document.getElementById('lightboxToggleEditorText');
+                this.btnLightboxFlipH = document.getElementById('btnLightboxFlipH');
+                this.lightboxAnnotationToolbar = document.getElementById('lightboxAnnotationToolbar');
+                this.btnLightboxToolPan = document.getElementById('btnLightboxToolPan');
+                this.btnLightboxToolRectYellow = document.getElementById('btnLightboxToolRectYellow');
+                this.btnLightboxToolRectRed = document.getElementById('btnLightboxToolRectRed');
+                this.btnLightboxToolLabel = document.getElementById('btnLightboxToolLabel');
+                this.btnLightboxToolCrop = document.getElementById('btnLightboxToolCrop');
+                this.lightboxLabelTextInput = document.getElementById('lightboxLabelTextInput');
+                this.lightboxLabelColorSelect = document.getElementById('lightboxLabelColorSelect');
+                this.lightboxAnnotationCountBadge = document.getElementById('lightboxAnnotationCountBadge');
+                this.btnLightboxClearAnnotations = document.getElementById('btnLightboxClearAnnotations');
+                this.lightboxAnnotationLayer = document.getElementById('lightboxAnnotationLayer');
+                this.lightboxCanvasFrame = document.getElementById('lightboxCanvasFrame');
+                this.lightboxLeftSlot = document.getElementById('lightboxLeftSlot');
+                this.lightboxSideGap = document.getElementById('lightboxSideGap');
+                this.lightboxSideCropArea = document.getElementById('lightboxSideCropArea');
+                this.lightboxSideCropCard = document.getElementById('lightboxSideCropCard');
+                this.lightboxSideCropCanvas = document.getElementById('lightboxSideCropCanvas');
+                this.btnSideCropBorder = document.getElementById('btnSideCropBorder');
+                this.lightboxSideLayoutBar = document.getElementById('lightboxSideLayoutBar');
+                this.lightboxSideLayoutBtns = Array.from(document.querySelectorAll('[data-lightbox-layout]'));
+                this.lightboxSideLayoutStatus = document.getElementById('lightboxSideLayoutStatus');
+                this.lightboxBaseCanvasCache = null;
+                this.lightboxBaseCanvasPending = null;
+                this.compositeRefreshTimers = new WeakMap();
 
+                this.lightboxTool = 'pan';
+                this.lightboxAnnotationAction = null;
+                this.lightboxCropDraft = null;
+                this.isCreatingCropDetail = false;
                 this.lightboxZoom = 1.0;
                 this.lightboxPanX = 0;
                 this.lightboxPanY = 0;
                 this.lightboxIsPanning = false;
                 this.lightboxPanStart = { x: 0, y: 0 };
                 this.lightboxHasRotated = false;
+                this.lightboxNeedsRender = false;
+                this.lightboxPhotoUid = null;
+                this.lightboxBackdropPointerDown = false;
             }
 
             initEvents() {
@@ -239,6 +281,8 @@
                 this.layoutSelect.addEventListener('change', () => {
                     this.updateLayoutDescription();
                     this.updatePageEstimate();
+                    if (this.currentView === 'preview') this.renderPagePreview();
+                    if (this.isLightboxOpen()) this.syncLightboxAnnotationLayerBounds();
                     this.scheduleHistory('變更清冊版型');
                 });
                 this.btnCheckUpdate.addEventListener('click', () => this.checkForUpdates());
@@ -264,7 +308,12 @@
                 caseDateInput.addEventListener('blur', (e) => { e.target.value = this.finishMaskedEntry(e.target, this.formatDateMask); });
 
                 // 右側編輯器即時輸入事件
-                this.editSeq.addEventListener('input', (e) => this.updateCurrentPhoto('seq', e.target.value));
+                this.editSeq.addEventListener('input', (e) => {
+                    if (this.editSeq.readOnly) return;
+                    this.updateCurrentPhoto('seq', e.target.value);
+                });
+                this.btnJumpToParentPhoto?.addEventListener('click', () => this.jumpToParentPhoto());
+                this.btnUnlinkChildPhoto?.addEventListener('click', () => this.unlinkCurrentChildPhoto());
                 this.editTime.addEventListener('pointerdown', (e) => this.handleMaskedPointerDown(e, this.editTime));
                 this.editTime.addEventListener('focus', () => this.beginMaskedEntry(this.editTime));
                 this.editTime.addEventListener('input', (e) => {
@@ -304,18 +353,48 @@
                 document.getElementById('btnNextPhoto').addEventListener('click', () => this.navigatePhoto(1));
                 document.getElementById('btnDeleteCurrent').addEventListener('click', () => this.removePhoto(this.currentIndex));
 
-                // 鍵盤快速鍵：方向鍵切換單張選取；Ctrl＋方向鍵與 Ctrl＋Home／End 重排已選照片。
+                // 鍵盤快速鍵：方向鍵切換單張選取；Ctrl＋方向鍵與 Ctrl＋Home／End 重排已選照片；Delete 移除照片。
                 window.addEventListener('keydown', (e) => {
-                    if (this.isTypingTarget(e.target)) return;
+                    const isCheckboxDeleteShortcut = e.key === 'Delete' &&
+                        !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey &&
+                        e.target instanceof HTMLInputElement && e.target.type === 'checkbox';
+                    if (this.isTypingTarget(e.target) && !isCheckboxDeleteShortcut) {
+                        if (e.key === 'Escape' && e.target instanceof HTMLElement) {
+                            e.preventDefault();
+                            e.target.blur();
+                        } else if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+                            e.preventDefault();
+                            if (e.target instanceof HTMLElement) e.target.blur();
+                            this.navigatePhoto(e.key === 'ArrowLeft' ? -1 : 1);
+                        }
+                        return;
+                    }
+                    const blockingModalOpen = this.hasBlockingModalOpen();
+                    const lightboxOpen = !document.getElementById('imageLightboxModal').classList.contains('hidden');
                     if (e.key === 'Escape') {
+                        if (lightboxOpen && this.lightboxCropDraft) {
+                            this.lightboxCropDraft = null;
+                            this.renderLightboxAnnotations();
+                            e.preventDefault();
+                            return;
+                        }
                         ['shortcutsModal', 'sequenceModal', 'updateModal', 'upToDateModal', 'updateErrorModal', 'exportAuditModal', 'imageLightboxModal'].forEach(id => {
                             this.closeModal(id);
                         });
                     }
-                    const lightboxOpen = !document.getElementById('imageLightboxModal').classList.contains('hidden');
                     if (lightboxOpen) {
                         if (e.key === 'Escape') {
                             this.closeModal('imageLightboxModal');
+                        } else if (e.key === 'Delete' && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey && !blockingModalOpen) {
+                            if (!this.handleDeleteShortcut({ fromLightbox: true })) return;
+                        } else if (e.key === 'Enter' && !e.ctrlKey && !e.altKey && !e.shiftKey && this.lightboxCropDraft && !this.isCreatingCropDetail) {
+                            this.confirmLightboxCrop();
+                        } else if (e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'z') {
+                            this.commitLightboxHistoryIfNeeded();
+                            if (e.shiftKey) this.redo(); else this.undo();
+                        } else if (e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'y') {
+                            this.commitLightboxHistoryIfNeeded();
+                            this.redo();
                         } else if (e.key === 'ArrowLeft') {
                             this.navigateLightbox(-1);
                         } else if (e.key === 'ArrowRight') {
@@ -326,6 +405,18 @@
                             } else {
                                 this.rotateLightboxPhoto(90);
                             }
+                        } else if (!e.ctrlKey && !e.altKey && (e.key === 'h' || e.key === 'H')) {
+                            this.toggleLightboxFlipH();
+                        } else if (!e.ctrlKey && !e.altKey && (e.key === 'v' || e.key === 'V')) {
+                            this.setLightboxTool('pan');
+                        } else if (!e.ctrlKey && !e.altKey && (e.key === 'y' || e.key === 'Y')) {
+                            this.setLightboxTool('rect-yellow');
+                        } else if (!e.ctrlKey && !e.altKey && (e.key === 'm' || e.key === 'M')) {
+                            this.setLightboxTool('rect-red');
+                        } else if (!e.ctrlKey && !e.altKey && (e.key === 't' || e.key === 'T')) {
+                            this.setLightboxTool('label');
+                        } else if (!e.ctrlKey && !e.altKey && (e.key === 'c' || e.key === 'C')) {
+                            this.setLightboxTool('crop');
                         } else if (e.key === '0') {
                             this.resetLightboxZoom();
                         } else if (e.key === '+' || e.key === '=') {
@@ -355,6 +446,13 @@
                     if (e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'y') {
                         e.preventDefault();
                         this.redo();
+                        return;
+                    }
+                    if (e.key === 'Delete' && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey && !blockingModalOpen) {
+                        if (this.handleDeleteShortcut({ fromLightbox: false })) {
+                            e.preventDefault();
+                            if (isCheckboxDeleteShortcut && e.target instanceof HTMLElement) e.target.blur();
+                        }
                         return;
                     }
                     if (e.key === 'Escape') this.closeModal('imageLightboxModal');
@@ -642,8 +740,15 @@
                             thumbnailSrc: thumbnail.src,
                             thumbnailAspect: thumbnail.aspect,
                             rotation: 0,
+                            flipH: false,
+                            parentUid: null,
+                            cropRect: null,
+                            sideCrop: null,
+                            compositeThumbnailSrc: null,
+                            _compositeKey: '',
+                            annotations: [],
                             exifRotation: await this.readJpegExifRotation(file),
-                            seq: String(this.photos.length + 1),
+                            seq: String(this.getNextMainSeqNumber()),
                             date: '',
                             time: this.extractTimeFromFilename(file.name) || '12:00',
                             // 留空代表繼承清冊預設地點，避免把預設值誤認為本張覆寫資料。
@@ -842,10 +947,14 @@
 
             batchRotate(degree) {
                 if (!this.photos.length) return;
+                this.flushPendingHistory();
                 const hasSelected = this.photos.some(p => p.selected);
                 this.photos.forEach(p => {
                     if (!hasSelected || p.selected) {
-                        p.rotation = (p.rotation + degree) % 360;
+                        const rawDelta = p.flipH ? -degree : degree;
+                        this.transformPhotoAnnotationsForRotation(p, degree);
+                        p.rotation = (((p.rotation || 0) + rawDelta) % 360 + 360) % 360;
+                        if (p.sideCrop) this.scheduleSideCropPreviewRefresh(p);
                     }
                 });
                 this.render();
@@ -858,11 +967,16 @@
                 const start = parseInt(document.getElementById('seqStart').value, 10) || 1;
                 const digits = parseInt(document.getElementById('seqDigits').value, 10) || 1;
 
-                this.photos.forEach((p, idx) => {
-                    const num = start + idx;
+                this.normalizeLinkedChildrenOrder();
+                let mainIdx = 0;
+                this.photos.forEach(p => {
+                    if (this.isLinkedCropChild(p)) return;
+                    const num = start + mainIdx;
                     const numStr = String(num).padStart(digits, '0');
                     p.seq = `${prefix}${numStr}`;
+                    mainIdx++;
                 });
+                this.syncChildCropSequences();
 
                 this.closeModal('sequenceModal');
                 this.render();
@@ -1096,6 +1210,28 @@
                     if (typeof data[id] === 'string') document.getElementById(id).value = data[id];
                 });
                 this.updateLayoutDescription();
+                if (this.isLightboxOpen()) this.syncLightboxAnnotationLayerBounds();
+            }
+
+            cloneAnnotations(annotations) {
+                if (!Array.isArray(annotations)) return [];
+                return annotations.map(ann => ({ ...ann }));
+            }
+
+            cloneSideCrop(sideCrop) {
+                if (!sideCrop || typeof sideCrop !== 'object' || !sideCrop.cropRect) return null;
+                return {
+                    cropRect: {
+                        x: Number(sideCrop.cropRect.x) || 0,
+                        y: Number(sideCrop.cropRect.y) || 0,
+                        w: Number(sideCrop.cropRect.w) || 0.2,
+                        h: Number(sideCrop.cropRect.h) || 0.2
+                    },
+                    widthRatio: Number(sideCrop.widthRatio) || 0.65,
+                    offsetY: Number.isFinite(Number(sideCrop.offsetY)) ? Number(sideCrop.offsetY) : 0.5,
+                    borderColor: sideCrop.borderColor === 'red' ? 'red' : sideCrop.borderColor === 'none' ? 'none' : 'yellow',
+                    sourceAnnId: sideCrop.sourceAnnId || null
+                };
             }
 
             snapshotState(label = '') {
@@ -1104,7 +1240,16 @@
                     caseData: this.getCaseData(),
                     currentIndex: this.currentIndex,
                     lastSelectedIndex: this.lastSelectedIndex,
-                    photos: this.photos.map(photo => ({ ...photo }))
+                    photos: this.photos.map(photo => ({
+                        ...photo,
+                        flipH: Boolean(photo.flipH),
+                        parentUid: photo.parentUid || null,
+                        cropRect: photo.cropRect ? { ...photo.cropRect } : null,
+                        sideCrop: this.cloneSideCrop(photo.sideCrop),
+                        compositeThumbnailSrc: null,
+                        _compositeKey: '',
+                        annotations: this.cloneAnnotations(photo.annotations)
+                    }))
                 };
             }
 
@@ -1116,8 +1261,8 @@
                     caseData: state.caseData,
                     currentIndex: state.currentIndex,
                     lastSelectedIndex: state.lastSelectedIndex,
-                    photos: state.photos.map(({ uid, rotation, seq, date, time, location, desc, selected, stageX, stageY }) =>
-                        ({ uid, rotation, seq, date, time, location, desc, selected, stageX, stageY }))
+                    photos: state.photos.map(({ uid, rotation, flipH, parentUid, cropRect, sideCrop, annotations, seq, date, time, location, desc, selected, stageX, stageY }) =>
+                        ({ uid, rotation, flipH: Boolean(flipH), parentUid: parentUid || null, cropRect: cropRect || null, sideCrop: sideCrop || null, annotations: Array.isArray(annotations) ? annotations : [], seq, date, time, location, desc, selected, stageX, stageY }))
                 });
             }
 
@@ -1162,8 +1307,8 @@
                 }
                 return JSON.stringify({
                     caseData: this.getCaseData(),
-                    photos: this.photos.map(({ uid, rotation, seq, date, time, location, desc, stageX, stageY }) =>
-                        ({ uid, rotation, seq, date, time, location, desc, stageX, stageY }))
+                    photos: this.photos.map(({ uid, rotation, flipH, parentUid, cropRect, sideCrop, annotations, seq, date, time, location, desc, stageX, stageY }) =>
+                        ({ uid, rotation, flipH: Boolean(flipH), parentUid: parentUid || null, cropRect: cropRect || null, sideCrop: sideCrop || null, annotations: Array.isArray(annotations) ? annotations : [], seq, date, time, location, desc, stageX, stageY }))
                 });
             }
 
@@ -1191,30 +1336,63 @@
             scheduleHistory(label) {
                 if (this.isRestoringHistory) return;
                 clearTimeout(this.historyTimer);
-                this.historyTimer = setTimeout(() => this.recordHistory(label), 450);
+                this.pendingHistoryLabel = label || '';
+                this.historyTimer = setTimeout(() => {
+                    this.historyTimer = null;
+                    const pendingLabel = this.pendingHistoryLabel;
+                    this.pendingHistoryLabel = '';
+                    this.recordHistory(pendingLabel);
+                }, 450);
+            }
+
+            flushPendingHistory() {
+                if (!this.historyTimer) return;
+                clearTimeout(this.historyTimer);
+                this.historyTimer = null;
+                const pendingLabel = this.pendingHistoryLabel || '修改資料';
+                this.pendingHistoryLabel = '';
+                this.recordHistory(pendingLabel);
             }
 
             restoreHistory(index) {
                 const state = this.history[index];
                 if (!state) return;
                 clearTimeout(this.historyTimer);
+                this.historyTimer = null;
+                this.pendingHistoryLabel = '';
                 this.isRestoringHistory = true;
-                this.photos = state.photos.map(photo => ({ ...photo }));
+                this.photos = state.photos.map(photo => ({
+                    ...photo,
+                    flipH: Boolean(photo.flipH),
+                    parentUid: photo.parentUid || null,
+                    cropRect: photo.cropRect ? { ...photo.cropRect } : null,
+                    sideCrop: this.cloneSideCrop(photo.sideCrop),
+                    compositeThumbnailSrc: null,
+                    _compositeKey: '',
+                    annotations: this.cloneAnnotations(photo.annotations)
+                }));
                 this.currentIndex = state.currentIndex;
                 this.lastSelectedIndex = state.lastSelectedIndex;
                 this.applyCaseData(state.caseData);
                 this.isRestoringHistory = false;
                 this.historyIndex = index;
                 this.render();
+                this.syncAllCompositeThumbnails();
                 this.updateHistoryControls();
+                if (this.isLightboxOpen() && this.photos.length > 0) {
+                    this.lightboxIndex = Math.max(0, Math.min(this.photos.length - 1, this.currentIndex));
+                    this.updateLightbox({ preserveZoomIfSamePhoto: true });
+                }
             }
 
             undo() {
+                this.flushPendingHistory();
                 if (this.historyIndex <= 0) return;
                 this.restoreHistory(this.historyIndex - 1);
             }
 
             redo() {
+                this.flushPendingHistory();
                 if (this.historyIndex >= this.history.length - 1) return;
                 this.restoreHistory(this.historyIndex + 1);
             }
@@ -1242,7 +1420,12 @@
                     zip.file(`images/${archiveName}`, photo.file);
                     manifestPhotos.push({
                         uid: photo.uid, archiveName, name: photo.name, type: photo.file.type,
-                        rotation: photo.rotation, exifRotation: photo.exifRotation || 0, seq: photo.seq, date: photo.date, time: photo.time,
+                        rotation: photo.rotation, flipH: Boolean(photo.flipH),
+                        parentUid: photo.parentUid || null,
+                        cropRect: photo.cropRect ? { ...photo.cropRect } : null,
+                        sideCrop: this.cloneSideCrop(photo.sideCrop),
+                        annotations: this.cloneAnnotations(photo.annotations),
+                        exifRotation: photo.exifRotation || 0, seq: photo.seq, date: photo.date, time: photo.time,
                         location: photo.location, desc: photo.desc, selected: photo.selected,
                         stageX: Number.isFinite(photo.stageX) ? photo.stageX : null,
                         stageY: Number.isFinite(photo.stageY) ? photo.stageY : null
@@ -1289,7 +1472,20 @@
                         restored.push({
                             uid: saved.uid || crypto.randomUUID(), file: imageFile, name: saved.name,
                             src, thumbnailSrc: thumbnail.src, thumbnailAspect: thumbnail.aspect,
-                            rotation: Number(saved.rotation) || 0, exifRotation: Number(saved.exifRotation) || 0,
+                            rotation: Number(saved.rotation) || 0,
+                            flipH: Boolean(saved.flipH),
+                            parentUid: saved.parentUid || null,
+                            cropRect: saved.cropRect && typeof saved.cropRect === 'object' ? {
+                                x: Number(saved.cropRect.x) || 0,
+                                y: Number(saved.cropRect.y) || 0,
+                                w: Number(saved.cropRect.w) || 0.1,
+                                h: Number(saved.cropRect.h) || 0.1
+                            } : null,
+                            sideCrop: this.cloneSideCrop(saved.sideCrop),
+                            compositeThumbnailSrc: null,
+                            _compositeKey: '',
+                            annotations: this.cloneAnnotations(saved.annotations),
+                            exifRotation: Number(saved.exifRotation) || 0,
                             seq: String(saved.seq ?? index + 1), date: saved.date || '', time: saved.time || '',
                             location: saved.location || '', desc: saved.desc || '', selected: Boolean(saved.selected),
                             stageX: Number.isFinite(saved.stageX) ? saved.stageX : null,
@@ -1303,6 +1499,7 @@
                     this.historyIndex = -1;
                     this.releaseUnusedPhotoUrls();
                     this.photos = restored;
+                    this.normalizeLinkedChildrenOrder();
                     restored.forEach(photo => {
                         this.managedUrls.add(photo.src);
                         this.managedUrls.add(photo.thumbnailSrc);
@@ -1317,6 +1514,7 @@
                     this.markProjectSaved();
                     this.clearProgress();
                     this.render();
+                    this.syncAllCompositeThumbnails();
                     alert(`已開啟工作進度，共 ${restored.length} 張照片。`);
                 } catch (error) {
                     this.clearProgress();
@@ -1371,7 +1569,7 @@
                 const label = this.btnToggleEditor.querySelector('span');
                 const icon = this.btnToggleEditor.querySelector('i');
                 label.textContent = this.editorCollapsed ? '顯示編輯欄' : '隱藏編輯欄';
-                icon.className = this.editorCollapsed ? 'fa-solid fa-pen-to-square' : 'fa-solid fa-panel-right';
+                icon.className = this.editorCollapsed ? 'fa-solid fa-pen-to-square' : 'fa-solid fa-table-columns';
                 this.btnToggleEditor.setAttribute('aria-pressed', String(this.editorCollapsed));
             }
 
@@ -1405,10 +1603,207 @@
             }
 
             getPhotoDisplayLayout(photo) {
+                if (photo && photo.sideCrop && photo.compositeThumbnailSrc) {
+                    return {
+                        safeAspect: 1,
+                        imageStyle: 'width:100%;height:100%;transform:translate(-50%, -50%);',
+                        src: photo.compositeThumbnailSrc,
+                        isComposite: true
+                    };
+                }
                 // 縮圖框固定為正方形：所有卡片等高、每一排對齊；照片以 contain 完整顯示（不裁切）。
-                // 正方形旋轉 90° 後仍是同一個方框，因此只需旋轉，不必依照片比例換算寬高。
-                const imageStyle = `width:100%;height:100%;transform:translate(-50%, -50%) rotate(${photo.rotation}deg);`;
-                return { safeAspect: 1, imageStyle };
+                // 正方形旋轉 90° 後仍是同一個方框，因此只需旋轉與水平鏡像，不必依照片比例換算寬高。
+                const flipTransform = photo.flipH ? ' scaleX(-1)' : '';
+                const imageStyle = `width:100%;height:100%;transform:translate(-50%, -50%)${flipTransform} rotate(${photo.rotation || 0}deg);`;
+                return { safeAspect: 1, imageStyle, src: photo.thumbnailSrc, isComposite: false };
+            }
+
+            getValidParentPhoto(photo, photos = this.photos) {
+                if (!photo || !photo.parentUid || !Array.isArray(photos)) return null;
+                const visited = new Set([photo.uid]);
+                const parent = photos.find(p => p && p.uid === photo.parentUid) || null;
+                if (!parent || visited.has(parent.uid)) return null;
+                let walker = parent;
+                while (walker && walker.parentUid) {
+                    if (visited.has(walker.uid)) return null;
+                    visited.add(walker.uid);
+                    walker = photos.find(p => p && p.uid === walker.parentUid) || null;
+                }
+                return parent;
+            }
+
+            isLinkedCropChild(photo, photos = this.photos) {
+                return Boolean(this.getValidParentPhoto(photo, photos));
+            }
+
+            isDescendantOf(candidate, ancestorUid, photos = this.photos) {
+                if (!candidate || !ancestorUid || candidate.uid === ancestorUid || !Array.isArray(photos)) return false;
+                const visited = new Set([candidate.uid]);
+                let parentUid = candidate.parentUid;
+                while (parentUid) {
+                    if (parentUid === ancestorUid) return true;
+                    if (visited.has(parentUid)) return false;
+                    visited.add(parentUid);
+                    const parent = photos.find(p => p && p.uid === parentUid);
+                    parentUid = parent ? parent.parentUid : null;
+                }
+                return false;
+            }
+
+            getNextMainSeqNumber() {
+                return this.photos.filter(p => !this.isLinkedCropChild(p)).length + 1;
+            }
+
+            syncChildCropSequences() {
+                if (!Array.isArray(this.photos) || !this.photos.length) return;
+                const uidMap = new Map(this.photos.map(p => [p.uid, p]));
+                const childCountByParent = new Map();
+                this.photos.forEach(p => {
+                    if (!p || !p.parentUid) return;
+                    const parent = uidMap.get(p.parentUid);
+                    if (!parent || !this.getValidParentPhoto(p, this.photos)) return;
+                    const nextSub = (childCountByParent.get(parent.uid) || 0) + 1;
+                    childCountByParent.set(parent.uid, nextSub);
+                    p.seq = `${parent.seq}-${nextSub}`;
+                });
+            }
+
+            normalizeLinkedChildrenOrder() {
+                if (!Array.isArray(this.photos) || !this.photos.length) return;
+                const uidMap = new Map(this.photos.map(p => [p.uid, p]));
+                this.photos.forEach(p => {
+                    if (!p) return;
+                    if (p.parentUid && (!uidMap.has(p.parentUid) || !this.getValidParentPhoto(p, this.photos))) {
+                        p.parentUid = null;
+                        p.cropRect = null;
+                    }
+                });
+
+                const activePhoto = this.photos[this.currentIndex] || null;
+                const lastSelectedPhoto = this.lastSelectedIndex !== null ? this.photos[this.lastSelectedIndex] || null : null;
+
+                const childrenByParent = new Map();
+                const roots = [];
+                this.photos.forEach(p => {
+                    if (this.isLinkedCropChild(p, this.photos)) {
+                        const arr = childrenByParent.get(p.parentUid) || [];
+                        arr.push(p);
+                        childrenByParent.set(p.parentUid, arr);
+                    } else {
+                        roots.push(p);
+                    }
+                });
+
+                const ordered = [];
+                const seen = new Set();
+                const appendWithDescendants = (node) => {
+                    if (!node || seen.has(node.uid)) return;
+                    seen.add(node.uid);
+                    ordered.push(node);
+                    const kids = childrenByParent.get(node.uid);
+                    if (kids) {
+                        kids.forEach(kid => appendWithDescendants(kid));
+                    }
+                };
+                roots.forEach(root => appendWithDescendants(root));
+
+                this.photos = ordered;
+                this.syncChildCropSequences();
+
+                if (activePhoto) {
+                    const nextCur = this.photos.indexOf(activePhoto);
+                    if (nextCur !== -1) this.currentIndex = nextCur;
+                }
+                if (lastSelectedPhoto) {
+                    const nextLast = this.photos.indexOf(lastSelectedPhoto);
+                    this.lastSelectedIndex = nextLast !== -1 ? nextLast : this.currentIndex;
+                }
+            }
+
+            refreshSequenceBadgesAndGridInputs() {
+                this.photos.forEach((p, idx) => {
+                    const badge = document.querySelector(`#thumb_${p.uid} .game-seq-badge`);
+                    if (badge) badge.textContent = `#${p.seq}`;
+                    const row = this.gridTbody?.children[idx];
+                    if (row) {
+                        const seqInput = row.querySelector('td:nth-child(3) input');
+                        if (seqInput && document.activeElement !== seqInput) {
+                            seqInput.value = p.seq || '';
+                        }
+                        const childHint = row.querySelector('.grid-crop-parent-hint');
+                        const parentPhoto = this.getValidParentPhoto(p);
+                        if (childHint && parentPhoto) {
+                            childHint.textContent = `↳ #${parentPhoto.seq} 特寫`;
+                        }
+                    }
+                });
+            }
+
+            makeUniqueDetailFilename(parentPhoto) {
+                const origName = String(parentPhoto?.name || 'photo.jpg');
+                const dotIdx = origName.lastIndexOf('.');
+                const base = dotIdx > 0 ? origName.slice(0, dotIdx) : origName;
+                const existingNames = new Set(this.photos.map(p => p.name));
+                let n = 1;
+                let candidate = `${base}_特寫${n}.jpg`;
+                while (existingNames.has(candidate)) {
+                    n++;
+                    candidate = `${base}_特寫${n}.jpg`;
+                }
+                return candidate;
+            }
+
+            jumpToParentPhoto() {
+                const cur = this.photos[this.currentIndex];
+                const parent = this.getValidParentPhoto(cur);
+                if (!parent) return;
+                const parentIdx = this.photos.indexOf(parent);
+                if (parentIdx < 0) return;
+                this.flushPendingHistory();
+                this.commitLightboxHistoryIfNeeded();
+                if (this.isLightboxOpen()) {
+                    this.lightboxIndex = parentIdx;
+                    this.syncLightboxSelectionAndEditor(parentIdx);
+                    this.updateLightbox();
+                } else {
+                    this.photos.forEach((p, i) => { p.selected = i === parentIdx; });
+                    this.currentIndex = parentIdx;
+                    this.lastSelectedIndex = parentIdx;
+                    this.render();
+                }
+            }
+
+            unlinkCurrentChildPhoto() {
+                const cur = this.photos[this.currentIndex];
+                if (!cur || !this.isLinkedCropChild(cur)) return;
+                this.flushPendingHistory();
+                this.commitLightboxHistoryIfNeeded();
+                cur.parentUid = null;
+                cur.cropRect = null;
+                this.syncChildCropSequences();
+                this.render();
+                this.recordHistory('解除特寫編號鎖定');
+            }
+
+            getPhotoAnnotationBadgeHtml(photo) {
+                const annCount = Array.isArray(photo?.annotations) ? photo.annotations.length : 0;
+                const flipped = Boolean(photo?.flipH);
+                const parentPhoto = this.getValidParentPhoto(photo);
+                const hasSideCrop = Boolean(photo?.sideCrop);
+                const badges = [];
+                if (parentPhoto) {
+                    badges.push(`<span class="thumb-crop-badge" title="隨 #${escapeHtml(parentPhoto.seq)} 連動之局部裁切特寫">特寫</span>`);
+                }
+                if (hasSideCrop) {
+                    badges.push(`<span class="thumb-sidecrop-badge" ${parentPhoto ? 'style="left:36px;" ' : ''}title="含右側同格並排局部放大圖（模式 B）">◫並排</span>`);
+                }
+                if (annCount || flipped) {
+                    const parts = [];
+                    if (flipped) parts.push('⇄翻轉');
+                    if (annCount > 0) parts.push(`標記${annCount}`);
+                    badges.push(`<span class="thumb-annotation-badge" title="${escapeHtml(parts.join('・'))}">${escapeHtml(parts.join(' '))}</span>`);
+                }
+                return badges.join('');
             }
 
             getStageStep() {
@@ -1471,6 +1866,7 @@
                 this.photos.sort((a, b) => this.comparePhotoFileOrder(a, b));
                 this.currentIndex = Math.max(0, this.photos.indexOf(currentPhoto));
                 this.lastSelectedIndex = this.currentIndex;
+                this.normalizeLinkedChildrenOrder();
                 this.render();
                 this.recordHistory('依檔名整齊排序');
             }
@@ -1512,6 +1908,7 @@
                 this.photos.sort((a, b) => (Number(a.stageY) - Number(b.stageY)) || (Number(a.stageX) - Number(b.stageX)));
                 this.currentIndex = Math.max(0, this.photos.indexOf(currentPhoto));
                 this.lastSelectedIndex = this.currentIndex;
+                this.normalizeLinkedChildrenOrder();
             }
 
             getStageSlotsInReadingOrder() {
@@ -1595,31 +1992,96 @@
                 this.recordHistory('自由拖曳照片舞台');
             }
 
-            removePhoto(index) {
-                if (!this.photos[index]) return;
+            hasBlockingModalOpen() {
+                return ['shortcutsModal', 'sequenceModal', 'updateModal', 'upToDateModal', 'updateErrorModal', 'exportAuditModal']
+                    .some(id => {
+                        const el = document.getElementById(id);
+                        return Boolean(el && !el.classList.contains('hidden'));
+                    });
+            }
+
+            handleDeleteShortcut({ fromLightbox = false } = {}) {
+                if (!this.photos.length || this.hasBlockingModalOpen()) return false;
+                if (fromLightbox || this.isLightboxOpen()) {
+                    const targetIndex = (this.lightboxIndex !== null && this.photos[this.lightboxIndex])
+                        ? this.lightboxIndex
+                        : this.currentIndex;
+                    if (!this.photos[targetIndex]) return false;
+                    this.cancelLightboxInteractions();
+                    this.lightboxCropDraft = null;
+                    this.currentIndex = targetIndex;
+                    return this.removePhoto(targetIndex, { historyLabel: '從清冊移除照片' });
+                }
+                const indices = this.getSelectedIndicesOrCurrent();
+                if (!indices.length) return false;
+                if (this.currentView === 'workspace' && this.activeFilter !== 'all') {
+                    const visibleSet = new Set(this.getVisiblePhotoIndices().map(v => v.index));
+                    if (visibleSet.size === 0 || indices.every(i => !visibleSet.has(i))) return false;
+                }
+                if (indices.length === 1) {
+                    return this.removePhoto(indices[0], { historyLabel: '從清冊移除照片' });
+                }
+                return this.removeSelectedPhotos();
+            }
+
+            removePhoto(index, { historyLabel = '刪除照片', preserveSelectionIfAny = true } = {}) {
+                if (!this.photos[index]) return false;
+                this.flushPendingHistory();
+                this.commitLightboxHistoryIfNeeded();
+                const wasSelected = Boolean(this.photos[index].selected);
                 this.photos.splice(index, 1);
-                if (this.currentIndex >= this.photos.length) {
+                if (index < this.currentIndex) {
+                    this.currentIndex = Math.max(0, this.currentIndex - 1);
+                } else if (this.currentIndex >= this.photos.length) {
                     this.currentIndex = Math.max(0, this.photos.length - 1);
                 }
+                this.normalizeLinkedChildrenOrder();
+                if (this.photos.length > 0 && !this.isLightboxOpen() && this.activeFilter !== 'all') {
+                    const visible = this.getVisiblePhotoIndices();
+                    if (visible.length > 0 && !visible.some(v => v.index === this.currentIndex)) {
+                        const nextVisible = visible.find(v => v.index >= this.currentIndex) || visible[visible.length - 1];
+                        this.currentIndex = nextVisible.index;
+                    }
+                }
+                const anyStillSelected = preserveSelectionIfAny && this.photos.some(p => p.selected);
+                if (this.photos.length > 0) {
+                    if (wasSelected && !anyStillSelected && this.photos[this.currentIndex]) {
+                        this.photos[this.currentIndex].selected = true;
+                    }
+                    this.lastSelectedIndex = this.currentIndex;
+                } else {
+                    this.lastSelectedIndex = null;
+                }
                 this.render();
-                this.recordHistory('刪除照片');
+                this.recordHistory(historyLabel);
+                return true;
             }
 
             removeSelectedPhotos() {
                 const selectedIndices = this.getSelectedIndicesOrCurrent();
-                if (!selectedIndices.length) return;
+                if (!selectedIndices.length) return false;
                 const noun = selectedIndices.length === 1 ? '這張照片' : `已選取的 ${selectedIndices.length} 張照片`;
-                if (!confirm(`要移除${noun}嗎？（不會刪除電腦裡的原檔，可按 Ctrl＋Z 復原）`)) return;
+                if (!confirm(`要移除${noun}嗎？（不會刪除電腦裡的原檔，可按 Ctrl＋Z 復原）`)) return false;
+                this.flushPendingHistory();
+                this.commitLightboxHistoryIfNeeded();
                 const selectedSet = new Set(selectedIndices);
                 this.photos = this.photos.filter((_, index) => !selectedSet.has(index));
                 this.currentIndex = Math.max(0, Math.min(this.currentIndex, this.photos.length - 1));
                 this.lastSelectedIndex = this.photos.length ? this.currentIndex : null;
+                this.normalizeLinkedChildrenOrder();
                 this.render();
                 this.recordHistory('移除選取照片');
+                return true;
             }
 
             rotatePhoto(index) {
-                this.photos[index].rotation = (this.photos[index].rotation + 90) % 360;
+                const photo = this.photos[index];
+                if (!photo) return;
+                this.flushPendingHistory();
+                const rawDelta = photo.flipH ? -90 : 90;
+                this.transformPhotoAnnotationsForRotation(photo, 90);
+                photo.rotation = (((photo.rotation || 0) + rawDelta) % 360 + 360) % 360;
+                if (photo.sideCrop) this.scheduleSideCropPreviewRefresh(photo);
                 this.render();
                 this.recordHistory('旋轉照片');
             }
@@ -1635,7 +2097,7 @@
             }
 
             releasePhotoUrls(photo) {
-                [photo.src, photo.thumbnailSrc].filter(Boolean).forEach(url => {
+                [photo.src, photo.thumbnailSrc, photo.compositeThumbnailSrc].filter(Boolean).forEach(url => {
                     URL.revokeObjectURL(url);
                     this.managedUrls.delete(url);
                 });
@@ -1646,6 +2108,7 @@
                 [...this.photos, ...this.history.flatMap(state => state.photos)].forEach(photo => {
                     if (photo.src) retained.add(photo.src);
                     if (photo.thumbnailSrc) retained.add(photo.thumbnailSrc);
+                    if (photo.compositeThumbnailSrc) retained.add(photo.compositeThumbnailSrc);
                 });
                 this.managedUrls.forEach(url => {
                     if (!retained.has(url)) {
@@ -1750,7 +2213,9 @@
                     return;
                 }
                 const targetIndex = this.photos.findIndex(photo => `thumb_${photo.uid}` === target.id);
-                if (targetIndex < 0 || this.draggedIndices.includes(targetIndex)) {
+                const targetPhoto = this.photos[targetIndex];
+                const isTargetDescendantOfDragged = targetPhoto && this.draggedIndices.some(idx => this.isDescendantOf(targetPhoto, this.photos[idx]?.uid));
+                if (targetIndex < 0 || this.draggedIndices.includes(targetIndex) || isTargetDescendantOfDragged) {
                     this.clearPointerDropTarget(state);
                     return;
                 }
@@ -1973,28 +2438,51 @@
                 if (!selectedIndices.length || !delta) return;
                 const currentPhoto = this.photos[this.currentIndex];
                 const stageSlots = this.getStageSlotsInReadingOrder();
-
-                // 整組同步移動策略：
-                // 1. 分離選取組 (moving) 與非選取組 (remaining)
-                // 2. 找出選取組在 remaining 中的「錨點」(最小選取索引對應在 remaining 的位置)
-                // 3. 以 delta 調整插入位置後重組陣列
                 const selectedSet = new Set(selectedIndices);
-                const moving = this.photos.filter((_, i) => selectedSet.has(i));
-                const remaining = this.photos.filter((_, i) => !selectedSet.has(i));
+                const hasOnlyUnpairedChildSelection = selectedIndices.every(i => {
+                    const parent = this.getValidParentPhoto(this.photos[i]);
+                    return parent && !selectedSet.has(this.photos.indexOf(parent));
+                });
 
-                // 錨點：選取組在原陣列中最小的索引，delta 決定在 remaining 中偏移幾格
-                const minSelectedIdx = Math.min(...selectedIndices);
-                // 計算 minSelectedIdx 在 remaining 中的對應位置
-                let anchor = 0;
-                for (let i = 0; i < this.photos.length; i++) {
-                    if (i === minSelectedIdx) break;
-                    if (!selectedSet.has(i)) anchor++;
+                if (hasOnlyUnpairedChildSelection) {
+                    const moving = this.photos.filter((_, i) => selectedSet.has(i));
+                    const remaining = this.photos.filter((_, i) => !selectedSet.has(i));
+                    const minSelectedIdx = Math.min(...selectedIndices);
+                    let anchor = 0;
+                    for (let i = 0; i < this.photos.length; i++) {
+                        if (i === minSelectedIdx) break;
+                        if (!selectedSet.has(i)) anchor++;
+                    }
+                    const insertAt = Math.max(0, Math.min(anchor + delta, remaining.length));
+                    remaining.splice(insertAt, 0, ...moving);
+                    this.photos = remaining;
+                    this.normalizeLinkedChildrenOrder();
+                } else {
+                    this.normalizeLinkedChildrenOrder();
+                    const blocks = [];
+                    this.photos.forEach((p, idx) => {
+                        if (!this.isLinkedCropChild(p)) {
+                            blocks.push({ items: [p], selected: selectedSet.has(idx) });
+                        } else if (blocks.length > 0) {
+                            const curBlock = blocks[blocks.length - 1];
+                            curBlock.items.push(p);
+                            if (selectedSet.has(idx)) curBlock.selected = true;
+                        }
+                    });
+                    const movingBlocks = blocks.filter(b => b.selected);
+                    const remainingBlocks = blocks.filter(b => !b.selected);
+                    const firstSelectedBlockIdx = blocks.findIndex(b => b.selected);
+                    let anchorBlock = 0;
+                    for (let i = 0; i < firstSelectedBlockIdx; i++) {
+                        if (!blocks[i].selected) anchorBlock++;
+                    }
+                    const insertBlockAt = Math.max(0, Math.min(anchorBlock + delta, remainingBlocks.length));
+                    remainingBlocks.splice(insertBlockAt, 0, ...movingBlocks);
+                    this.photos = remainingBlocks.flatMap(b => b.items);
+                    this.normalizeLinkedChildrenOrder();
                 }
-                const insertAt = Math.max(0, Math.min(anchor + delta, remaining.length));
-                remaining.splice(insertAt, 0, ...moving);
-                this.photos = remaining;
-                this.applyStageSlotsByPhotoOrder(stageSlots);
 
+                this.applyStageSlotsByPhotoOrder(stageSlots);
                 this.currentIndex = Math.max(0, this.photos.indexOf(currentPhoto));
                 this.lastSelectedIndex = this.currentIndex;
                 this.render();
@@ -2006,10 +2494,19 @@
                 if (!selectedIndices.length) return;
                 const currentPhoto = this.photos[this.currentIndex];
                 const stageSlots = this.getStageSlotsInReadingOrder();
-                const selectedSet = new Set(selectedIndices);
-                const moving = this.photos.filter((_, index) => selectedSet.has(index));
-                const remaining = this.photos.filter((_, index) => !selectedSet.has(index));
+                const effectiveSet = new Set(selectedIndices);
+                selectedIndices.forEach(idx => {
+                    const p = this.photos[idx];
+                    if (p && !this.isLinkedCropChild(p)) {
+                        this.photos.forEach((item, itemIdx) => {
+                            if (this.isDescendantOf(item, p.uid)) effectiveSet.add(itemIdx);
+                        });
+                    }
+                });
+                const moving = this.photos.filter((_, index) => effectiveSet.has(index));
+                const remaining = this.photos.filter((_, index) => !effectiveSet.has(index));
                 this.photos = boundary === 'start' ? [...moving, ...remaining] : [...remaining, ...moving];
+                this.normalizeLinkedChildrenOrder();
                 this.applyStageSlotsByPhotoOrder(stageSlots);
                 this.currentIndex = Math.max(0, this.photos.indexOf(currentPhoto));
                 this.lastSelectedIndex = this.currentIndex;
@@ -2055,7 +2552,8 @@
                 event.dataTransfer.dropEffect = 'move';
 
                 if (!this.draggedIndices || this.draggedIndices.length === 0) return;
-                if (this.draggedIndices.includes(index)) return;
+                const overItem = this.photos[index];
+                if (this.draggedIndices.includes(index) || (overItem && this.draggedIndices.some(idx => this.isDescendantOf(overItem, this.photos[idx]?.uid)))) return;
 
                 const card = document.getElementById(`thumb_${this.photos[index].uid}`);
                 if (card) {
@@ -2091,7 +2589,8 @@
                     return;
                 }
 
-                if (this.draggedIndices.includes(targetIndex)) {
+                const dropTarget = this.photos[targetIndex];
+                if (this.draggedIndices.includes(targetIndex) || (dropTarget && this.draggedIndices.some(idx => this.isDescendantOf(dropTarget, this.photos[idx]?.uid)))) {
                     this.handleCardDragEnd();
                     return;
                 }
@@ -2144,8 +2643,19 @@
             }
 
             getNextUnmovedPhotoUid(index) {
+                const hovered = this.photos[index];
+                const draggingSiblingOfHovered = hovered && this.draggedIndices.some(idx => {
+                    const d = this.photos[idx];
+                    return d && d.parentUid && (d.parentUid === hovered.uid || d.parentUid === hovered.parentUid);
+                });
+                const hoveredGroupRootUid = hovered ? (this.isLinkedCropChild(hovered) ? hovered.parentUid : hovered.uid) : null;
                 for (let nextIndex = index + 1; nextIndex < this.photos.length; nextIndex++) {
-                    if (!this.draggedIndices.includes(nextIndex)) return this.photos[nextIndex].uid;
+                    if (this.draggedIndices.includes(nextIndex)) continue;
+                    const candidate = this.photos[nextIndex];
+                    if (!draggingSiblingOfHovered && hoveredGroupRootUid && this.isDescendantOf(candidate, hoveredGroupRootUid)) {
+                        continue;
+                    }
+                    return candidate.uid;
                 }
                 return null;
             }
@@ -2176,8 +2686,19 @@
                     return;
                 }
 
-                const movingItems = this.draggedIndices.map(idx => this.photos[idx]);
-                const remaining = this.photos.filter((_, idx) => !this.draggedIndices.includes(idx));
+                const effectiveSet = new Set(this.draggedIndices);
+                this.draggedIndices.forEach(idx => {
+                    const draggedPhoto = this.photos[idx];
+                    if (draggedPhoto && !this.isLinkedCropChild(draggedPhoto)) {
+                        this.photos.forEach((item, itemIdx) => {
+                            if (this.isDescendantOf(item, draggedPhoto.uid)) effectiveSet.add(itemIdx);
+                        });
+                    }
+                });
+
+                const leadPhoto = this.photos[this.draggedIndices[0]] || null;
+                const movingItems = this.photos.filter((_, idx) => effectiveSet.has(idx));
+                const remaining = this.photos.filter((_, idx) => !effectiveSet.has(idx));
                 let insertPos = this.dragInsertBeforeUid
                     ? remaining.findIndex(photo => photo.uid === this.dragInsertBeforeUid)
                     : remaining.length;
@@ -2185,8 +2706,10 @@
 
                 remaining.splice(insertPos, 0, ...movingItems);
                 this.photos = remaining;
+                this.normalizeLinkedChildrenOrder();
 
-                this.currentIndex = insertPos;
+                this.currentIndex = Math.max(0, leadPhoto ? this.photos.indexOf(leadPhoto) : insertPos);
+                this.lastSelectedIndex = this.currentIndex;
 
                 this.handleCardDragEnd();
                 this.render();
@@ -2262,14 +2785,27 @@
             }
 
             navigatePhoto(delta) {
+                if (this.isLightboxOpen()) {
+                    this.navigateLightbox(delta);
+                    return;
+                }
                 // 右側上一張／下一張與 Alt＋方向鍵完全沿用舞台方向鍵流程：
                 // 單選目前照片、更新藍框、同步右側欄位並捲動縮圖至可見位置。
                 this.selectPhotoByKeyboard(delta);
             }
 
             updateCurrentPhoto(field, value) {
-                if (!this.photos[this.currentIndex]) return;
-                this.photos[this.currentIndex][field] = value;
+                const photo = this.photos[this.currentIndex];
+                if (!photo) return;
+                if (field === 'seq' && this.isLinkedCropChild(photo)) return;
+                this.commitLightboxHistoryIfNeeded();
+                photo[field] = value;
+                this.lightboxNeedsRender = true;
+                if (field === 'seq') {
+                    this.syncChildCropSequences();
+                    this.refreshSequenceBadgesAndGridInputs();
+                    this.updateEditorTitleAndLightboxCaption();
+                }
                 this.scheduleHistory('修改照片欄位');
             }
 
@@ -2449,7 +2985,27 @@
 
             hasSequenceOrderMismatch() {
                 if (this.photos.length < 2) return false;
-                const parts = this.photos.map(photo => String(photo.seq || '').match(/^(.*?)(\d+)$/));
+                const mainPhotos = [];
+                const childCount = new Map();
+                for (let i = 0; i < this.photos.length; i++) {
+                    const p = this.photos[i];
+                    if (this.isLinkedCropChild(p)) {
+                        const parent = this.getValidParentPhoto(p);
+                        const prev = this.photos[i - 1];
+                        if (!parent || !prev || (prev.uid !== parent.uid && !this.isDescendantOf(prev, parent.uid))) {
+                            return true;
+                        }
+                        const subIdx = (childCount.get(parent.uid) || 0) + 1;
+                        childCount.set(parent.uid, subIdx);
+                        if (String(p.seq || '') !== `${parent.seq}-${subIdx}`) {
+                            return true;
+                        }
+                    } else {
+                        mainPhotos.push(p);
+                    }
+                }
+                if (mainPhotos.length < 2) return false;
+                const parts = mainPhotos.map(photo => String(photo.seq || '').match(/^(.*?)(\d+)$/));
                 // 支援重新編號功能的前綴、起始值與補零；自由文字編號不強制套用數字規則。
                 if (parts.some(part => !part)) return false;
                 const prefix = parts[0][1];
@@ -2591,6 +3147,10 @@
                 this.updateToolbarButtons(totalPhotos, selectedCount);
 
                 if (totalPhotos === 0) {
+                    if (this.isLightboxOpen()) {
+                        this.lightboxNeedsRender = false;
+                        this.closeModal('imageLightboxModal');
+                    }
                     this.emptyState.classList.remove('hidden');
                     this.workspaceContainer.classList.add('hidden');
                     this.gridContainer.classList.add('hidden');
@@ -2606,52 +3166,21 @@
                 if (this.currentIndex >= totalPhotos) this.currentIndex = totalPhotos - 1;
                 if (this.currentIndex < 0) this.currentIndex = 0;
 
-                const curPhoto = this.photos[this.currentIndex];
-
                 // 更新右側編輯器資料
-                if (curPhoto) {
-                    this.editorTitle.replaceChildren();
-                    const titleIcon = document.createElement('i');
-                    titleIcon.className = 'fa-solid fa-pen-to-square text-[#5B5CE2]';
-                    const titleText = document.createElement('span');
-                    titleText.textContent = `正在編輯第 ${this.currentIndex + 1}／${totalPhotos} 張（編號 ${curPhoto.seq}）`;
-                    this.editorTitle.append(titleIcon, document.createTextNode(' '), titleText);
-                    this.editSeq.value = curPhoto.seq || '';
-                    this.editDate.value = curPhoto.date || '';
-                    this.editTime.value = curPhoto.time || '';
-                    this.editLocation.value = curPhoto.location || '';
-                    this.editDesc.value = curPhoto.desc || '';
-                    const remaining = totalPhotos - this.currentIndex - 1;
-                    ['btnFillDownDate', 'btnFillDownTime', 'btnFillDownLocation', 'btnFillDownDescAll'].forEach(id => {
-                        const button = document.getElementById(id);
-                        button.disabled = remaining === 0;
-                        button.title = remaining === 0 ? '沒有後續照片可填入' : id === 'btnFillDownDescAll'
-                            ? `填入後續 ${remaining} 張的空白說明，保留已有內容`
-                            : `套用至後續 ${remaining} 張，將取代原有內容；覆寫不同內容前會先確認`;
-                    });
-                    document.getElementById('fillDownHint').textContent = remaining
-                        ? `向下填滿範圍：後續 ${remaining} 張。日期、時間與地點會取代原值；說明只填空白。`
-                        : '這是最後一張照片，沒有後續照片可填入。';
-                    const defaultDate = document.getElementById('caseDate').value.trim();
-                    this.editDateInheritedHint.textContent = defaultDate
-                        ? `空白時用案件日期：${defaultDate}`
-                        : '空白時用案件日期（案件日期還沒填）';
-                    this.editLocationInheritedHint.textContent = defaultLocation
-                        ? `空白時用案件地點：${defaultLocation}`
-                        : '空白時用案件地點（案件地點還沒填）';
-                }
+                this.populateEditorFields();
 
                 // 渲染左側縮圖卡片
                 this.thumbGrid.innerHTML = '<div id="selectionMarquee" class="selection-marquee hidden" aria-hidden="true"></div>' + visibleEntries.map(({ photo: p, index: idx }) => {
                     const isSelected = p.selected ? 'selected' : '';
                     const isCurrent = idx === this.currentIndex ? 'active-editing' : '';
+                    const isCropChild = this.isLinkedCropChild(p) ? 'photo-thumb-card--crop-child' : '';
                     const missingFields = [!String(p.location || '').trim() && !defaultLocation ? '地點' : '', !String(p.desc || '').trim() ? '說明' : ''].filter(Boolean);
                     const statusText = missingFields.length ? `待補：${missingFields.join('、')}` : '資料完整';
                     const displayLayout = this.getPhotoDisplayLayout(p);
                     const cardTitle = `第 ${p.seq} 張｜時間：${p.time || '未填'}｜${statusText}｜雙擊縮圖放大、雙擊編號列編輯，拖曳可排序`;
 
                     return `
-                        <div class="photo-thumb-card morandi-card p-1.5 flex flex-col gap-1 bg-white border border-[#C7CBD3]/25 rounded-xl ${isSelected} ${isCurrent}"
+                        <div class="photo-thumb-card morandi-card p-1.5 flex flex-col gap-1 bg-white border border-[#C7CBD3]/25 rounded-xl ${isSelected} ${isCurrent} ${isCropChild}"
                              id="thumb_${p.uid}"
                              style="--thumbnail-aspect:${displayLayout.safeAspect};"
                              title="${escapeHtml(cardTitle)}"
@@ -2676,7 +3205,8 @@
                             <div class="thumbnail-stage w-full bg-[#EEF0F3] rounded-lg overflow-hidden relative cursor-zoom-in"
                                  title="雙擊放大檢視"
                                  ondblclick="event.stopPropagation(); window.app.openLightboxByIndex(${idx})">
-                                <img src="${p.thumbnailSrc}" alt="${escapeHtml(p.name)}" loading="lazy" decoding="async" style="${displayLayout.imageStyle}" class="absolute left-1/2 top-1/2 object-contain pointer-events-none">
+                                <img src="${displayLayout.src || p.thumbnailSrc}" alt="${escapeHtml(p.name)}" loading="lazy" decoding="async" style="${displayLayout.imageStyle}" class="absolute left-1/2 top-1/2 object-contain pointer-events-none">
+                                ${this.getPhotoAnnotationBadgeHtml(p)}
                             </div>
 
                         </div>
@@ -2693,10 +3223,15 @@
                             <input type="checkbox" ${p.selected ? 'checked' : ''} onclick="window.app.togglePhotoSelect(${idx}, event)" class="rounded text-[#5B5CE2] cursor-pointer">
                         </td>
                         <td class="p-2 text-center">
-                            <img src="${p.thumbnailSrc}" style="transform: rotate(${p.rotation}deg);" class="w-10 h-10 object-contain mx-auto rounded border bg-[#EEF0F3] cursor-pointer" onclick="event.stopPropagation(); window.app.openLightboxByIndex(${idx})" title="點擊放大">
+                            <img src="${(p.sideCrop && p.compositeThumbnailSrc) ? p.compositeThumbnailSrc : p.thumbnailSrc}" style="transform: ${(p.sideCrop && p.compositeThumbnailSrc) ? 'none' : `${p.flipH ? 'scaleX(-1) ' : ''}rotate(${p.rotation}deg)`};" class="w-10 h-10 object-contain mx-auto rounded border bg-[#EEF0F3] cursor-pointer" onclick="event.stopPropagation(); window.app.openLightboxByIndex(${idx})" title="點擊放大">
                         </td>
                         <td class="p-2">
-                            <input type="text" value="${escapeHtml(p.seq)}" oninput="window.app.updatePhotoField(${idx}, 'seq', this.value)" class="input-field w-full text-xs font-bold text-[#5B5CE2]">
+                            ${(() => {
+                                const parentPhoto = this.getValidParentPhoto(p);
+                                return parentPhoto
+                                    ? `<input type="text" value="${escapeHtml(p.seq)}" readonly class="input-field w-full text-xs font-bold seq-locked" title="隨原圖 #${escapeHtml(parentPhoto.seq)} 自動連動鎖定"><div class="grid-crop-parent-hint text-[10px] text-sky-700 font-bold mt-0.5 whitespace-nowrap">↳ #${escapeHtml(parentPhoto.seq)} 特寫</div>`
+                                    : `<input type="text" value="${escapeHtml(p.seq)}" oninput="window.app.updatePhotoField(${idx}, 'seq', this.value)" class="input-field w-full text-xs font-bold text-[#5B5CE2]">`;
+                            })()}
                         </td>
                         <td class="p-2">
                             <input type="text" value="${escapeHtml(p.date || '')}" onpointerdown="window.app.handleMaskedPointerDown(event, this)" onfocus="window.app.beginMaskedEntry(this)" oninput="this.value = window.app.sanitizeMaskedEntry(this, 7); window.app.markMaskedEntryChanged(this); window.app.updatePhotoField(${idx}, 'date', this.value)" onblur="this.value = window.app.finishMaskedEntry(this, window.app.formatDateMask); window.app.updatePhotoField(${idx}, 'date', this.value)" class="input-field w-full text-xs font-mono" placeholder="留空＝清冊預設">
@@ -2720,6 +3255,74 @@
                     </tr>
                 `).join('');
                 this.renderPagePreview();
+                if (this.isLightboxOpen()) {
+                    this.lightboxIndex = this.currentIndex;
+                    this.updateLightbox({ preserveZoomIfSamePhoto: true });
+                }
+            }
+
+            updateEditorTitleAndLightboxCaption() {
+                const curPhoto = this.photos[this.currentIndex];
+                if (!curPhoto) return;
+                const totalPhotos = this.photos.length;
+                this.editorTitle.replaceChildren();
+                const titleIcon = document.createElement('i');
+                titleIcon.className = 'fa-solid fa-pen-to-square text-[#5B5CE2]';
+                const titleText = document.createElement('span');
+                titleText.textContent = `正在編輯第 ${this.currentIndex + 1}／${totalPhotos} 張（編號 ${curPhoto.seq}）`;
+                this.editorTitle.append(titleIcon, document.createTextNode(' '), titleText);
+                if (this.lightboxCaption && this.isLightboxOpen() && this.lightboxIndex === this.currentIndex) {
+                    const parentPhoto = this.getValidParentPhoto(curPhoto);
+                    this.lightboxCaption.textContent = parentPhoto
+                        ? `#${curPhoto.seq}（#${parentPhoto.seq} 局部特寫）　${curPhoto.name}`
+                        : `#${curPhoto.seq}　${curPhoto.name}`;
+                }
+            }
+
+            populateEditorFields() {
+                const totalPhotos = this.photos.length;
+                const curPhoto = this.photos[this.currentIndex];
+                if (!curPhoto) return;
+                const defaultLocation = document.getElementById('defaultLocation').value.trim();
+                this.updateEditorTitleAndLightboxCaption();
+                this.editSeq.value = curPhoto.seq || '';
+                const parentPhoto = this.getValidParentPhoto(curPhoto);
+                if (parentPhoto) {
+                    this.editSeq.readOnly = true;
+                    this.editSeq.classList.add('seq-locked');
+                    this.editSeq.title = `已鎖定為原圖 #${parentPhoto.seq} 的局部特寫，重排或修改原圖編號時會自動連動`;
+                    this.editSeqLockNotice?.classList.remove('hidden');
+                    if (this.editSeqLockText) {
+                        this.editSeqLockText.innerHTML = `<i class="fa-solid fa-link text-sky-700"></i> 隨原圖 #${escapeHtml(parentPhoto.seq)} 自動連動鎖定`;
+                    }
+                } else {
+                    this.editSeq.readOnly = false;
+                    this.editSeq.classList.remove('seq-locked');
+                    this.editSeq.title = '';
+                    this.editSeqLockNotice?.classList.add('hidden');
+                }
+                this.editDate.value = curPhoto.date || '';
+                this.editTime.value = curPhoto.time || '';
+                this.editLocation.value = curPhoto.location || '';
+                this.editDesc.value = curPhoto.desc || '';
+                const remaining = totalPhotos - this.currentIndex - 1;
+                ['btnFillDownDate', 'btnFillDownTime', 'btnFillDownLocation', 'btnFillDownDescAll'].forEach(id => {
+                    const button = document.getElementById(id);
+                    button.disabled = remaining === 0;
+                    button.title = remaining === 0 ? '沒有後續照片可填入' : id === 'btnFillDownDescAll'
+                        ? `填入後續 ${remaining} 張的空白說明，保留已有內容`
+                        : `套用至後續 ${remaining} 張，將取代原有內容；覆寫不同內容前會先確認`;
+                });
+                document.getElementById('fillDownHint').textContent = remaining
+                    ? `向下填滿範圍：後續 ${remaining} 張。日期、時間與地點會取代原值；說明只填空白。`
+                    : '這是最後一張照片，沒有後續照片可填入。';
+                const defaultDate = document.getElementById('caseDate').value.trim();
+                this.editDateInheritedHint.textContent = defaultDate
+                    ? `空白時用案件日期：${defaultDate}`
+                    : '空白時用案件日期（案件日期還沒填）';
+                this.editLocationInheritedHint.textContent = defaultLocation
+                    ? `空白時用案件地點：${defaultLocation}`
+                    : '空白時用案件地點（案件地點還沒填）';
             }
 
             renderPagePreview() {
@@ -2736,7 +3339,7 @@
                         return `
                             <button type="button" onclick="window.app.selectPreviewPhoto(${index})" class="text-left min-w-0 border border-[#C7CBD3]/25 rounded-lg p-1.5 bg-white hover:border-[#5B5CE2] transition ${index === this.currentIndex ? 'ring-2 ring-[#5B5CE2]/50' : ''}">
                                 <div class="aspect-[4/3] bg-[#EEF0F3] rounded flex items-center justify-center overflow-hidden">
-                                    <img src="${photo.thumbnailSrc}" alt="${escapeHtml(photo.name)}" style="transform: rotate(${photo.rotation}deg);" class="w-full h-full object-contain">
+                                    <img src="${(photo.sideCrop && photo.compositeThumbnailSrc) ? photo.compositeThumbnailSrc : photo.thumbnailSrc}" data-preview-uid="${photo.uid}" alt="${escapeHtml(photo.name)}" style="transform: ${(photo.sideCrop && photo.compositeThumbnailSrc) ? 'none' : `${photo.flipH ? 'scaleX(-1) ' : ''}rotate(${photo.rotation}deg)`};" class="w-full h-full object-contain">
                                 </div>
                                 <div class="mt-1 text-[10px] font-bold text-[#20242B] truncate">#${escapeHtml(photo.seq)} ${escapeHtml(photo.location || defaultLocation || '未填地點')}</div>
                                 <div class="text-[10px] text-[#6B7280] truncate">${escapeHtml(photo.desc || '（無說明）')}</div>
@@ -2766,63 +3369,1522 @@
             }
 
             updatePhotoField(index, field, value) {
-                if (!this.photos[index]) return;
-                this.photos[index][field] = value;
+                const photo = this.photos[index];
+                if (!photo) return;
+                if (field === 'seq' && this.isLinkedCropChild(photo)) return;
+                photo[field] = value;
+                if (field === 'seq') {
+                    this.syncChildCropSequences();
+                    this.refreshSequenceBadgesAndGridInputs();
+                    this.updateEditorTitleAndLightboxCaption();
+                }
                 this.scheduleHistory('修改照片欄位');
             }
 
             initLightboxInteractions() {
                 if (!this.lightboxViewport) return;
                 this.lightboxViewport.addEventListener('wheel', (e) => this.handleLightboxWheel(e), { passive: false });
-                this.lightboxViewport.addEventListener('pointerdown', (e) => this.handleLightboxPointerDown(e));
-                this.lightboxViewport.addEventListener('mousedown', (e) => this.handleLightboxPointerDown(e));
-                window.addEventListener('pointermove', (e) => this.handleLightboxPointerMove(e));
-                window.addEventListener('mousemove', (e) => this.handleLightboxPointerMove(e));
-                window.addEventListener('pointerup', (e) => this.handleLightboxPointerUp(e));
-                window.addEventListener('mouseup', (e) => this.handleLightboxPointerUp(e));
-                window.addEventListener('pointercancel', (e) => this.handleLightboxPointerUp(e));
+                const supportsPointer = typeof window.PointerEvent !== 'undefined';
+                if (supportsPointer) {
+                    this.lightboxViewport.addEventListener('pointerdown', (e) => this.handleLightboxPointerDown(e));
+                } else {
+                    this.lightboxViewport.addEventListener('mousedown', (e) => this.handleLightboxPointerDown(e));
+                }
+                if (this.lightboxAnnotationLayer) {
+                    if (supportsPointer) {
+                        this.lightboxAnnotationLayer.addEventListener('pointerdown', (e) => this.handleAnnotationLayerPointerDown(e));
+                    } else {
+                        this.lightboxAnnotationLayer.addEventListener('mousedown', (e) => this.handleAnnotationLayerPointerDown(e));
+                    }
+                    this.lightboxAnnotationLayer.addEventListener('dblclick', (e) => this.handleAnnotationLayerDblClick(e));
+                    this.lightboxAnnotationLayer.addEventListener('click', (e) => this.handleAnnotationLayerClick(e));
+                }
+                if (this.lightboxSideCropArea) {
+                    if (supportsPointer) {
+                        this.lightboxSideCropArea.addEventListener('pointerdown', (e) => this.handleSideCropAreaPointerDown(e));
+                    } else {
+                        this.lightboxSideCropArea.addEventListener('mousedown', (e) => this.handleSideCropAreaPointerDown(e));
+                    }
+                    this.lightboxSideCropArea.addEventListener('click', (e) => this.handleSideCropAreaClick(e));
+                }
+                if (this.lightboxImg) {
+                    this.lightboxImg.addEventListener('load', () => this.syncLightboxAnnotationLayerBounds());
+                    if (typeof ResizeObserver !== 'undefined') {
+                        this.lightboxImgResizeObserver = new ResizeObserver(() => {
+                            if (this.isLightboxOpen()) this.syncLightboxAnnotationLayerBounds();
+                        });
+                        this.lightboxImgResizeObserver.observe(this.lightboxImg);
+                        if (this.lightboxViewport) this.lightboxImgResizeObserver.observe(this.lightboxViewport);
+                    }
+                }
+                if (this.lightboxLabelTextInput) {
+                    this.lightboxLabelTextInput.addEventListener('focus', () => {
+                        if (this.lightboxTool !== 'label') this.setLightboxTool('label');
+                    });
+                    this.lightboxLabelTextInput.addEventListener('input', () => {
+                        if (this.lightboxTool !== 'label') this.setLightboxTool('label');
+                    });
+                    this.lightboxLabelTextInput.addEventListener('keydown', (e) => {
+                        if (e.key === 'Enter') {
+                            e.preventDefault();
+                            this.lightboxLabelTextInput.blur();
+                        }
+                    });
+                }
+                if (this.lightboxLabelColorSelect) {
+                    this.lightboxLabelColorSelect.addEventListener('change', () => {
+                        this.lightboxLabelColorSelect.blur();
+                    });
+                }
+                window.addEventListener('resize', () => {
+                    if (this.isLightboxOpen()) this.syncLightboxAnnotationLayerBounds();
+                });
+                if (supportsPointer) {
+                    window.addEventListener('pointermove', (e) => this.handleLightboxPointerMove(e));
+                    window.addEventListener('pointerup', (e) => this.handleLightboxPointerUp(e));
+                    window.addEventListener('pointercancel', (e) => this.handleLightboxPointerUp(e));
+                } else {
+                    window.addEventListener('mousemove', (e) => this.handleLightboxPointerMove(e));
+                    window.addEventListener('mouseup', (e) => this.handleLightboxPointerUp(e));
+                }
+                window.addEventListener('blur', () => this.cancelLightboxInteractions());
+            }
+
+            handleLightboxBackdropPointerDown(e) {
+                this.lightboxBackdropPointerDown = Boolean(e && e.target === this.imageLightboxModal);
+            }
+
+            handleLightboxBackdropClick(e) {
+                const shouldClose = Boolean(e && e.target === this.imageLightboxModal && this.lightboxBackdropPointerDown);
+                this.lightboxBackdropPointerDown = false;
+                if (shouldClose) {
+                    this.closeModal('imageLightboxModal');
+                }
+            }
+
+            cancelLightboxInteractions() {
+                this.lightboxBackdropPointerDown = false;
+                if (this.lightboxAnnotationAction) {
+                    const action = this.lightboxAnnotationAction;
+                    this.lightboxAnnotationAction = null;
+                    const photo = this.photos[this.lightboxIndex];
+                    if ((action.mode === 'move-side-crop' || action.mode === 'resize-side-crop') && photo && action.origSideCrop) {
+                        photo.sideCrop = this.cloneSideCrop(action.origSideCrop);
+                    }
+                    if (action.mode === 'draw-crop' && !action.moved) {
+                        this.lightboxCropDraft = null;
+                    }
+                    if (photo && Array.isArray(photo.annotations) && action.mode === 'draw-rect' && !action.moved) {
+                        photo.annotations = photo.annotations.filter(item => item.id !== action.annId);
+                    }
+                    if (this.isLightboxOpen()) this.renderLightboxAnnotations();
+                }
+                if (this.lightboxIsPanning) {
+                    this.lightboxIsPanning = false;
+                    this.lightboxViewport?.classList.remove('is-panning');
+                    this.lightboxStage?.classList.remove('panning-active');
+                }
+            }
+
+            setLightboxTool(tool) {
+                const allowed = ['pan', 'rect-yellow', 'rect-red', 'label', 'crop'];
+                const nextTool = allowed.includes(tool) ? tool : 'pan';
+                const leavingCropWithDraft = this.lightboxTool === 'crop' && nextTool !== 'crop' && this.lightboxCropDraft;
+                this.lightboxTool = nextTool;
+                if (leavingCropWithDraft) {
+                    this.lightboxCropDraft = null;
+                }
+                if (this.lightboxTool === 'rect-yellow' && this.lightboxLabelColorSelect) {
+                    this.lightboxLabelColorSelect.value = 'yellow';
+                } else if (this.lightboxTool === 'rect-red' && this.lightboxLabelColorSelect) {
+                    this.lightboxLabelColorSelect.value = 'red';
+                }
+                const btnMap = {
+                    'pan': this.btnLightboxToolPan,
+                    'rect-yellow': this.btnLightboxToolRectYellow,
+                    'rect-red': this.btnLightboxToolRectRed,
+                    'label': this.btnLightboxToolLabel,
+                    'crop': this.btnLightboxToolCrop
+                };
+                Object.entries(btnMap).forEach(([key, btn]) => {
+                    if (btn) btn.classList.toggle('active', key === this.lightboxTool);
+                });
+                if (this.lightboxAnnotationLayer) {
+                    this.lightboxAnnotationLayer.classList.toggle('tool-drawing', this.lightboxTool !== 'pan');
+                    if (leavingCropWithDraft && this.isLightboxOpen()) {
+                        this.renderLightboxAnnotations();
+                    }
+                }
+            }
+
+            getLightboxImgTransform(photo) {
+                const flip = photo?.flipH ? 'scaleX(-1) ' : '';
+                return `${flip}rotate(${photo?.rotation || 0}deg)`;
+            }
+
+            toggleLightboxFlipH() {
+                if (this.lightboxIndex === null || !this.photos[this.lightboxIndex]) return;
+                this.flushPendingHistory();
+                this.commitLightboxHistoryIfNeeded();
+                const photo = this.photos[this.lightboxIndex];
+                photo.flipH = !photo.flipH;
+                this.transformPhotoAnnotationsForFlipH(photo);
+                if (this.lightboxImg) {
+                    this.lightboxImg.style.transform = this.getLightboxImgTransform(photo);
+                }
+                this.updateLightboxFlipButtonState(photo);
+                this.renderLightboxAnnotations();
+                this.syncPhotoRotationToCanvas(this.lightboxIndex, photo.rotation);
+                this.lightboxNeedsRender = true;
+                this.recordHistory('燈箱水平翻轉照片');
+            }
+
+            updateLightboxFlipButtonState(photo) {
+                if (!this.btnLightboxFlipH) return;
+                const flipped = Boolean(photo?.flipH);
+                this.btnLightboxFlipH.classList.toggle('is-flipped', flipped);
+                this.btnLightboxFlipH.setAttribute('aria-pressed', String(flipped));
+            }
+
+            transformNormRectForFlipH(rect) {
+                if (!rect) return rect;
+                const w = Number(rect.w) || 0.1;
+                const x = Math.max(0, Math.min(1 - w, 1 - (Number(rect.x) || 0) - w));
+                return { ...rect, x: Math.round(x * 10000) / 10000 };
+            }
+
+            transformNormRectForRotation(rect, normDelta) {
+                if (!rect || !normDelta) return rect;
+                let x = Number(rect.x) || 0;
+                let y = Number(rect.y) || 0;
+                let w = Number(rect.w) || 0.1;
+                let h = Number(rect.h) || 0.1;
+                if (normDelta === 90) {
+                    const nx = 1 - (y + h);
+                    const ny = x;
+                    x = nx; y = ny;
+                    const tmp = w; w = h; h = tmp;
+                } else if (normDelta === 270) {
+                    const nx = y;
+                    const ny = 1 - (x + w);
+                    x = nx; y = ny;
+                    const tmp = w; w = h; h = tmp;
+                } else if (normDelta === 180) {
+                    x = 1 - (x + w);
+                    y = 1 - (y + h);
+                }
+                return {
+                    ...rect,
+                    x: Math.round(Math.max(0, Math.min(1 - w, x)) * 10000) / 10000,
+                    y: Math.round(Math.max(0, Math.min(1 - h, y)) * 10000) / 10000,
+                    w: Math.round(w * 10000) / 10000,
+                    h: Math.round(h * 10000) / 10000
+                };
+            }
+
+            transformPhotoAnnotationsForFlipH(photo) {
+                if (!photo) return;
+                if (Array.isArray(photo.annotations) && photo.annotations.length) {
+                    photo.annotations = photo.annotations.map(ann => {
+                        if (ann.type === 'rect') return this.transformNormRectForFlipH(ann);
+                        if (ann.type === 'label') {
+                            const x = Math.max(0.03, Math.min(0.97, 1 - (Number(ann.x) || 0.5)));
+                            return { ...ann, x: Math.round(x * 10000) / 10000 };
+                        }
+                        return { ...ann };
+                    });
+                }
+                if (photo.sideCrop && photo.sideCrop.cropRect) {
+                    photo.sideCrop.cropRect = this.transformNormRectForFlipH(photo.sideCrop.cropRect);
+                }
+            }
+
+            transformPhotoAnnotationsForRotation(photo, deltaDegrees) {
+                if (!photo) return;
+                const normDelta = ((deltaDegrees % 360) + 360) % 360;
+                if (normDelta === 0) return;
+                if (Array.isArray(photo.annotations) && photo.annotations.length) {
+                    photo.annotations = photo.annotations.map(ann => {
+                        if (ann.type === 'rect') return this.transformNormRectForRotation(ann, normDelta);
+                        if (ann.type === 'label') {
+                            let x = Number(ann.x) || 0.5;
+                            let y = Number(ann.y) || 0.5;
+                            if (normDelta === 90) {
+                                const nx = 1 - y;
+                                const ny = x;
+                                x = nx; y = ny;
+                            } else if (normDelta === 270) {
+                                const nx = y;
+                                const ny = 1 - x;
+                                x = nx; y = ny;
+                            } else if (normDelta === 180) {
+                                x = 1 - x;
+                                y = 1 - y;
+                            }
+                            return {
+                                ...ann,
+                                x: Math.round(Math.max(0.03, Math.min(0.97, x)) * 10000) / 10000,
+                                y: Math.round(Math.max(0.03, Math.min(0.97, y)) * 10000) / 10000
+                            };
+                        }
+                        return { ...ann };
+                    });
+                }
+                if (photo.sideCrop && photo.sideCrop.cropRect) {
+                    photo.sideCrop.cropRect = this.transformNormRectForRotation(photo.sideCrop.cropRect, normDelta);
+                }
+            }
+
+            getLayoutCellDimensions(layout = this.layoutSelect?.value) {
+                const map = {
+                    up_down_2: { layout: 'up_down_2', label: '上下兩張', cellW: 535, cellH: 365 },
+                    left_right_2: { layout: 'left_right_2', label: '左右兩張', cellW: 315, cellH: 690 },
+                    landscape_3: { layout: 'landscape_3', label: '橫式三張', cellW: 335, cellH: 535 }
+                };
+                return map[layout] || map.up_down_2;
+            }
+
+            setLightboxLayout(layout) {
+                if (!this.layoutSelect) return;
+                const cell = this.getLayoutCellDimensions(layout);
+                if (this.layoutSelect.value === cell.layout) {
+                    this.syncLightboxAnnotationLayerBounds();
+                    return;
+                }
+                this.layoutSelect.value = cell.layout;
+                this.updateLayoutDescription();
+                this.updatePageEstimate();
+                if (this.currentView === 'preview') this.renderPagePreview();
+                this.syncLightboxAnnotationLayerBounds();
+                this.scheduleHistory('變更清冊版型');
+            }
+
+            syncLightboxSideLayoutUi({ visible = false, activeLayout = this.layoutSelect?.value || 'up_down_2', statusLevel = 'ok', statusText = '' } = {}) {
+                if (this.lightboxSideLayoutBar) {
+                    const wasHidden = this.lightboxSideLayoutBar.classList.contains('hidden');
+                    this.lightboxSideLayoutBar.classList.toggle('hidden', !visible);
+                    if (wasHidden === visible && this.isLightboxOpen()) {
+                        requestAnimationFrame(() => {
+                            if (this.isLightboxOpen()) this.syncLightboxAnnotationLayerBounds();
+                        });
+                    }
+                }
+                if (Array.isArray(this.lightboxSideLayoutBtns)) {
+                    this.lightboxSideLayoutBtns.forEach(btn => {
+                        const isActive = btn.getAttribute('data-lightbox-layout') === activeLayout;
+                        btn.classList.toggle('active', isActive);
+                        btn.setAttribute('aria-pressed', String(isActive));
+                    });
+                }
+                if (this.lightboxSideLayoutStatus) {
+                    this.lightboxSideLayoutStatus.classList.remove(
+                        'lightbox-side-layout-status--ok',
+                        'lightbox-side-layout-status--fit',
+                        'lightbox-side-layout-status--warn'
+                    );
+                    this.lightboxSideLayoutStatus.classList.add('lightbox-side-layout-status--' + statusLevel);
+                    this.lightboxSideLayoutStatus.textContent = statusText;
+                }
+            }
+
+            computeSideCropGeometry(origW, origH, sideCrop) {
+                if (!sideCrop || !sideCrop.cropRect || origW <= 0 || origH <= 0) return null;
+                const cw = Math.max(0.02, Math.min(1, Number(sideCrop.cropRect.w) || 0.2));
+                const ch = Math.max(0.02, Math.min(1, Number(sideCrop.cropRect.h) || 0.2));
+                const cropPixelW = Math.max(2, cw * origW);
+                const cropPixelH = Math.max(2, ch * origH);
+                const cropAspect = Math.max(0.1, Math.min(10, cropPixelW / cropPixelH));
+                const baseAspect = origW / origH;
+
+                const maxWByWidth = 2.5;
+                const maxWByHeight = cropAspect / baseAspect;
+                const maxWidthRatio = Math.max(0.05, Math.min(maxWByWidth, maxWByHeight));
+                const minWidthRatio = Math.min(
+                    maxWidthRatio * 0.9,
+                    Math.max(0.04, Math.min(0.22, maxWidthRatio * 0.3), 0.22 * maxWByHeight)
+                );
+
+                const rawRatio = Number(sideCrop.widthRatio);
+                const preferredDefault = baseAspect < 0.85
+                    ? Math.min(1.45, maxWidthRatio * 0.86)
+                    : Math.min(0.95, maxWidthRatio * 0.82);
+                const defaultRatio = Math.min(maxWidthRatio, Math.max(minWidthRatio, preferredDefault));
+                const widthRatio = Number.isFinite(rawRatio) && rawRatio > 0
+                    ? Math.max(minWidthRatio, Math.min(maxWidthRatio, rawRatio))
+                    : defaultRatio;
+
+                const panelW = origW * widthRatio;
+                const panelH = Math.min(origH, panelW / cropAspect);
+                const gap = Math.min(origW, origH) * 0.028;
+                const offsetY = Math.max(0, Math.min(1, Number.isFinite(Number(sideCrop.offsetY)) ? Number(sideCrop.offsetY) : 0.5));
+                const panelTop = offsetY * Math.max(0, origH - panelH);
+
+                return {
+                    origW,
+                    origH,
+                    gap,
+                    panelW,
+                    panelH,
+                    panelTop,
+                    totalW: origW + gap + panelW,
+                    totalH: origH,
+                    widthRatio,
+                    minWidthRatio,
+                    maxWidthRatio,
+                    offsetY,
+                    cropAspect,
+                    borderColor: sideCrop.borderColor === 'red' ? 'red' : sideCrop.borderColor === 'none' ? 'none' : 'yellow'
+                };
+            }
+
+            getLightboxPhotoCacheKey(photo) {
+                return photo ? `${photo.uid}|${photo.rotation || 0}|${Boolean(photo.flipH)}|${photo.exifRotation || 0}` : '';
+            }
+
+            async ensureLightboxBaseCanvas(photo) {
+                const key = this.getLightboxPhotoCacheKey(photo);
+                if (!key) return null;
+                if (this.lightboxBaseCanvasCache?.key === key) {
+                    return this.lightboxBaseCanvasCache.canvas;
+                }
+                if (this.lightboxBaseCanvasPending?.key === key) {
+                    return this.lightboxBaseCanvasPending.promise;
+                }
+                const promise = this.renderOrientedCanvas(photo, 2400, { includeAnnotations: false }).then(canvas => {
+                    this.lightboxBaseCanvasCache = { key, canvas };
+                    return canvas;
+                }).finally(() => {
+                    if (this.lightboxBaseCanvasPending?.key === key) {
+                        this.lightboxBaseCanvasPending = null;
+                    }
+                });
+                this.lightboxBaseCanvasPending = { key, promise };
+                return promise;
+            }
+
+            paintSideCropCanvas(photo, cardDisplayW, cardDisplayH) {
+                if (!photo || !photo.sideCrop || !this.lightboxSideCropCanvas) return;
+                const canvas = this.lightboxSideCropCanvas;
+                const key = this.getLightboxPhotoCacheKey(photo);
+                const drawFromBase = (baseCanvas) => {
+                    if (!baseCanvas || this.photos[this.lightboxIndex] !== photo || !photo.sideCrop) return;
+                    const dpr = Math.min(2, Math.max(1, (window.devicePixelRatio || 1) * (this.lightboxZoom > 1 ? Math.min(2, this.lightboxZoom) : 1)));
+                    const targetW = Math.max(2, Math.round(Math.max(cardDisplayW || 200, 120) * dpr));
+                    const targetH = Math.max(2, Math.round(Math.max(cardDisplayH || 200, 120) * dpr));
+                    if (canvas.width !== targetW) canvas.width = targetW;
+                    if (canvas.height !== targetH) canvas.height = targetH;
+                    const ctx = canvas.getContext('2d');
+                    if (!ctx) return;
+                    const cr = photo.sideCrop.cropRect;
+                    const bw = baseCanvas.width;
+                    const bh = baseCanvas.height;
+                    const sx = Math.max(0, Math.min(bw - 2, Math.round((Number(cr.x) || 0) * bw)));
+                    const sy = Math.max(0, Math.min(bh - 2, Math.round((Number(cr.y) || 0) * bh)));
+                    const sw = Math.max(2, Math.min(bw - sx, Math.round((Number(cr.w) || 0.2) * bw)));
+                    const sh = Math.max(2, Math.min(bh - sy, Math.round((Number(cr.h) || 0.2) * bh)));
+                    ctx.fillStyle = '#FFFFFF';
+                    ctx.fillRect(0, 0, targetW, targetH);
+                    ctx.drawImage(baseCanvas, sx, sy, sw, sh, 0, 0, targetW, targetH);
+                    const cw = Math.max(0.02, Math.min(1, Number(cr.w) || 0.2));
+                    const ch = Math.max(0.02, Math.min(1, Number(cr.h) || 0.2));
+                    const nonSourceAnns = (photo.annotations || []).filter(a => a.id !== photo.sideCrop?.sourceAnnId);
+                    if (nonSourceAnns.length > 0) {
+                        ctx.save();
+                        ctx.beginPath();
+                        ctx.rect(0, 0, targetW, targetH);
+                        ctx.clip();
+                        const virtW = targetW / cw;
+                        const virtH = targetH / ch;
+                        ctx.translate(-(Number(cr.x) || 0) * virtW, -(Number(cr.y) || 0) * virtH);
+                        this.drawAnnotationsOnCanvas(ctx, virtW, virtH, nonSourceAnns);
+                        ctx.restore();
+                    }
+                    canvas.dataset.painted = '1';
+                };
+                if (!this.lightboxBaseCanvasCache || this.lightboxBaseCanvasCache.key !== key) {
+                    delete canvas.dataset.painted;
+                }
+
+                if (this.lightboxBaseCanvasCache?.key === key) {
+                    drawFromBase(this.lightboxBaseCanvasCache.canvas);
+                } else {
+                    this.ensureLightboxBaseCanvas(photo)
+                        .then(baseCanvas => drawFromBase(baseCanvas))
+                        .catch(() => {});
+                }
+            }
+
+            syncLightboxAnnotationLayerBounds() {
+                if (!this.lightboxAnnotationLayer || !this.lightboxImg) return;
+                const photo = this.photos[this.lightboxIndex];
+                const rot = (((photo?.rotation || 0) % 360) + 360) % 360;
+                const isRotated90 = rot === 90 || rot === 270;
+                const nw = this.lightboxImg.naturalWidth || 0;
+                const nh = this.lightboxImg.naturalHeight || 0;
+                const rawVpW = this.lightboxViewport?.clientWidth || 0;
+                const sideNavPadding = rawVpW > 560 ? 116 : 24;
+                const vpW = Math.max(0, rawVpW - sideNavPadding);
+                const vpH = Math.max(0, (this.lightboxViewport?.clientHeight || 0) - 24);
+
+                if (photo && photo.sideCrop && nw > 0 && nh > 0 && vpW > 40 && vpH > 40) {
+                    const baseW = isRotated90 ? nh : nw;
+                    const baseH = isRotated90 ? nw : nh;
+                    const geo = this.computeSideCropGeometry(baseW, baseH, photo.sideCrop);
+                    const cell = this.getLayoutCellDimensions();
+                    const framePad = 8;
+                    const frameScale = Math.min(vpW / cell.cellW, vpH / cell.cellH);
+                    const frameW = Math.max(120, Math.round(cell.cellW * frameScale));
+                    const frameH = Math.max(120, Math.round(cell.cellH * frameScale));
+                    const innerW = Math.max(40, frameW - framePad * 2);
+                    const innerH = Math.max(40, frameH - framePad * 2);
+
+                    const fullHGapEst = Math.max(2, Math.round(geo.gap * (innerH / geo.origH)));
+                    const estScale = Math.min(Math.max(16, innerW - fullHGapEst) / (geo.origW + geo.panelW), innerH / geo.origH);
+                    const gapPx = Math.max(2, Math.round(geo.gap * estScale));
+                    const availImgW = Math.max(16, innerW - gapPx);
+                    const fitScale = Math.min(availImgW / (geo.origW + geo.panelW), innerH / geo.origH);
+
+                    const leftW = Math.max(4, Math.round(geo.origW * fitScale));
+                    const leftH = Math.max(4, Math.round(geo.origH * fitScale));
+                    const rawDomW = isRotated90 ? leftH : leftW;
+                    const rawDomH = isRotated90 ? leftW : leftH;
+                    const rightW = Math.max(4, Math.min(availImgW - leftW, Math.round(geo.panelW * fitScale)));
+                    const rightH = Math.max(4, Math.min(leftH, Math.round(geo.panelH * fitScale)));
+                    const rightTop = Math.round(geo.offsetY * Math.max(0, leftH - rightH));
+
+                    const fullHLeftW = innerH * (geo.origW / geo.origH);
+                    const rawSafeMax = (innerW - fullHGapEst - fullHLeftW) / Math.max(1, fullHLeftW);
+                    const isNarrowLayout = rawSafeMax < geo.minWidthRatio + 0.01;
+                    const isOverflow = isNarrowLayout || (geo.widthRatio > rawSafeMax + 0.012);
+                    const atHeightCap = !isNarrowLayout && rawSafeMax >= geo.maxWidthRatio - 0.01 && geo.widthRatio >= geo.maxWidthRatio - 0.015;
+                    const isSnappedRight = !isNarrowLayout && !isOverflow && Math.abs(geo.widthRatio - rawSafeMax) <= 0.025;
+
+                    let statusLevel = 'ok';
+                    let statusText = `「${cell.label}」右緣尚有空間（左圖維持滿高）`;
+                    if (isNarrowLayout) {
+                        statusLevel = 'warn';
+                        statusText = cell.layout === 'up_down_2'
+                            ? '左圖比例較寬，並排時整組等比縮小'
+                            : `「${cell.label}」單欄較窄，並排會縮小圖片（建議改用 -1 特寫）`;
+                    } else if (isOverflow) {
+                        statusLevel = 'warn';
+                        statusText = `超出「${cell.label}」右緣，整組等比縮小（建議縮回或改用 -1）`;
+                    } else if (isSnappedRight) {
+                        statusLevel = 'fit';
+                        statusText = `已貼齊「${cell.label}」右緣（左圖滿高・最適尺寸）`;
+                    } else if (atHeightCap) {
+                        statusLevel = 'fit';
+                        statusText = '右圖已達等高上限（左圖維持滿高）';
+                    }
+
+                    if (this.lightboxCanvasFrame) {
+                        this.lightboxCanvasFrame.style.width = `${frameW}px`;
+                        this.lightboxCanvasFrame.style.height = `${frameH}px`;
+                        this.lightboxCanvasFrame.classList.add('has-side-crop');
+                        this.lightboxCanvasFrame.classList.toggle('is-side-overflow', isOverflow);
+                    }
+                    this.syncLightboxSideLayoutUi({ visible: true, activeLayout: cell.layout, statusLevel, statusText });
+
+                    this.lightboxImg.style.width = `${rawDomW}px`;
+                    this.lightboxImg.style.height = `${rawDomH}px`;
+                    this.lightboxImg.style.maxWidth = 'none';
+                    this.lightboxImg.style.maxHeight = 'none';
+
+                    if (this.lightboxLeftSlot) {
+                        this.lightboxLeftSlot.style.width = `${leftW}px`;
+                        this.lightboxLeftSlot.style.height = `${leftH}px`;
+                    }
+                    this.lightboxAnnotationLayer.style.width = `${leftW}px`;
+                    this.lightboxAnnotationLayer.style.height = `${leftH}px`;
+
+                    if (this.lightboxSideGap) {
+                        this.lightboxSideGap.classList.remove('hidden');
+                        this.lightboxSideGap.style.width = `${gapPx}px`;
+                        this.lightboxSideGap.style.height = `${leftH}px`;
+                    }
+                    if (this.lightboxSideCropArea) {
+                        this.lightboxSideCropArea.classList.remove('hidden');
+                        this.lightboxSideCropArea.style.width = `${rightW}px`;
+                        this.lightboxSideCropArea.style.height = `${leftH}px`;
+                    }
+                    if (this.lightboxSideCropCard) {
+                        this.lightboxSideCropCard.style.height = `${rightH}px`;
+                        this.lightboxSideCropCard.style.top = `${rightTop}px`;
+                        this.lightboxSideCropCard.classList.remove('lightbox-side-crop-card--yellow', 'lightbox-side-crop-card--red', 'lightbox-side-crop-card--none');
+                        this.lightboxSideCropCard.classList.add(`lightbox-side-crop-card--${geo.borderColor}`);
+                        this.lightboxSideCropCard.classList.toggle('is-full-height', (leftH - rightH) <= 2);
+                        const frameBorderW = Math.max(2, Math.round(4.5 * (Math.min(leftW + rightW, leftH) / 800)));
+                        this.lightboxSideCropCard.style.setProperty('--side-crop-border-w', `${frameBorderW}px`);
+                    }
+                    if (this.btnSideCropBorder) {
+                        this.btnSideCropBorder.textContent = geo.borderColor === 'red' ? '紅框' : geo.borderColor === 'none' ? '無框' : '黃框';
+                    }
+                    this.paintSideCropCanvas(photo, rightW, rightH);
+
+                    const minSide = Math.max(120, Math.min(leftW, leftH));
+                    const scale = minSide / 800;
+                    const strokeW = Math.max(2.5, Math.round(5 * scale * 10) / 10);
+                    const haloW = Math.max(1.2, Math.round(1.6 * scale * 10) / 10);
+                    const fontSize = Math.max(12, Math.round(minSide * 0.036));
+                    const padX = Math.max(6, Math.round(fontSize * 0.45));
+                    const padY = Math.max(3, Math.round(fontSize * 0.28));
+                    const borderW = Math.max(1.5, Math.round(2.5 * scale * 10) / 10);
+                    this.lightboxAnnotationLayer.style.setProperty('--ann-stroke-w', `${strokeW}px`);
+                    this.lightboxAnnotationLayer.style.setProperty('--ann-halo-w', `${haloW}px`);
+                    this.lightboxAnnotationLayer.style.setProperty('--ann-font-size', `${fontSize}px`);
+                    this.lightboxAnnotationLayer.style.setProperty('--ann-pad-x', `${padX}px`);
+                    this.lightboxAnnotationLayer.style.setProperty('--ann-pad-y', `${padY}px`);
+                    this.lightboxAnnotationLayer.style.setProperty('--ann-border-w', `${borderW}px`);
+                    return;
+                }
+
+                this.syncLightboxSideLayoutUi({ visible: false });
+                this.lightboxCanvasFrame?.classList.remove('has-side-crop', 'is-side-overflow');
+                if (this.lightboxCanvasFrame) {
+                    this.lightboxCanvasFrame.style.width = '';
+                    this.lightboxCanvasFrame.style.height = '';
+                }
+                this.lightboxSideGap?.classList.add('hidden');
+                this.lightboxSideCropArea?.classList.add('hidden');
+                if (this.lightboxSideCropCanvas) delete this.lightboxSideCropCanvas.dataset.painted;
+                if (this.lightboxLeftSlot) {
+                    this.lightboxLeftSlot.style.width = '';
+                    this.lightboxLeftSlot.style.height = '';
+                }
+
+                if (nw > 0 && nh > 0 && vpW > 40 && vpH > 40) {
+                    const maxDomW = isRotated90 ? vpH : vpW;
+                    const maxDomH = isRotated90 ? vpW : vpH;
+                    const fitScale = Math.min(maxDomW / nw, maxDomH / nh);
+                    const minTargetScale = Math.max(nw, nh) < 360 ? (360 / Math.max(nw, nh)) : 1;
+                    const finalScale = Math.min(fitScale, minTargetScale);
+                    const targetW = `${Math.max(1, Math.round(nw * finalScale))}px`;
+                    const targetH = `${Math.max(1, Math.round(nh * finalScale))}px`;
+                    if (this.lightboxImg.style.width !== targetW) this.lightboxImg.style.width = targetW;
+                    if (this.lightboxImg.style.height !== targetH) this.lightboxImg.style.height = targetH;
+                    if (this.lightboxImg.style.maxWidth !== 'none') this.lightboxImg.style.maxWidth = 'none';
+                    if (this.lightboxImg.style.maxHeight !== 'none') this.lightboxImg.style.maxHeight = 'none';
+                }
+
+                const rawW = this.lightboxImg.offsetWidth || this.lightboxImg.clientWidth || 0;
+                const rawH = this.lightboxImg.offsetHeight || this.lightboxImg.clientHeight || 0;
+                if (rawW <= 0 || rawH <= 0) return;
+                const orientedW = isRotated90 ? rawH : rawW;
+                const orientedH = isRotated90 ? rawW : rawH;
+                this.lightboxAnnotationLayer.style.width = `${orientedW}px`;
+                this.lightboxAnnotationLayer.style.height = `${orientedH}px`;
+
+                // 同步預覽與 Canvas 匯出比例（所見即所得）
+                const minSide = Math.max(120, Math.min(orientedW, orientedH));
+                const scale = minSide / 800;
+                const strokeW = Math.max(2.5, Math.round(5 * scale * 10) / 10);
+                const haloW = Math.max(1.2, Math.round(1.6 * scale * 10) / 10);
+                const fontSize = Math.max(12, Math.round(minSide * 0.036));
+                const padX = Math.max(6, Math.round(fontSize * 0.45));
+                const padY = Math.max(3, Math.round(fontSize * 0.28));
+                const borderW = Math.max(1.5, Math.round(2.5 * scale * 10) / 10);
+                this.lightboxAnnotationLayer.style.setProperty('--ann-stroke-w', `${strokeW}px`);
+                this.lightboxAnnotationLayer.style.setProperty('--ann-halo-w', `${haloW}px`);
+                this.lightboxAnnotationLayer.style.setProperty('--ann-font-size', `${fontSize}px`);
+                this.lightboxAnnotationLayer.style.setProperty('--ann-pad-x', `${padX}px`);
+                this.lightboxAnnotationLayer.style.setProperty('--ann-pad-y', `${padY}px`);
+                this.lightboxAnnotationLayer.style.setProperty('--ann-border-w', `${borderW}px`);
+            }
+
+            renderLightboxAnnotations() {
+                if (!this.lightboxAnnotationLayer) return;
+                const photo = this.photos[this.lightboxIndex];
+                if (!photo) {
+                    this.lightboxAnnotationLayer.innerHTML = '';
+                    return;
+                }
+                if (!Array.isArray(photo.annotations)) photo.annotations = [];
+                this.syncLightboxAnnotationLayerBounds();
+                const annotations = photo.annotations;
+
+                if (this.lightboxAnnotationCountBadge) {
+                    if (annotations.length > 0 && photo.sideCrop) {
+                        this.lightboxAnnotationCountBadge.textContent = `已標記 ${annotations.length} 項＋右側並排`;
+                    } else if (photo.sideCrop) {
+                        this.lightboxAnnotationCountBadge.textContent = '右側並排中';
+                    } else {
+                        this.lightboxAnnotationCountBadge.textContent = annotations.length > 0 ? `已標記 ${annotations.length} 項` : '無標記';
+                    }
+                }
+                if (this.btnLightboxClearAnnotations) {
+                    this.btnLightboxClearAnnotations.classList.toggle('hidden', annotations.length === 0);
+                }
+
+                const annHtml = annotations.map(ann => {
+                    const colorClass = ann.color === 'red' ? 'red' : 'yellow';
+                    if (ann.type === 'rect') {
+                        const left = (Number(ann.x) || 0) * 100;
+                        const top = (Number(ann.y) || 0) * 100;
+                        const width = (Number(ann.w) || 0.1) * 100;
+                        const height = (Number(ann.h) || 0.1) * 100;
+                        return `
+                            <div class="lightbox-annotation-rect lightbox-annotation-rect--${colorClass}"
+                                 data-ann-id="${escapeHtml(ann.id)}"
+                                 style="left:${left}%;top:${top}%;width:${width}%;height:${height}%;"
+                                 title="拖曳可移動標記框，右下角可調整大小">
+                                <button type="button" class="lightbox-annotation-sidecrop-btn" data-ann-sidecrop="${escapeHtml(ann.id)}" title="放到原圖右側同格並排（模式 B）"><i class="fa-solid fa-table-columns pointer-events-none"></i></button>
+                                <button type="button" class="lightbox-annotation-crop-btn" data-ann-crop="${escapeHtml(ann.id)}" title="依此標記框裁切局部特寫（插在此張後方）"><i class="fa-solid fa-crop-simple pointer-events-none"></i></button>
+                                <button type="button" class="lightbox-annotation-delete" data-ann-delete="${escapeHtml(ann.id)}" title="刪除此標記框">×</button>
+                                <span class="lightbox-annotation-resize" data-ann-resize="${escapeHtml(ann.id)}" title="拖曳調整大小"></span>
+                            </div>`;
+                    }
+                    if (ann.type === 'label') {
+                        const left = (Number(ann.x) || 0.5) * 100;
+                        const top = (Number(ann.y) || 0.5) * 100;
+                        const labelScale = Math.max(0.5, Math.min(3.0, Number(ann.scale) || 1));
+                        return `
+                            <div class="lightbox-annotation-label lightbox-annotation-label--${colorClass}"
+                                 data-ann-id="${escapeHtml(ann.id)}"
+                                 style="left:${left}%;top:${top}%;--label-scale:${labelScale};"
+                                 title="拖曳可移動位置，拖曳右下角圓點可放大縮小，雙擊可修改文字">
+                                <span class="lightbox-annotation-label-text">${escapeHtml(ann.text || '')}</span>
+                                <button type="button" class="lightbox-annotation-delete" data-ann-delete="${escapeHtml(ann.id)}" title="刪除此標籤">×</button>
+                                <span class="lightbox-annotation-resize" data-ann-resize="${escapeHtml(ann.id)}" title="拖曳角落放大縮小標籤"></span>
+                            </div>`;
+                    }
+                    return '';
+                }).join('');
+
+                let cropHtml = '';
+                if (this.lightboxCropDraft) {
+                    const c = this.lightboxCropDraft;
+                    const left = (Number(c.x) || 0) * 100;
+                    const top = (Number(c.y) || 0) * 100;
+                    const width = (Number(c.w) || 0.1) * 100;
+                    const height = (Number(c.h) || 0.1) * 100;
+                    const showActionsInside = (Number(c.y) + Number(c.h)) > 0.84;
+                    const showActionBar = !this.lightboxAnnotationAction || this.lightboxAnnotationAction.mode !== 'draw-crop';
+                    const actionsHtml = showActionBar ? `
+                        <div class="lightbox-crop-actions ${showActionsInside ? 'lightbox-crop-actions--inside' : ''}">
+                            <button type="button" id="btnConfirmLightboxCrop" data-crop-confirm="1" title="建立局部特寫照片並鎖定於此張後方 (Enter)">✓ 插入為局部特寫</button>
+                            <button type="button" id="btnSideLightboxCrop" data-crop-side="1" title="把框選局部放到原圖右側同格並排，並自動保留黃框（模式 B）">◫ 放原圖右側</button>
+                            <button type="button" id="btnCancelLightboxCrop" data-crop-cancel="1" title="取消選取 (ESC)">取消</button>
+                        </div>` : '';
+                    cropHtml = `
+                        <div class="lightbox-crop-box"
+                             data-crop-move="1"
+                             style="left:${left}%;top:${top}%;width:${width}%;height:${height}%;"
+                             title="拖曳調整裁切位置與大小，確認後點「插入為局部特寫」">
+                            ${actionsHtml}
+                            <span class="lightbox-annotation-resize" data-crop-resize="1" title="拖曳調整裁切範圍大小"></span>
+                        </div>`;
+                }
+
+                this.lightboxAnnotationLayer.innerHTML = annHtml + cropHtml;
+            }
+
+            updateCropBoxDom() {
+                if (!this.lightboxAnnotationLayer || !this.lightboxCropDraft) return;
+                const el = this.lightboxAnnotationLayer.querySelector('.lightbox-crop-box');
+                if (!el) {
+                    this.renderLightboxAnnotations();
+                    return;
+                }
+                const c = this.lightboxCropDraft;
+                el.style.left = `${(Number(c.x) || 0) * 100}%`;
+                el.style.top = `${(Number(c.y) || 0) * 100}%`;
+                el.style.width = `${(Number(c.w) || 0.1) * 100}%`;
+                el.style.height = `${(Number(c.h) || 0.1) * 100}%`;
+            }
+
+            updateAnnotationElementDom(ann) {
+                if (!this.lightboxAnnotationLayer || !ann) return;
+                const el = this.lightboxAnnotationLayer.querySelector(`[data-ann-id="${ann.id}"]`);
+                if (!el) {
+                    this.renderLightboxAnnotations();
+                    return;
+                }
+                if (ann.type === 'rect') {
+                    el.style.left = `${(Number(ann.x) || 0) * 100}%`;
+                    el.style.top = `${(Number(ann.y) || 0) * 100}%`;
+                    el.style.width = `${(Number(ann.w) || 0.1) * 100}%`;
+                    el.style.height = `${(Number(ann.h) || 0.1) * 100}%`;
+                } else if (ann.type === 'label') {
+                    el.style.left = `${(Number(ann.x) || 0.5) * 100}%`;
+                    el.style.top = `${(Number(ann.y) || 0.5) * 100}%`;
+                    el.style.setProperty('--label-scale', String(Math.max(0.5, Math.min(3.0, Number(ann.scale) || 1))));
+                }
+                const photo = this.photos[this.lightboxIndex];
+                if (photo && photo.sideCrop && ann.id !== photo.sideCrop.sourceAnnId) {
+                    const cardRect = this.lightboxSideCropCard?.getBoundingClientRect();
+                    this.paintSideCropCanvas(photo, cardRect?.width || 240, cardRect?.height || 240);
+                }
+            }
+
+            getAnnotationNormalizedPoint(clientX, clientY, syncBounds = false) {
+                if (!this.lightboxAnnotationLayer) return { x: 0.5, y: 0.5 };
+                if (syncBounds || !this.lightboxAnnotationLayer.style.width) {
+                    this.syncLightboxAnnotationLayerBounds();
+                }
+                const rect = this.lightboxAnnotationLayer.getBoundingClientRect();
+                if (!rect.width || !rect.height) return { x: 0.5, y: 0.5 };
+                const x = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+                const y = Math.max(0, Math.min(1, (clientY - rect.top) / rect.height));
+                return { x, y };
+            }
+
+            deleteLightboxAnnotation(annId) {
+                const photo = this.photos[this.lightboxIndex];
+                if (!photo || !Array.isArray(photo.annotations)) return;
+                this.flushPendingHistory();
+                this.commitLightboxHistoryIfNeeded();
+                const before = photo.annotations.length;
+                photo.annotations = photo.annotations.filter(ann => ann.id !== annId);
+                if (photo.sideCrop && photo.sideCrop.sourceAnnId === annId) {
+                    photo.sideCrop.sourceAnnId = null;
+                }
+                if (photo.annotations.length !== before) {
+                    this.renderLightboxAnnotations();
+                    this.syncPhotoRotationToCanvas(this.lightboxIndex, photo.rotation);
+                    this.lightboxNeedsRender = true;
+                    this.recordHistory('刪除照片標記');
+                }
+            }
+
+            clearCurrentPhotoAnnotations() {
+                const photo = this.photos[this.lightboxIndex];
+                if (!photo || !Array.isArray(photo.annotations) || !photo.annotations.length) return;
+                this.flushPendingHistory();
+                this.commitLightboxHistoryIfNeeded();
+                photo.annotations = [];
+                if (photo.sideCrop) {
+                    photo.sideCrop.sourceAnnId = null;
+                }
+                this.renderLightboxAnnotations();
+                this.syncPhotoRotationToCanvas(this.lightboxIndex, photo.rotation);
+                this.lightboxNeedsRender = true;
+                this.recordHistory('清除照片標記');
+            }
+
+            openInlineAnnotationLabelInput({ x, y, initialText = '', color = 'yellow', annId = null }) {
+                if (!this.lightboxAnnotationLayer) return;
+                this.lightboxAnnotationLayer.querySelector('.lightbox-inline-label-editor')?.remove();
+                const clampedX = Math.max(0.1, Math.min(0.9, Number(x) || 0.5));
+                const clampedY = Math.max(0.08, Math.min(0.92, Number(y) || 0.5));
+                const editorEl = document.createElement('div');
+                editorEl.className = 'lightbox-inline-label-editor';
+                editorEl.style.left = `${clampedX * 100}%`;
+                editorEl.style.top = `${clampedY * 100}%`;
+                editorEl.innerHTML = `
+                    <input type="text" class="lightbox-inline-label-input" placeholder="輸入姓名或文字" value="${escapeHtml(initialText)}">
+                    <button type="button" class="lightbox-inline-label-ok">確定</button>
+                `;
+                ['pointerdown', 'mousedown', 'click', 'dblclick'].forEach(evtName => {
+                    editorEl.addEventListener(evtName, (evt) => evt.stopPropagation());
+                });
+                this.lightboxAnnotationLayer.appendChild(editorEl);
+                const inputEl = editorEl.querySelector('input');
+                const okBtn = editorEl.querySelector('button');
+                let finished = false;
+
+                const commit = ({ fromBlur = false } = {}) => {
+                    if (finished) return;
+                    finished = true;
+                    const trimmed = (inputEl?.value || '').trim();
+                    editorEl.remove();
+                    const photo = this.photos[this.lightboxIndex];
+                    if (!photo) return;
+                    if (!Array.isArray(photo.annotations)) photo.annotations = [];
+                    if (annId) {
+                        const ann = photo.annotations.find(item => item.id === annId);
+                        if (!ann || ann.type !== 'label') return;
+                        if (!trimmed) {
+                            if (!fromBlur) this.deleteLightboxAnnotation(annId);
+                            return;
+                        }
+                        if (ann.text !== trimmed) {
+                            this.flushPendingHistory();
+                            this.commitLightboxHistoryIfNeeded();
+                            ann.text = trimmed;
+                            this.renderLightboxAnnotations();
+                            this.syncPhotoRotationToCanvas(this.lightboxIndex, photo.rotation);
+                            this.lightboxNeedsRender = true;
+                            this.recordHistory('修改照片姓名標籤');
+                        }
+                        return;
+                    }
+                    if (!trimmed) return;
+                    if (this.lightboxLabelTextInput) this.lightboxLabelTextInput.value = trimmed;
+                    this.flushPendingHistory();
+                    this.commitLightboxHistoryIfNeeded();
+                    photo.annotations.push({
+                        id: 'ann_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+                        type: 'label',
+                        color: color === 'red' ? 'red' : 'yellow',
+                        x: Math.round(Math.max(0.03, Math.min(0.97, Number(x) || 0.5)) * 10000) / 10000,
+                        y: Math.round(Math.max(0.03, Math.min(0.97, Number(y) || 0.5)) * 10000) / 10000,
+                        scale: 1,
+                        text: trimmed
+                    });
+                    this.renderLightboxAnnotations();
+                    this.syncPhotoRotationToCanvas(this.lightboxIndex, photo.rotation);
+                    this.lightboxNeedsRender = true;
+                    this.recordHistory('新增照片姓名標籤');
+                };
+
+                okBtn?.addEventListener('click', (evt) => {
+                    evt.preventDefault();
+                    evt.stopPropagation();
+                    commit();
+                });
+                inputEl?.addEventListener('keydown', (evt) => {
+                    if (evt.key === 'Enter') {
+                        evt.preventDefault();
+                        evt.stopPropagation();
+                        commit();
+                    } else if (evt.key === 'Escape') {
+                        evt.preventDefault();
+                        evt.stopPropagation();
+                        finished = true;
+                        editorEl.remove();
+                    }
+                });
+                inputEl?.addEventListener('blur', () => {
+                    setTimeout(() => {
+                        if (!finished && !editorEl.contains(document.activeElement)) {
+                            commit({ fromBlur: true });
+                        }
+                    }, 0);
+                });
+                inputEl?.focus();
+                inputEl?.select();
+            }
+
+            handleAnnotationLayerDblClick(e) {
+                const labelEl = e.target.closest('.lightbox-annotation-label');
+                if (!labelEl) return;
+                e.stopPropagation();
+                e.preventDefault();
+                const annId = labelEl.getAttribute('data-ann-id');
+                const photo = this.photos[this.lightboxIndex];
+                const ann = photo?.annotations?.find(item => item.id === annId);
+                if (!ann || ann.type !== 'label') return;
+                this.openInlineAnnotationLabelInput({
+                    x: ann.x,
+                    y: ann.y,
+                    initialText: ann.text || '',
+                    color: ann.color || 'yellow',
+                    annId: ann.id
+                });
+            }
+
+            isNearAnnotationRectBorder(rectEl, clientX, clientY, thresholdPx = 10) {
+                if (!rectEl) return false;
+                const r = rectEl.getBoundingClientRect();
+                if (!r.width || !r.height) return false;
+                const minDist = Math.min(
+                    Math.abs(clientX - r.left),
+                    Math.abs(r.right - clientX),
+                    Math.abs(clientY - r.top),
+                    Math.abs(r.bottom - clientY)
+                );
+                return minDist <= thresholdPx;
+            }
+
+            handleAnnotationLayerClick(e) {
+                const cropConfirmBtn = e.target.closest('[data-crop-confirm]');
+                if (cropConfirmBtn) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    this.confirmLightboxCrop();
+                    return;
+                }
+                const cropCancelBtn = e.target.closest('[data-crop-cancel]');
+                if (cropCancelBtn) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    this.cancelLightboxCrop();
+                    return;
+                }
+                const cropSideBtn = e.target.closest('[data-crop-side]');
+                if (cropSideBtn) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    if (this.lightboxCropDraft) {
+                        this.applySideCropFromRect({ ...this.lightboxCropDraft }, { borderColor: 'yellow', addSourceRect: true });
+                    }
+                    return;
+                }
+                const annSideBtn = e.target.closest('[data-ann-sidecrop]');
+                if (annSideBtn) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    const annId = annSideBtn.getAttribute('data-ann-sidecrop');
+                    const photo = this.photos[this.lightboxIndex];
+                    const ann = photo?.annotations?.find(item => item.id === annId);
+                    if (ann && ann.type === 'rect') {
+                        this.applySideCropFromRect(
+                            { x: ann.x, y: ann.y, w: ann.w, h: ann.h },
+                            { borderColor: ann.color === 'red' ? 'red' : 'yellow', addSourceRect: false, sourceAnnId: ann.id }
+                        );
+                    }
+                    return;
+                }
+                const annCropBtn = e.target.closest('[data-ann-crop]');
+                if (annCropBtn) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    const annId = annCropBtn.getAttribute('data-ann-crop');
+                    const photo = this.photos[this.lightboxIndex];
+                    const ann = photo?.annotations?.find(item => item.id === annId);
+                    if (ann && ann.type === 'rect') {
+                        this.createDetailCropPhoto(this.lightboxIndex, {
+                            x: ann.x, y: ann.y, w: ann.w, h: ann.h
+                        }).catch(err => this.handleProcessingError(err));
+                    }
+                }
+            }
+
+            applySideCropFromRect(cropRect, { borderColor = 'yellow', addSourceRect = false, sourceAnnId = null } = {}) {
+                const photo = this.photos[this.lightboxIndex];
+                if (!photo || !cropRect) return;
+                const x = Math.round(Math.max(0, Math.min(0.98, Number(cropRect.x) || 0)) * 10000) / 10000;
+                const y = Math.round(Math.max(0, Math.min(0.98, Number(cropRect.y) || 0)) * 10000) / 10000;
+                const w = Math.round(Math.max(0.02, Math.min(1 - x, Number(cropRect.w) || 0.2)) * 10000) / 10000;
+                const h = Math.round(Math.max(0.02, Math.min(1 - y, Number(cropRect.h) || 0.2)) * 10000) / 10000;
+                const cleanRect = { x, y, w, h };
+
+                this.flushPendingHistory();
+                this.commitLightboxHistoryIfNeeded();
+                if (!Array.isArray(photo.annotations)) photo.annotations = [];
+
+                let linkedAnnId = sourceAnnId || null;
+                if (addSourceRect) {
+                    const prevLinkedAnn = photo.sideCrop?.sourceAnnId
+                        ? photo.annotations.find(ann => ann.id === photo.sideCrop.sourceAnnId && ann.type === 'rect')
+                        : null;
+                    if (prevLinkedAnn) {
+                        prevLinkedAnn.x = x;
+                        prevLinkedAnn.y = y;
+                        prevLinkedAnn.w = w;
+                        prevLinkedAnn.h = h;
+                        linkedAnnId = prevLinkedAnn.id;
+                    } else {
+                        const existingSimilar = photo.annotations.find(ann =>
+                            ann.type === 'rect' &&
+                            Math.abs((Number(ann.x) || 0) - x) < 0.015 &&
+                            Math.abs((Number(ann.y) || 0) - y) < 0.015 &&
+                            Math.abs((Number(ann.w) || 0) - w) < 0.015 &&
+                            Math.abs((Number(ann.h) || 0) - h) < 0.015
+                        );
+                        if (existingSimilar) {
+                            linkedAnnId = existingSimilar.id;
+                        } else {
+                            const newAnnId = 'ann_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+                            photo.annotations.push({
+                                id: newAnnId,
+                                type: 'rect',
+                                color: borderColor === 'red' ? 'red' : 'yellow',
+                                x, y, w, h
+                            });
+                            linkedAnnId = newAnnId;
+                        }
+                    }
+                }
+
+                const rot = (((photo.rotation || 0) % 360) + 360) % 360;
+                const isRot90 = rot === 90 || rot === 270;
+                const nw = this.lightboxImg?.naturalWidth || 1200;
+                const nh = this.lightboxImg?.naturalHeight || 900;
+                const baseW = isRot90 ? nh : nw;
+                const baseH = isRot90 ? nw : nh;
+                const nextColor = borderColor === 'red' ? 'red' : borderColor === 'none' ? 'none' : 'yellow';
+                const defaultGeo = this.computeSideCropGeometry(baseW, baseH, {
+                    cropRect: cleanRect,
+                    borderColor: nextColor
+                });
+
+                photo.sideCrop = {
+                    cropRect: cleanRect,
+                    widthRatio: defaultGeo ? defaultGeo.widthRatio : 0.65,
+                    offsetY: 0.5,
+                    borderColor: nextColor,
+                    sourceAnnId: linkedAnnId
+                };
+                this.lightboxCropDraft = null;
+                this.setLightboxTool('pan');
+                this.renderLightboxAnnotations();
+                this.syncPhotoRotationToCanvas(this.lightboxIndex, photo.rotation);
+                this.lightboxNeedsRender = true;
+                this.recordHistory(addSourceRect ? '框選放到右側並排' : '標記框放到右側並排');
+            }
+
+            removeSideCrop() {
+                const photo = this.photos[this.lightboxIndex];
+                if (!photo || !photo.sideCrop) return;
+                this.flushPendingHistory();
+                this.commitLightboxHistoryIfNeeded();
+                photo.sideCrop = null;
+                photo._compositeKey = '';
+                this.renderLightboxAnnotations();
+                this.syncPhotoRotationToCanvas(this.lightboxIndex, photo.rotation);
+                this.lightboxNeedsRender = true;
+                this.recordHistory('移除右側並排特寫');
+            }
+
+            cycleSideCropBorder() {
+                const photo = this.photos[this.lightboxIndex];
+                if (!photo || !photo.sideCrop) return;
+                const order = ['yellow', 'red', 'none'];
+                const cur = order.includes(photo.sideCrop.borderColor) ? photo.sideCrop.borderColor : 'yellow';
+                photo.sideCrop.borderColor = order[(order.indexOf(cur) + 1) % order.length];
+                this.syncLightboxAnnotationLayerBounds();
+                this.syncPhotoRotationToCanvas(this.lightboxIndex, photo.rotation);
+                this.lightboxNeedsRender = true;
+                this.recordHistory('切換右側特寫框線');
+            }
+
+            handleSideCropAreaClick(e) {
+                const delBtn = e.target.closest('[data-side-crop-delete]');
+                if (delBtn) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    this.removeSideCrop();
+                    return;
+                }
+                const borderBtn = e.target.closest('[data-side-crop-border]');
+                if (borderBtn) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    this.cycleSideCropBorder();
+                }
+            }
+
+            handleSideCropAreaPointerDown(e) {
+                if (e.target.closest('[data-side-crop-delete], [data-side-crop-border]')) {
+                    e.stopPropagation();
+                    return;
+                }
+                if (e.button !== undefined && e.button !== 0) return;
+                const photo = this.photos[this.lightboxIndex];
+                if (!photo || !photo.sideCrop) return;
+                const nw = this.lightboxImg?.naturalWidth || 1200;
+                const nh = this.lightboxImg?.naturalHeight || 900;
+                const rot = (((photo.rotation || 0) % 360) + 360) % 360;
+                const isRot90 = rot === 90 || rot === 270;
+                const baseW = isRot90 ? nh : nw;
+                const baseH = isRot90 ? nw : nh;
+                const geo = this.computeSideCropGeometry(baseW, baseH, photo.sideCrop);
+                if (!geo) return;
+
+                const zoom = this.lightboxZoom || 1;
+                const resizeHandle = e.target.closest('[data-side-crop-resize]');
+                if (resizeHandle) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    this.flushPendingHistory();
+                    this.commitLightboxHistoryIfNeeded();
+                    const leftSlotW = Math.max(80, (this.lightboxLeftSlot?.offsetWidth || 400) * zoom);
+                    const rawVpW = this.lightboxViewport?.clientWidth || 0;
+                    const sideNavPadding = rawVpW > 560 ? 116 : 24;
+                    const vpW = Math.max(120, rawVpW - sideNavPadding);
+                    const vpH = Math.max(120, (this.lightboxViewport?.clientHeight || 0) - 24);
+                    const cell = this.getLayoutCellDimensions();
+                    const frameScale = Math.min(vpW / cell.cellW, vpH / cell.cellH);
+                    const innerW = Math.max(40, Math.round(cell.cellW * frameScale) - 16);
+                    const innerH = Math.max(40, Math.round(cell.cellH * frameScale) - 16);
+                    const fullHGapEst = Math.max(2, Math.round(geo.gap * (innerH / geo.origH)));
+                    const fullHLeftW = innerH * (geo.origW / geo.origH);
+                    const rawSafeMax = (innerW - fullHGapEst - fullHLeftW) / Math.max(1, fullHLeftW);
+                    const snapFitRatio = (rawSafeMax >= geo.minWidthRatio + 0.02 && rawSafeMax <= geo.maxWidthRatio - 0.01)
+                        ? Math.round(rawSafeMax * 10000) / 10000
+                        : null;
+                    this.lightboxAnnotationAction = {
+                        mode: 'resize-side-crop',
+                        pointerId: e.pointerId,
+                        startX: e.clientX,
+                        startY: e.clientY,
+                        startWidthRatio: geo.widthRatio,
+                        minWidthRatio: geo.minWidthRatio,
+                        maxWidthRatio: geo.maxWidthRatio,
+                        cropAspect: geo.cropAspect,
+                        snapFitRatio,
+                        approxScale: leftSlotW,
+                        origSideCrop: this.cloneSideCrop(photo.sideCrop),
+                        moved: false
+                    };
+                    return;
+                }
+
+                const cardEl = e.target.closest('[data-side-crop-move]');
+                if (cardEl) {
+                    const areaH = (this.lightboxSideCropArea?.clientHeight || 400) * zoom;
+                    const cardH = (this.lightboxSideCropCard?.offsetHeight || 200) * zoom;
+                    const movableSpanPx = Math.max(0, areaH - cardH);
+                    if (movableSpanPx <= 2) {
+                        return;
+                    }
+                    e.stopPropagation();
+                    e.preventDefault();
+                    this.flushPendingHistory();
+                    this.commitLightboxHistoryIfNeeded();
+                    this.lightboxAnnotationAction = {
+                        mode: 'move-side-crop',
+                        pointerId: e.pointerId,
+                        startY: e.clientY,
+                        startOffsetY: geo.offsetY,
+                        movableSpanPx,
+                        origSideCrop: this.cloneSideCrop(photo.sideCrop),
+                        moved: false
+                    };
+                }
+            }
+
+            confirmLightboxCrop() {
+                if (!this.lightboxCropDraft || this.lightboxIndex === null) return;
+                const draft = { ...this.lightboxCropDraft };
+                this.createDetailCropPhoto(this.lightboxIndex, draft).catch(err => this.handleProcessingError(err));
+            }
+
+            cancelLightboxCrop() {
+                if (!this.lightboxCropDraft) return;
+                this.lightboxCropDraft = null;
+                this.renderLightboxAnnotations();
+            }
+
+            handleAnnotationLayerPointerDown(e) {
+                if (e.target.closest('.lightbox-inline-label-editor')) return;
+                if (e.target.closest('[data-crop-confirm], [data-crop-side], [data-crop-cancel], [data-ann-crop], [data-ann-sidecrop]')) {
+                    e.stopPropagation();
+                    return;
+                }
+                if (e.button !== undefined && e.button !== 0) return;
+                const photo = this.photos[this.lightboxIndex];
+                if (!photo) return;
+                if (!Array.isArray(photo.annotations)) photo.annotations = [];
+
+                const deleteBtn = e.target.closest('[data-ann-delete]');
+                if (deleteBtn) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    this.deleteLightboxAnnotation(deleteBtn.getAttribute('data-ann-delete'));
+                    return;
+                }
+
+                const { x: normX, y: normY } = this.getAnnotationNormalizedPoint(e.clientX, e.clientY, true);
+
+                const cropResizeHandle = e.target.closest('[data-crop-resize]');
+                if (cropResizeHandle && this.lightboxCropDraft) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    this.lightboxAnnotationAction = {
+                        mode: 'resize-crop',
+                        pointerId: e.pointerId,
+                        startX: normX,
+                        startY: normY,
+                        origW: Number(this.lightboxCropDraft.w) || 0.2,
+                        origH: Number(this.lightboxCropDraft.h) || 0.2,
+                        moved: false
+                    };
+                    return;
+                }
+
+                const resizeHandle = e.target.closest('[data-ann-resize]');
+                if (resizeHandle) {
+                    const annId = resizeHandle.getAttribute('data-ann-resize');
+                    const ann = photo.annotations.find(item => item.id === annId);
+                    if (!ann) return;
+                    if (ann.type === 'rect') {
+                        this.flushPendingHistory();
+                        this.commitLightboxHistoryIfNeeded();
+                        e.stopPropagation();
+                        e.preventDefault();
+                        this.lightboxAnnotationAction = {
+                            mode: 'resize-rect',
+                            pointerId: e.pointerId,
+                            annId,
+                            startX: normX,
+                            startY: normY,
+                            origW: Number(ann.w) || 0.1,
+                            origH: Number(ann.h) || 0.1,
+                            moved: false
+                        };
+                        return;
+                    }
+                    if (ann.type === 'label') {
+                        const labelEl = resizeHandle.closest('.lightbox-annotation-label');
+                        const labelRect = labelEl?.getBoundingClientRect();
+                        if (!labelRect) return;
+                        const centerX = labelRect.left + labelRect.width / 2;
+                        const centerY = labelRect.top + labelRect.height / 2;
+                        const refX = e.clientX - centerX;
+                        const refY = e.clientY - centerY;
+                        const refLenSq = Math.max(16, refX * refX + refY * refY);
+                        this.flushPendingHistory();
+                        this.commitLightboxHistoryIfNeeded();
+                        e.stopPropagation();
+                        e.preventDefault();
+                        this.lightboxAnnotationAction = {
+                            mode: 'resize-label',
+                            pointerId: e.pointerId,
+                            annId,
+                            centerX,
+                            centerY,
+                            refX,
+                            refY,
+                            refLenSq,
+                            origScale: Math.max(0.5, Math.min(3.0, Number(ann.scale) || 1)),
+                            moved: false
+                        };
+                        return;
+                    }
+                }
+
+                const existingCropBoxEl = e.target.closest('.lightbox-crop-box[data-crop-move]');
+                if (existingCropBoxEl && this.lightboxCropDraft) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    this.lightboxAnnotationAction = {
+                        mode: 'move-crop',
+                        pointerId: e.pointerId,
+                        startX: normX,
+                        startY: normY,
+                        origX: Number(this.lightboxCropDraft.x) || 0,
+                        origY: Number(this.lightboxCropDraft.y) || 0,
+                        origW: Number(this.lightboxCropDraft.w) || 0.2,
+                        origH: Number(this.lightboxCropDraft.h) || 0.2,
+                        moved: false
+                    };
+                    return;
+                }
+
+                const existingLabelEl = e.target.closest('.lightbox-annotation-label[data-ann-id]');
+                const existingRectEl = e.target.closest('.lightbox-annotation-rect[data-ann-id]');
+                const canMoveRect = existingRectEl && this.lightboxTool !== 'crop' && (
+                    this.lightboxTool === 'pan' ||
+                    this.isNearAnnotationRectBorder(existingRectEl, e.clientX, e.clientY, 10)
+                );
+                const moveTargetEl = (this.lightboxTool !== 'crop' ? existingLabelEl : null) || (canMoveRect ? existingRectEl : null);
+                if (moveTargetEl) {
+                    const annId = moveTargetEl.getAttribute('data-ann-id');
+                    const ann = photo.annotations.find(item => item.id === annId);
+                    if (!ann) return;
+                    this.flushPendingHistory();
+                    this.commitLightboxHistoryIfNeeded();
+                    e.stopPropagation();
+                    e.preventDefault();
+                    this.lightboxAnnotationAction = {
+                        mode: 'move',
+                        pointerId: e.pointerId,
+                        annId,
+                        startX: normX,
+                        startY: normY,
+                        origX: Number(ann.x) || 0,
+                        origY: Number(ann.y) || 0,
+                        origW: Number(ann.w) || 0,
+                        origH: Number(ann.h) || 0,
+                        moved: false
+                    };
+                    return;
+                }
+
+                if (this.lightboxTool === 'pan') return;
+
+                if (this.lightboxTool === 'crop') {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    this.lightboxCropDraft = {
+                        x: Math.round(normX * 10000) / 10000,
+                        y: Math.round(normY * 10000) / 10000,
+                        w: 0.01,
+                        h: 0.01
+                    };
+                    this.lightboxAnnotationAction = {
+                        mode: 'draw-crop',
+                        pointerId: e.pointerId,
+                        startX: normX,
+                        startY: normY,
+                        moved: false
+                    };
+                    this.renderLightboxAnnotations();
+                    return;
+                }
+
+                this.flushPendingHistory();
+                this.commitLightboxHistoryIfNeeded();
+                e.stopPropagation();
+                e.preventDefault();
+
+                if (this.lightboxTool === 'label') {
+                    const color = this.lightboxLabelColorSelect?.value === 'red' ? 'red' : 'yellow';
+                    const text = this.lightboxLabelTextInput?.value?.trim() || '';
+                    if (!text) {
+                        this.openInlineAnnotationLabelInput({
+                            x: normX,
+                            y: normY,
+                            initialText: '',
+                            color,
+                            annId: null
+                        });
+                        return;
+                    }
+                    photo.annotations.push({
+                        id: 'ann_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+                        type: 'label',
+                        color,
+                        x: Math.round(Math.max(0.03, Math.min(0.97, normX)) * 10000) / 10000,
+                        y: Math.round(Math.max(0.03, Math.min(0.97, normY)) * 10000) / 10000,
+                        scale: 1,
+                        text
+                    });
+                    this.renderLightboxAnnotations();
+                    this.syncPhotoRotationToCanvas(this.lightboxIndex, photo.rotation);
+                    this.lightboxNeedsRender = true;
+                    this.recordHistory('新增照片姓名標籤');
+                    return;
+                }
+
+                if (this.lightboxTool === 'rect-yellow' || this.lightboxTool === 'rect-red') {
+                    const color = this.lightboxTool === 'rect-red' ? 'red' : 'yellow';
+                    const annId = 'ann_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+                    photo.annotations.push({
+                        id: annId,
+                        type: 'rect',
+                        color,
+                        x: Math.round(normX * 10000) / 10000,
+                        y: Math.round(normY * 10000) / 10000,
+                        w: 0.01,
+                        h: 0.01
+                    });
+                    this.lightboxAnnotationAction = {
+                        mode: 'draw-rect',
+                        pointerId: e.pointerId,
+                        annId,
+                        startX: normX,
+                        startY: normY,
+                        moved: false
+                    };
+                    this.renderLightboxAnnotations();
+                }
+            }
+
+            isLightboxOpen() {
+                return Boolean(this.imageLightboxModal && !this.imageLightboxModal.classList.contains('hidden'));
+            }
+
+            mountEditorToLightbox() {
+                if (!this.editorCard || !this.lightboxEditorMount) return;
+                if (this.editorCard.parentElement !== this.lightboxEditorMount) {
+                    this.lightboxEditorMount.appendChild(this.editorCard);
+                }
+                this.applyLightboxEditorLayout();
+            }
+
+            restoreEditorFromLightbox() {
+                if (!this.editorCard || !this.editorPanel) return;
+                if (this.editorCard.parentElement !== this.editorPanel) {
+                    this.editorPanel.appendChild(this.editorCard);
+                }
+            }
+
+            applyLightboxEditorLayout() {
+                if (!this.lightboxEditorMount) return;
+                this.lightboxEditorMount.classList.toggle('hidden', this.lightboxEditorCollapsed);
+                if (this.lightboxToggleEditorText) {
+                    this.lightboxToggleEditorText.textContent = this.lightboxEditorCollapsed ? '顯示編輯欄' : '隱藏編輯欄';
+                }
+                if (this.btnLightboxToggleEditor) {
+                    this.btnLightboxToggleEditor.setAttribute('aria-expanded', String(!this.lightboxEditorCollapsed));
+                }
+            }
+
+            toggleLightboxEditor() {
+                this.lightboxEditorCollapsed = !this.lightboxEditorCollapsed;
+                this.saveWorkspacePreference('lightboxEditorCollapsed', this.lightboxEditorCollapsed);
+                this.applyLightboxEditorLayout();
+                requestAnimationFrame(() => this.syncLightboxAnnotationLayerBounds());
+            }
+
+            syncLightboxSelectionAndEditor(index) {
+                if (!this.photos[index]) return;
+                if (this.currentIndex !== index) {
+                    this.currentIndex = index;
+                    const selectedCount = this.photos.filter(p => p.selected).length;
+                    if (selectedCount <= 1) {
+                        this.photos.forEach((p, idx) => { p.selected = (idx === index); });
+                        this.lastSelectedIndex = index;
+                    }
+                    this.lightboxNeedsRender = true;
+                }
+                this.updateSelectionUi();
+                this.populateEditorFields();
             }
 
             openLightboxByIndex(index) {
                 if (!this.photos[index]) return;
+                const wasOpen = this.isLightboxOpen();
+                if (this.isTypingTarget(document.activeElement)) {
+                    document.activeElement.blur();
+                }
+                this.flushPendingHistory();
                 this.commitLightboxHistoryIfNeeded();
+                if (!wasOpen) {
+                    this.setLightboxTool('pan');
+                }
                 this.lightboxIndex = index;
-                this.updateLightbox();
+                this.syncLightboxSelectionAndEditor(index);
+                this.mountEditorToLightbox();
                 this.openModal('imageLightboxModal');
+                this.updateLightbox();
             }
 
             navigateLightbox(delta) {
                 if (!this.photos.length || this.lightboxIndex === null) return;
+                if (this.isTypingTarget(document.activeElement)) {
+                    document.activeElement.blur();
+                }
+                this.flushPendingHistory();
                 this.commitLightboxHistoryIfNeeded();
                 const newIndex = Math.max(0, Math.min(this.photos.length - 1, this.lightboxIndex + delta));
                 if (newIndex === this.lightboxIndex) return;
                 this.lightboxIndex = newIndex;
+                this.syncLightboxSelectionAndEditor(newIndex);
                 this.updateLightbox();
             }
 
-            updateLightbox() {
+            updateLightbox({ preserveZoomIfSamePhoto = false } = {}) {
                 const photo = this.photos[this.lightboxIndex];
                 if (!photo) return;
-                this.resetLightboxZoom();
-
-                if (this.lightboxImg) {
-                    this.lightboxImg.style.transform = `rotate(${photo.rotation || 0}deg)`;
-                    // 平滑降級：若已具備縮圖先以縮圖即時呈現，避免空白；背景非同步載入原圖無縫置換
-                    this.lightboxImg.src = photo.thumbnailSrc || photo.src;
-                    if (photo.src && photo.src !== photo.thumbnailSrc) {
-                        const targetIndex = this.lightboxIndex;
-                        const fullImg = new Image();
-                        fullImg.onload = () => {
-                            if (this.lightboxIndex === targetIndex && this.lightboxImg) {
-                                this.lightboxImg.src = photo.src;
-                            }
-                        };
-                        fullImg.src = photo.src;
-                    }
+                const isSamePhoto = preserveZoomIfSamePhoto && this.lightboxPhotoUid === photo.uid;
+                this.lightboxPhotoUid = photo.uid;
+                if (!isSamePhoto) {
+                    this.lightboxCropDraft = null;
+                    this.resetLightboxZoom();
                 }
 
+                if (this.lightboxImg) {
+                    this.lightboxImg.style.transform = this.getLightboxImgTransform(photo);
+                    const desiredFull = photo.src || photo.thumbnailSrc;
+                    if (!(isSamePhoto && this.lightboxImg.getAttribute('src') === desiredFull && this.lightboxImg.complete)) {
+                        // 平滑降級：若已具備縮圖先以縮圖即時呈現，避免空白；背景非同步載入原圖無縫置換
+                        this.lightboxImg.src = photo.thumbnailSrc || photo.src;
+                        if (photo.src && photo.src !== photo.thumbnailSrc) {
+                            const targetIndex = this.lightboxIndex;
+                            const fullImg = new Image();
+                            fullImg.onload = () => {
+                                if (this.lightboxIndex === targetIndex && this.lightboxImg) {
+                                    this.lightboxImg.src = photo.src;
+                                    this.syncLightboxAnnotationLayerBounds();
+                                }
+                            };
+                            fullImg.src = photo.src;
+                        }
+                    }
+                }
+                this.updateLightboxFlipButtonState(photo);
+                this.renderLightboxAnnotations();
+                requestAnimationFrame(() => this.syncLightboxAnnotationLayerBounds());
+
                 if (this.lightboxCaption) {
-                    this.lightboxCaption.textContent = `#${photo.seq}　${photo.name}`;
+                    const parentPhoto = this.getValidParentPhoto(photo);
+                    this.lightboxCaption.textContent = parentPhoto
+                        ? `#${photo.seq}（#${parentPhoto.seq} 局部特寫）　${photo.name}`
+                        : `#${photo.seq}　${photo.name}`;
                 }
                 if (this.lightboxPosition) {
                     this.lightboxPosition.textContent = `${this.lightboxIndex + 1} / ${this.photos.length}`;
@@ -2893,6 +4955,8 @@
             }
 
             handleLightboxPointerDown(e) {
+                if (this.lightboxAnnotationAction) return;
+                if (this.lightboxTool !== 'pan') return;
                 if (e.button !== 0 || this.lightboxZoom <= 1.0) return;
                 this.lightboxIsPanning = true;
                 this.lightboxPanStart = {
@@ -2912,6 +4976,139 @@
             }
 
             handleLightboxPointerMove(e) {
+                if (this.lightboxAnnotationAction) {
+                    const action = this.lightboxAnnotationAction;
+                    if (action.pointerId !== undefined && e.pointerId !== undefined && action.pointerId !== e.pointerId) return;
+
+                    if (action.mode === 'resize-side-crop' || action.mode === 'move-side-crop') {
+                        const photo = this.photos[this.lightboxIndex];
+                        if (!photo || !photo.sideCrop) {
+                            this.lightboxAnnotationAction = null;
+                            return;
+                        }
+                        if (action.mode === 'resize-side-crop') {
+                            const dx = e.clientX - action.startX;
+                            const dy = e.clientY - action.startY;
+                            const projDelta = (dx * 0.96 + dy * 0.28 * Math.min(1.2, Math.max(0.4, action.cropAspect))) / action.approxScale;
+                            let nextRatio = Math.max(action.minWidthRatio, Math.min(action.maxWidthRatio, action.startWidthRatio + projDelta));
+                            if (action.snapFitRatio && Math.abs(nextRatio - action.snapFitRatio) < 0.025) {
+                                nextRatio = action.snapFitRatio;
+                            }
+                            nextRatio = Math.round(nextRatio * 10000) / 10000;
+                            if (Math.abs(nextRatio - photo.sideCrop.widthRatio) >= 0.002) action.moved = true;
+                            photo.sideCrop.widthRatio = nextRatio;
+                            this.syncLightboxAnnotationLayerBounds();
+                        } else if (action.mode === 'move-side-crop') {
+                            if (action.movableSpanPx > 2) {
+                                const dy = e.clientY - action.startY;
+                                let nextOffset = Math.max(0, Math.min(1, action.startOffsetY + (dy / action.movableSpanPx)));
+                                if (nextOffset < 0.035) nextOffset = 0;
+                                else if (Math.abs(nextOffset - 0.5) < 0.035) nextOffset = 0.5;
+                                else if (nextOffset > 0.965) nextOffset = 1;
+                                nextOffset = Math.round(nextOffset * 10000) / 10000;
+                                if (Math.abs(nextOffset - photo.sideCrop.offsetY) >= 0.002) action.moved = true;
+                                photo.sideCrop.offsetY = nextOffset;
+                                this.syncLightboxAnnotationLayerBounds();
+                            }
+                        }
+                        e.preventDefault();
+                        return;
+                    }
+
+                    const { x: normX, y: normY } = this.getAnnotationNormalizedPoint(e.clientX, e.clientY, false);
+
+                    if (action.mode === 'draw-crop' || action.mode === 'move-crop' || action.mode === 'resize-crop') {
+                        const draft = this.lightboxCropDraft;
+                        if (!draft) {
+                            this.lightboxAnnotationAction = null;
+                            return;
+                        }
+                        if (action.mode === 'draw-crop') {
+                            const x1 = Math.max(0, Math.min(1, Math.min(action.startX, normX)));
+                            const y1 = Math.max(0, Math.min(1, Math.min(action.startY, normY)));
+                            const x2 = Math.max(0, Math.min(1, Math.max(action.startX, normX)));
+                            const y2 = Math.max(0, Math.min(1, Math.max(action.startY, normY)));
+                            draft.x = Math.round(x1 * 10000) / 10000;
+                            draft.y = Math.round(y1 * 10000) / 10000;
+                            draft.w = Math.round(Math.max(0.01, x2 - x1) * 10000) / 10000;
+                            draft.h = Math.round(Math.max(0.01, y2 - y1) * 10000) / 10000;
+                            if ((x2 - x1) >= 0.02 && (y2 - y1) >= 0.02) action.moved = true;
+                        } else if (action.mode === 'move-crop') {
+                            const dx = normX - action.startX;
+                            const dy = normY - action.startY;
+                            if (Math.abs(dx) > 0.002 || Math.abs(dy) > 0.002) action.moved = true;
+                            draft.x = Math.round(Math.max(0, Math.min(1 - draft.w, action.origX + dx)) * 10000) / 10000;
+                            draft.y = Math.round(Math.max(0, Math.min(1 - draft.h, action.origY + dy)) * 10000) / 10000;
+                        } else if (action.mode === 'resize-crop') {
+                            const dx = normX - action.startX;
+                            const dy = normY - action.startY;
+                            if (Math.abs(dx) > 0.002 || Math.abs(dy) > 0.002) action.moved = true;
+                            draft.w = Math.round(Math.max(0.02, Math.min(1 - draft.x, action.origW + dx)) * 10000) / 10000;
+                            draft.h = Math.round(Math.max(0.02, Math.min(1 - draft.y, action.origH + dy)) * 10000) / 10000;
+                        }
+                        this.updateCropBoxDom();
+                        e.preventDefault();
+                        return;
+                    }
+
+                    const photo = this.photos[this.lightboxIndex];
+                    const ann = photo?.annotations?.find(item => item.id === action.annId);
+                    if (!ann) {
+                        this.lightboxAnnotationAction = null;
+                        return;
+                    }
+                    if (action.mode === 'draw-rect') {
+                        const x1 = Math.max(0, Math.min(1, Math.min(action.startX, normX)));
+                        const y1 = Math.max(0, Math.min(1, Math.min(action.startY, normY)));
+                        const x2 = Math.max(0, Math.min(1, Math.max(action.startX, normX)));
+                        const y2 = Math.max(0, Math.min(1, Math.max(action.startY, normY)));
+                        ann.x = Math.round(x1 * 10000) / 10000;
+                        ann.y = Math.round(y1 * 10000) / 10000;
+                        ann.w = Math.round(Math.max(0.01, x2 - x1) * 10000) / 10000;
+                        ann.h = Math.round(Math.max(0.01, y2 - y1) * 10000) / 10000;
+                        if ((x2 - x1) > 0.012 || (y2 - y1) > 0.012) action.moved = true;
+                        this.updateAnnotationElementDom(ann);
+                    } else if (action.mode === 'move') {
+                        const dx = normX - action.startX;
+                        const dy = normY - action.startY;
+                        if (Math.abs(dx) > 0.002 || Math.abs(dy) > 0.002) action.moved = true;
+                        if (ann.type === 'rect') {
+                            ann.x = Math.round(Math.max(0, Math.min(1 - ann.w, action.origX + dx)) * 10000) / 10000;
+                            ann.y = Math.round(Math.max(0, Math.min(1 - ann.h, action.origY + dy)) * 10000) / 10000;
+                            if (photo.sideCrop && photo.sideCrop.sourceAnnId === ann.id) {
+                                photo.sideCrop.cropRect = { x: ann.x, y: ann.y, w: ann.w, h: ann.h };
+                                this.syncLightboxAnnotationLayerBounds();
+                            }
+                        } else if (ann.type === 'label') {
+                            ann.x = Math.round(Math.max(0.03, Math.min(0.97, action.origX + dx)) * 10000) / 10000;
+                            ann.y = Math.round(Math.max(0.03, Math.min(0.97, action.origY + dy)) * 10000) / 10000;
+                        }
+                        this.updateAnnotationElementDom(ann);
+                    } else if (action.mode === 'resize-rect') {
+                        const dx = normX - action.startX;
+                        const dy = normY - action.startY;
+                        if (Math.abs(dx) > 0.002 || Math.abs(dy) > 0.002) action.moved = true;
+                        ann.w = Math.round(Math.max(0.02, Math.min(1 - ann.x, action.origW + dx)) * 10000) / 10000;
+                        ann.h = Math.round(Math.max(0.02, Math.min(1 - ann.y, action.origH + dy)) * 10000) / 10000;
+                        if (photo.sideCrop && photo.sideCrop.sourceAnnId === ann.id) {
+                            photo.sideCrop.cropRect = { x: ann.x, y: ann.y, w: ann.w, h: ann.h };
+                            this.syncLightboxAnnotationLayerBounds();
+                        }
+                        this.updateAnnotationElementDom(ann);
+                    } else if (action.mode === 'resize-label') {
+                        const curX = e.clientX - action.centerX;
+                        const curY = e.clientY - action.centerY;
+                        const ratio = ((curX * action.refX) + (curY * action.refY)) / action.refLenSq;
+                        const nextScale = Math.round(Math.max(0.5, Math.min(3.0, action.origScale * ratio)) * 100) / 100;
+                        if (Math.abs(nextScale - (Number(ann.scale) || 1)) >= 0.01) {
+                            action.moved = true;
+                        }
+                        ann.scale = nextScale;
+                        this.updateAnnotationElementDom(ann);
+                    }
+                    e.preventDefault();
+                    return;
+                }
                 if (!this.lightboxIsPanning) return;
                 this.lightboxPanX = e.clientX - this.lightboxPanStart.x;
                 this.lightboxPanY = e.clientY - this.lightboxPanStart.y;
@@ -2926,6 +5123,42 @@
             }
 
             handleLightboxPointerUp(e) {
+                if (this.lightboxAnnotationAction) {
+                    const action = this.lightboxAnnotationAction;
+                    this.lightboxAnnotationAction = null;
+                    if (action.mode === 'resize-side-crop' || action.mode === 'move-side-crop') {
+                        const photo = this.photos[this.lightboxIndex];
+                        if (photo && photo.sideCrop && action.moved) {
+                            this.syncLightboxAnnotationLayerBounds();
+                            this.syncPhotoRotationToCanvas(this.lightboxIndex, photo.rotation);
+                            this.lightboxNeedsRender = true;
+                            this.recordHistory(action.mode === 'resize-side-crop' ? '調整右側並排特寫大小' : '微調右側並排特寫位置');
+                        }
+                        return;
+                    }
+                    if (action.mode === 'draw-crop' || action.mode === 'move-crop' || action.mode === 'resize-crop') {
+                        if (action.mode === 'draw-crop' && (!action.moved || !this.lightboxCropDraft || this.lightboxCropDraft.w < 0.02 || this.lightboxCropDraft.h < 0.02)) {
+                            this.lightboxCropDraft = null;
+                        }
+                        this.renderLightboxAnnotations();
+                        return;
+                    }
+                    const photo = this.photos[this.lightboxIndex];
+                    if (photo && Array.isArray(photo.annotations)) {
+                        if (action.mode === 'draw-rect' && !action.moved) {
+                            photo.annotations = photo.annotations.filter(item => item.id !== action.annId);
+                            this.renderLightboxAnnotations();
+                            return;
+                        }
+                        if (action.moved) {
+                            this.renderLightboxAnnotations();
+                            this.syncPhotoRotationToCanvas(this.lightboxIndex, photo.rotation);
+                            this.lightboxNeedsRender = true;
+                            this.recordHistory(action.mode === 'draw-rect' ? '新增照片標記框' : '調整照片標記');
+                        }
+                    }
+                    return;
+                }
                 if (!this.lightboxIsPanning) return;
                 this.lightboxIsPanning = false;
                 if (this.lightboxViewport) {
@@ -2943,26 +5176,132 @@
 
             rotateLightboxPhoto(deltaDegrees) {
                 if (this.lightboxIndex === null || !this.photos[this.lightboxIndex]) return;
+                this.flushPendingHistory();
                 const photo = this.photos[this.lightboxIndex];
-                photo.rotation = ((photo.rotation || 0) + deltaDegrees) % 360;
-                if (photo.rotation < 0) photo.rotation += 360;
+                const rawDelta = photo.flipH ? -deltaDegrees : deltaDegrees;
+                this.transformPhotoAnnotationsForRotation(photo, deltaDegrees);
+                photo.rotation = (((photo.rotation || 0) + rawDelta) % 360 + 360) % 360;
                 if (this.lightboxImg) {
-                    this.lightboxImg.style.transform = `rotate(${photo.rotation}deg)`;
+                    this.lightboxImg.style.transform = this.getLightboxImgTransform(photo);
                 }
+                this.renderLightboxAnnotations();
                 this.syncPhotoRotationToCanvas(this.lightboxIndex, photo.rotation);
                 this.lightboxHasRotated = true;
+            }
+
+            getCompositeThumbSignature(photo) {
+                if (!photo || !photo.sideCrop) return '';
+                return JSON.stringify({
+                    r: photo.rotation || 0,
+                    f: Boolean(photo.flipH),
+                    e: photo.exifRotation || 0,
+                    sc: photo.sideCrop,
+                    ann: photo.annotations || []
+                });
+            }
+
+            async refreshPhotoCompositeThumbnail(photo) {
+                if (!photo) return;
+                if (!photo.sideCrop) {
+                    if (photo.compositeThumbnailSrc) {
+                        URL.revokeObjectURL(photo.compositeThumbnailSrc);
+                        this.managedUrls.delete(photo.compositeThumbnailSrc);
+                        photo.compositeThumbnailSrc = null;
+                    }
+                    photo._compositeKey = '';
+                    this.applyCompositeThumbToDom(photo);
+                    return;
+                }
+                const key = this.getCompositeThumbSignature(photo);
+                if (photo._compositeKey === key && photo.compositeThumbnailSrc) {
+                    this.applyCompositeThumbToDom(photo);
+                    return;
+                }
+                try {
+                    const canvas = await this.renderCompositeCanvas(photo, 320);
+                    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.8));
+                    if (!blob) return;
+                    if (!this.photos.includes(photo) || !photo.sideCrop || this.getCompositeThumbSignature(photo) !== key) return;
+                    const nextUrl = URL.createObjectURL(blob);
+                    const prevUrl = photo.compositeThumbnailSrc;
+                    photo.compositeThumbnailSrc = nextUrl;
+                    photo._compositeKey = key;
+                    this.managedUrls.add(nextUrl);
+                    this.applyCompositeThumbToDom(photo);
+                    if (prevUrl && prevUrl !== nextUrl) {
+                        URL.revokeObjectURL(prevUrl);
+                        this.managedUrls.delete(prevUrl);
+                    }
+                } catch (_) {}
+            }
+
+            applyCompositeThumbToDom(photo) {
+                if (!photo) return;
+                const idx = this.photos.indexOf(photo);
+                const thumbCard = document.getElementById(`thumb_${photo.uid}`);
+                const layout = this.getPhotoDisplayLayout(photo);
+                if (thumbCard) {
+                    const img = thumbCard.querySelector('.thumbnail-stage img');
+                    if (img) {
+                        if (img.getAttribute('src') !== (layout.src || photo.thumbnailSrc)) {
+                            img.src = layout.src || photo.thumbnailSrc;
+                        }
+                        img.style.cssText = layout.imageStyle;
+                    }
+                }
+                if (idx >= 0 && this.gridTbody && this.gridTbody.children[idx]) {
+                    const rowImg = this.gridTbody.children[idx].querySelector('td:nth-child(2) img');
+                    if (rowImg) {
+                        rowImg.src = layout.isComposite ? layout.src : photo.thumbnailSrc;
+                        rowImg.style.transform = layout.isComposite ? 'none' : `${photo.flipH ? 'scaleX(-1) ' : ''}rotate(${photo.rotation || 0}deg)`;
+                    }
+                }
+                const previewImg = this.previewContainer?.querySelector(`img[data-preview-uid="${photo.uid}"]`);
+                if (previewImg) {
+                    previewImg.src = layout.isComposite ? layout.src : photo.thumbnailSrc;
+                    previewImg.style.transform = layout.isComposite ? 'none' : `${photo.flipH ? 'scaleX(-1) ' : ''}rotate(${photo.rotation || 0}deg)`;
+                }
+            }
+
+            scheduleSideCropPreviewRefresh(photo) {
+                if (!photo) return;
+                if (!photo.sideCrop) {
+                    this.refreshPhotoCompositeThumbnail(photo);
+                    return;
+                }
+                const prevTimer = this.compositeRefreshTimers.get(photo);
+                if (prevTimer) clearTimeout(prevTimer);
+                const timer = setTimeout(() => {
+                    this.compositeRefreshTimers.delete(photo);
+                    this.refreshPhotoCompositeThumbnail(photo);
+                }, 40);
+                this.compositeRefreshTimers.set(photo, timer);
+            }
+
+            syncAllCompositeThumbnails() {
+                this.photos.forEach(p => {
+                    if (p && p.sideCrop) this.refreshPhotoCompositeThumbnail(p);
+                });
             }
 
             syncPhotoRotationToCanvas(index, rotation) {
                 const photo = this.photos[index];
                 if (!photo) return;
-                // 更新主畫布卡片縮圖視覺
+                // 更新主畫布卡片縮圖視覺與標記徽章
                 const thumbCard = document.getElementById(`thumb_${photo.uid}`);
                 if (thumbCard) {
-                    const img = thumbCard.querySelector('.thumbnail-stage img');
+                    const stage = thumbCard.querySelector('.thumbnail-stage');
+                    const img = stage?.querySelector('img');
                     if (img) {
                         const layout = this.getPhotoDisplayLayout(photo);
+                        const nextSrc = layout.src || photo.thumbnailSrc;
+                        if (img.getAttribute('src') !== nextSrc) img.src = nextSrc;
                         img.style.cssText = layout.imageStyle;
+                    }
+                    if (stage) {
+                        stage.querySelectorAll('.thumb-annotation-badge, .thumb-crop-badge, .thumb-sidecrop-badge').forEach(el => el.remove());
+                        const badgeHtml = this.getPhotoAnnotationBadgeHtml(photo);
+                        if (badgeHtml) stage.insertAdjacentHTML('beforeend', badgeHtml);
                     }
                 }
                 // 更新試算表 DataGrid 縮圖
@@ -2970,9 +5309,13 @@
                     const row = this.gridTbody.children[index];
                     const rowImg = row.querySelector('td:nth-child(2) img');
                     if (rowImg) {
-                        rowImg.style.transform = `rotate(${rotation}deg)`;
+                        const isComp = Boolean(photo.sideCrop && photo.compositeThumbnailSrc);
+                        const nextRowSrc = isComp ? photo.compositeThumbnailSrc : photo.thumbnailSrc;
+                        if (rowImg.getAttribute('src') !== nextRowSrc) rowImg.src = nextRowSrc;
+                        rowImg.style.transform = isComp ? 'none' : `${photo.flipH ? 'scaleX(-1) ' : ''}rotate(${rotation}deg)`;
                     }
                 }
+                this.scheduleSideCropPreviewRefresh(photo);
             }
 
             commitLightboxHistoryIfNeeded() {
@@ -2995,17 +5338,95 @@
                 if (id === 'sequenceModal') this.pendingSequenceExport = null;
                 if (id === 'exportAuditModal') this.pendingExportAction = null;
                 if (id === 'imageLightboxModal') {
+                    this.lightboxCropDraft = null;
+                    this.cancelLightboxInteractions();
+                    if (this.isTypingTarget(document.activeElement)) {
+                        document.activeElement.blur();
+                    }
+                    this.flushPendingHistory();
+                    this.restoreEditorFromLightbox();
                     this.commitLightboxHistoryIfNeeded();
+                    this.lightboxBaseCanvasCache = null;
                 }
                 if (typeof PhotoReportModalUi !== 'undefined') {
                     PhotoReportModalUi.closeModal(id);
-                    return;
+                } else {
+                    const el = typeof id === 'string' ? document.getElementById(id) : id;
+                    if (el) el.classList.add('hidden');
                 }
-                const el = typeof id === 'string' ? document.getElementById(id) : id;
-                if (el) el.classList.add('hidden');
+                if (id === 'imageLightboxModal' && this.lightboxNeedsRender) {
+                    this.lightboxNeedsRender = false;
+                    this.render();
+                }
             }
 
-            async processImageToBlob(photoItem, maxDimension = 1600, quality = 0.88) {
+            drawAnnotationsOnCanvas(ctx, canvasWidth, canvasHeight, annotations) {
+                if (!ctx || !Array.isArray(annotations) || !annotations.length) return;
+                const minSide = Math.max(240, Math.min(canvasWidth, canvasHeight));
+                const scale = minSide / 800;
+                const strokeWidth = Math.max(3, Math.round(5 * scale));
+                const haloWidth = strokeWidth + Math.max(2, Math.round(2.5 * scale));
+
+                annotations.forEach(ann => {
+                    if (!ann) return;
+                    const isRed = ann.color === 'red';
+                    const mainColor = isRed ? '#EF4444' : '#FFD23F';
+
+                    if (ann.type === 'rect') {
+                        const rx = Math.round((Number(ann.x) || 0) * canvasWidth);
+                        const ry = Math.round((Number(ann.y) || 0) * canvasHeight);
+                        const rw = Math.max(4, Math.round((Number(ann.w) || 0.1) * canvasWidth));
+                        const rh = Math.max(4, Math.round((Number(ann.h) || 0.1) * canvasHeight));
+                        ctx.save();
+                        ctx.lineJoin = 'round';
+                        ctx.strokeStyle = 'rgba(15, 23, 42, 0.88)';
+                        ctx.lineWidth = haloWidth;
+                        ctx.strokeRect(rx, ry, rw, rh);
+                        ctx.strokeStyle = mainColor;
+                        ctx.lineWidth = strokeWidth;
+                        ctx.strokeRect(rx, ry, rw, rh);
+                        ctx.restore();
+                    } else if (ann.type === 'label' && String(ann.text || '').trim()) {
+                        const text = String(ann.text).trim();
+                        const labelScale = Math.max(0.5, Math.min(3.0, Number(ann.scale) || 1));
+                        const fontSize = Math.max(10, Math.round(minSide * 0.036 * labelScale));
+                        ctx.save();
+                        ctx.font = `900 ${fontSize}px "Microsoft JhengHei", "PingFang TC", "Noto Sans TC", sans-serif`;
+                        const metrics = ctx.measureText(text);
+                        const padX = Math.max(4, Math.round(fontSize * 0.45));
+                        const padY = Math.max(2, Math.round(fontSize * 0.28));
+                        const boxW = Math.ceil(metrics.width) + padX * 2;
+                        const boxH = fontSize + padY * 2;
+                        let cx = (Number(ann.x) || 0.5) * canvasWidth;
+                        let cy = (Number(ann.y) || 0.5) * canvasHeight;
+                        cx = Math.max(boxW / 2 + 4, Math.min(canvasWidth - boxW / 2 - 4, cx));
+                        cy = Math.max(boxH / 2 + 4, Math.min(canvasHeight - boxH / 2 - 4, cy));
+                        const bx = Math.round(cx - boxW / 2);
+                        const by = Math.round(cy - boxH / 2);
+                        const radius = Math.max(3, Math.round(fontSize * 0.25));
+
+                        ctx.beginPath();
+                        if (typeof ctx.roundRect === 'function') {
+                            ctx.roundRect(bx, by, boxW, boxH, radius);
+                        } else {
+                            ctx.rect(bx, by, boxW, boxH);
+                        }
+                        ctx.fillStyle = mainColor;
+                        ctx.fill();
+                        ctx.lineWidth = Math.max(1.5, Math.round(2.5 * scale * labelScale));
+                        ctx.strokeStyle = '#0F172A';
+                        ctx.stroke();
+
+                        ctx.fillStyle = isRed ? '#FFFFFF' : '#0F172A';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText(text, Math.round(cx), Math.round(cy));
+                        ctx.restore();
+                    }
+                });
+            }
+
+            async renderOrientedCanvas(photoItem, maxDimension = 1600, { includeAnnotations = true } = {}) {
                 return new Promise((resolve, reject) => {
                     const img = new Image();
                     img.onload = async () => {
@@ -3016,48 +5437,45 @@
                                 source = await createImageBitmap(photoItem.file, { imageOrientation: 'none' });
                                 exifRotation = photoItem.exifRotation;
                             }
-                        const canvas = document.createElement('canvas');
-                        let w = source.width;
-                        let h = source.height;
-                        const rot = (photoItem.rotation + exifRotation) % 360;
+                            const canvas = document.createElement('canvas');
+                            let w = source.width;
+                            let h = source.height;
+                            const rot = (((photoItem.rotation || 0) + exifRotation) % 360 + 360) % 360;
 
-                        if (w > maxDimension || h > maxDimension) {
-                            if (w > h) {
-                                h = Math.round((h * maxDimension) / w);
-                                w = maxDimension;
-                            } else {
-                                w = Math.round((w * maxDimension) / h);
-                                h = maxDimension;
+                            if (w > maxDimension || h > maxDimension) {
+                                if (w > h) {
+                                    h = Math.round((h * maxDimension) / w);
+                                    w = maxDimension;
+                                } else {
+                                    w = Math.round((w * maxDimension) / h);
+                                    h = maxDimension;
+                                }
                             }
-                        }
 
-                        if (rot === 90 || rot === 270) {
-                            canvas.width = h;
-                            canvas.height = w;
-                        } else {
-                            canvas.width = w;
-                            canvas.height = h;
-                        }
+                            if (rot === 90 || rot === 270) {
+                                canvas.width = h;
+                                canvas.height = w;
+                            } else {
+                                canvas.width = w;
+                                canvas.height = h;
+                            }
 
-                        const ctx = canvas.getContext('2d');
-                        if (!ctx) return reject(new Error('瀏覽器無法建立影像處理畫布。'));
-                        ctx.fillStyle = '#FFFFFF';
-                        ctx.fillRect(0, 0, canvas.width, canvas.height);
+                            const ctx = canvas.getContext('2d');
+                            if (!ctx) return reject(new Error('瀏覽器無法建立影像處理畫布。'));
+                            ctx.fillStyle = '#FFFFFF';
+                            ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-                        ctx.save();
-                        ctx.translate(canvas.width / 2, canvas.height / 2);
-                        ctx.rotate((rot * Math.PI) / 180);
-                        ctx.drawImage(source, -w / 2, -h / 2, w, h);
-                        ctx.restore();
+                            ctx.save();
+                            ctx.translate(canvas.width / 2, canvas.height / 2);
+                            if (photoItem.flipH) ctx.scale(-1, 1);
+                            ctx.rotate((rot * Math.PI) / 180);
+                            ctx.drawImage(source, -w / 2, -h / 2, w, h);
+                            ctx.restore();
 
-                        canvas.toBlob((blob) => {
-                            if (!blob) return reject(new Error(`無法轉換圖片：${photoItem.name}`));
-                            resolve({
-                                blob: blob,
-                                width: canvas.width,
-                                height: canvas.height
-                            });
-                        }, 'image/jpeg', quality);
+                            if (includeAnnotations && Array.isArray(photoItem.annotations) && photoItem.annotations.length > 0) {
+                                this.drawAnnotationsOnCanvas(ctx, canvas.width, canvas.height, photoItem.annotations);
+                            }
+                            resolve(canvas);
                         } catch (error) {
                             reject(new Error(`無法處理圖片：${photoItem.name}（${error.message}）`));
                         } finally {
@@ -3067,6 +5485,300 @@
                     img.onerror = () => reject(new Error(`無法解碼圖片：${photoItem.name}`));
                     img.src = photoItem.src;
                 });
+            }
+
+            async renderCompositeCanvas(photoItem, maxDimension = 1600) {
+                if (!photoItem || !photoItem.sideCrop || !photoItem.sideCrop.cropRect) {
+                    return this.renderOrientedCanvas(photoItem, maxDimension, { includeAnnotations: true });
+                }
+                const srcMax = Math.max(maxDimension, 2400);
+                const baseCanvas = await this.renderOrientedCanvas(photoItem, srcMax, { includeAnnotations: false });
+                const hiW = baseCanvas.width;
+                const hiH = baseCanvas.height;
+                const geo = this.computeSideCropGeometry(hiW, hiH, photoItem.sideCrop);
+                if (!geo) return baseCanvas;
+
+                const minTargetScale = Math.max(hiW, hiH) < 360 ? (360 / Math.max(hiW, hiH)) : 1;
+                const outScale = Math.min(minTargetScale, maxDimension / Math.max(geo.totalW, geo.totalH));
+                const outTotalW = Math.max(8, Math.round(geo.totalW * outScale));
+                const outTotalH = Math.max(8, Math.round(geo.totalH * outScale));
+                const outOrigW = Math.max(4, Math.round(geo.origW * outScale));
+                const outOrigH = outTotalH;
+                const outGap = Math.max(2, Math.round(geo.gap * outScale));
+                const outPanelW = Math.max(4, outTotalW - outOrigW - outGap);
+                const outPanelH = Math.max(4, Math.min(outTotalH, Math.round(geo.panelH * outScale)));
+                const outPanelTop = Math.round(geo.offsetY * Math.max(0, outTotalH - outPanelH));
+
+                const outCanvas = document.createElement('canvas');
+                outCanvas.width = outTotalW;
+                outCanvas.height = outTotalH;
+                const outCtx = outCanvas.getContext('2d');
+                if (!outCtx) throw new Error('瀏覽器無法建立並排合成畫布。');
+
+                outCtx.fillStyle = '#FFFFFF';
+                outCtx.fillRect(0, 0, outTotalW, outTotalH);
+
+                // 左側：原始方向照片＋標記框與姓名標籤
+                outCtx.drawImage(baseCanvas, 0, 0, hiW, hiH, 0, 0, outOrigW, outOrigH);
+                if (Array.isArray(photoItem.annotations) && photoItem.annotations.length > 0) {
+                    outCtx.save();
+                    outCtx.beginPath();
+                    outCtx.rect(0, 0, outOrigW, outOrigH);
+                    outCtx.clip();
+                    this.drawAnnotationsOnCanvas(outCtx, outOrigW, outOrigH, photoItem.annotations);
+                    outCtx.restore();
+                }
+
+                // 右側：框選局部高解析特寫＋範圍內標籤＋外框
+                const cr = photoItem.sideCrop.cropRect;
+                const sx = Math.max(0, Math.min(hiW - 2, Math.round((Number(cr.x) || 0) * hiW)));
+                const sy = Math.max(0, Math.min(hiH - 2, Math.round((Number(cr.y) || 0) * hiH)));
+                const sw = Math.max(2, Math.min(hiW - sx, Math.round((Number(cr.w) || 0.2) * hiW)));
+                const sh = Math.max(2, Math.min(hiH - sy, Math.round((Number(cr.h) || 0.2) * hiH)));
+                const dx = outOrigW + outGap;
+                const dy = outPanelTop;
+                outCtx.drawImage(baseCanvas, sx, sy, sw, sh, dx, dy, outPanelW, outPanelH);
+
+                const cw = Math.max(0.02, Math.min(1, Number(cr.w) || 0.2));
+                const ch = Math.max(0.02, Math.min(1, Number(cr.h) || 0.2));
+                const nonSourceAnns = (photoItem.annotations || []).filter(a => a.id !== photoItem.sideCrop?.sourceAnnId);
+                if (nonSourceAnns.length > 0) {
+                    outCtx.save();
+                    outCtx.beginPath();
+                    outCtx.rect(dx, dy, outPanelW, outPanelH);
+                    outCtx.clip();
+                    const virtW = outPanelW / cw;
+                    const virtH = outPanelH / ch;
+                    outCtx.translate(dx - (Number(cr.x) || 0) * virtW, dy - (Number(cr.y) || 0) * virtH);
+                    this.drawAnnotationsOnCanvas(outCtx, virtW, virtH, nonSourceAnns);
+                    outCtx.restore();
+                }
+
+                if (geo.borderColor !== 'none') {
+                    const minSideOut = Math.max(120, Math.min(outTotalW, outTotalH));
+                    const frameW = Math.max(2, Math.round(4.5 * (minSideOut / 800)));
+                    const haloW = frameW + Math.max(1.5, Math.round(2 * (minSideOut / 800)));
+                    const bColor = geo.borderColor === 'red' ? '#EF4444' : '#FFD23F';
+                    outCtx.save();
+                    outCtx.strokeStyle = 'rgba(15, 23, 42, 0.85)';
+                    outCtx.lineWidth = haloW;
+                    outCtx.strokeRect(dx + haloW / 2, dy + haloW / 2, Math.max(2, outPanelW - haloW), Math.max(2, outPanelH - haloW));
+                    outCtx.strokeStyle = bColor;
+                    outCtx.lineWidth = frameW;
+                    outCtx.strokeRect(dx + haloW / 2, dy + haloW / 2, Math.max(2, outPanelW - haloW), Math.max(2, outPanelH - haloW));
+                    outCtx.restore();
+                }
+
+                return outCanvas;
+            }
+
+            async renderSideCropStandaloneCanvas(photoItem, maxDimension = 1600) {
+                const srcMax = Math.max(maxDimension, 2400);
+                const baseCanvas = await this.renderOrientedCanvas(photoItem, srcMax, { includeAnnotations: false });
+                const hiW = baseCanvas.width;
+                const hiH = baseCanvas.height;
+                const geo = this.computeSideCropGeometry(hiW, hiH, photoItem.sideCrop);
+                if (!geo) return baseCanvas;
+
+                const cr = photoItem.sideCrop.cropRect;
+                const sx = Math.max(0, Math.min(hiW - 2, Math.round((Number(cr.x) || 0) * hiW)));
+                const sy = Math.max(0, Math.min(hiH - 2, Math.round((Number(cr.y) || 0) * hiH)));
+                const sw = Math.max(2, Math.min(hiW - sx, Math.round((Number(cr.w) || 0.2) * hiW)));
+                const sh = Math.max(2, Math.min(hiH - sy, Math.round((Number(cr.h) || 0.2) * hiH)));
+
+                const rawMax = Math.max(sw, sh);
+                const scale = rawMax < 480 ? (480 / rawMax) : Math.min(1, maxDimension / rawMax);
+                const outW = Math.max(8, Math.round(sw * scale));
+                const outH = Math.max(8, Math.round(sh * scale));
+
+                const cropCanvas = document.createElement('canvas');
+                cropCanvas.width = outW;
+                cropCanvas.height = outH;
+                const ctx = cropCanvas.getContext('2d');
+                if (!ctx) throw new Error('瀏覽器無法建立局部特寫畫布。');
+
+                ctx.fillStyle = '#FFFFFF';
+                ctx.fillRect(0, 0, outW, outH);
+                ctx.drawImage(baseCanvas, sx, sy, sw, sh, 0, 0, outW, outH);
+
+                const cw = Math.max(0.02, Math.min(1, Number(cr.w) || 0.2));
+                const ch = Math.max(0.02, Math.min(1, Number(cr.h) || 0.2));
+                const nonSourceAnns = (photoItem.annotations || []).filter(a => a.id !== photoItem.sideCrop?.sourceAnnId);
+                if (nonSourceAnns.length > 0) {
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.rect(0, 0, outW, outH);
+                    ctx.clip();
+                    const virtW = outW / cw;
+                    const virtH = outH / ch;
+                    ctx.translate(-(Number(cr.x) || 0) * virtW, -(Number(cr.y) || 0) * virtH);
+                    this.drawAnnotationsOnCanvas(ctx, virtW, virtH, nonSourceAnns);
+                    ctx.restore();
+                }
+
+                if (geo.borderColor !== 'none') {
+                    const minSideOut = Math.max(160, Math.min(outW, outH));
+                    const frameW = Math.max(2.5, Math.round(5 * (minSideOut / 520)));
+                    const haloW = frameW + Math.max(1.5, Math.round(2 * (minSideOut / 520)));
+                    const bColor = geo.borderColor === 'red' ? '#EF4444' : '#FFD23F';
+                    ctx.save();
+                    ctx.strokeStyle = 'rgba(15, 23, 42, 0.85)';
+                    ctx.lineWidth = haloW;
+                    ctx.strokeRect(haloW / 2, haloW / 2, Math.max(2, outW - haloW), Math.max(2, outH - haloW));
+                    ctx.strokeStyle = bColor;
+                    ctx.lineWidth = frameW;
+                    ctx.strokeRect(haloW / 2, haloW / 2, Math.max(2, outW - haloW), Math.max(2, outH - haloW));
+                    ctx.restore();
+                }
+
+                return {
+                    canvas: cropCanvas,
+                    widthRatio: geo.widthRatio,
+                    offsetY: geo.offsetY
+                };
+            }
+
+            canvasToJpegBlob(canvas, photoName, quality = 0.88) {
+                return new Promise((resolve, reject) => {
+                    canvas.toBlob((blob) => {
+                        if (!blob) return reject(new Error(`無法轉換圖片：${photoName}`));
+                        resolve({
+                            blob,
+                            width: canvas.width,
+                            height: canvas.height
+                        });
+                    }, 'image/jpeg', quality);
+                });
+            }
+
+            async processImageToBlob(photoItem, maxDimension = 1600, quality = 0.88) {
+                if (photoItem && photoItem.sideCrop && photoItem.sideCrop.cropRect) {
+                    const [compCanvas, mainCanvas, sideResult] = await Promise.all([
+                        this.renderCompositeCanvas(photoItem, maxDimension),
+                        this.renderOrientedCanvas(photoItem, maxDimension, { includeAnnotations: true }),
+                        this.renderSideCropStandaloneCanvas(photoItem, maxDimension)
+                    ]);
+                    const [compOut, mainOut, sideOut] = await Promise.all([
+                        this.canvasToJpegBlob(compCanvas, photoItem.name, quality),
+                        this.canvasToJpegBlob(mainCanvas, photoItem.name, quality),
+                        this.canvasToJpegBlob(sideResult.canvas, photoItem.name, Math.min(0.92, quality + 0.02))
+                    ]);
+                    return {
+                        blob: compOut.blob,
+                        width: compOut.width,
+                        height: compOut.height,
+                        mainImage: mainOut,
+                        sideImage: {
+                            ...sideOut,
+                            widthRatio: sideResult.widthRatio,
+                            offsetY: sideResult.offsetY
+                        }
+                    };
+                }
+                const canvas = await this.renderOrientedCanvas(photoItem, maxDimension, { includeAnnotations: true });
+                return this.canvasToJpegBlob(canvas, photoItem.name, quality);
+            }
+
+            async createDetailCropPhoto(parentIndex, cropRect) {
+                const parentPhoto = this.photos[parentIndex];
+                if (!parentPhoto || !cropRect || this.isCreatingCropDetail) return null;
+                const x = Math.max(0, Math.min(0.98, Number(cropRect.x) || 0));
+                const y = Math.max(0, Math.min(0.98, Number(cropRect.y) || 0));
+                const w = Math.max(0.02, Math.min(1 - x, Number(cropRect.w) || 0.2));
+                const h = Math.max(0.02, Math.min(1 - y, Number(cropRect.h) || 0.2));
+
+                this.flushPendingHistory();
+                this.commitLightboxHistoryIfNeeded();
+                this.isCreatingCropDetail = true;
+                try {
+                    const orientedCanvas = await this.renderOrientedCanvas(parentPhoto, 3200, { includeAnnotations: false });
+                    const sx = Math.max(0, Math.min(orientedCanvas.width - 2, Math.round(x * orientedCanvas.width)));
+                    const sy = Math.max(0, Math.min(orientedCanvas.height - 2, Math.round(y * orientedCanvas.height)));
+                    const sw = Math.max(2, Math.min(orientedCanvas.width - sx, Math.round(w * orientedCanvas.width)));
+                    const sh = Math.max(2, Math.min(orientedCanvas.height - sy, Math.round(h * orientedCanvas.height)));
+
+                    const maxOut = 1600;
+                    const outScale = Math.min(1, maxOut / Math.max(sw, sh));
+                    const outW = Math.max(2, Math.round(sw * outScale));
+                    const outH = Math.max(2, Math.round(sh * outScale));
+
+                    const cropCanvas = document.createElement('canvas');
+                    cropCanvas.width = outW;
+                    cropCanvas.height = outH;
+                    const cropCtx = cropCanvas.getContext('2d');
+                    if (!cropCtx) throw new Error('瀏覽器無法建立局部裁切畫布。');
+                    cropCtx.fillStyle = '#FFFFFF';
+                    cropCtx.fillRect(0, 0, outW, outH);
+                    cropCtx.drawImage(orientedCanvas, sx, sy, sw, sh, 0, 0, outW, outH);
+
+                    const blob = await new Promise((resolve, reject) => cropCanvas.toBlob(
+                        result => result ? resolve(result) : reject(new Error('無法產生局部裁切圖片。')),
+                        'image/jpeg',
+                        0.92
+                    ));
+                    const detailName = this.makeUniqueDetailFilename(parentPhoto);
+                    const file = new File([blob], detailName, { type: 'image/jpeg' });
+                    const sourceUrl = URL.createObjectURL(file);
+                    let thumbnail;
+                    try {
+                        thumbnail = await this.createThumbnailUrl(file, sourceUrl);
+                    } catch (thumbErr) {
+                        URL.revokeObjectURL(sourceUrl);
+                        throw thumbErr;
+                    }
+
+                    const detailPhoto = {
+                        uid: 'uid_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9),
+                        file,
+                        name: detailName,
+                        src: sourceUrl,
+                        thumbnailSrc: thumbnail.src,
+                        thumbnailAspect: thumbnail.aspect,
+                        rotation: 0,
+                        flipH: false,
+                        parentUid: parentPhoto.uid,
+                        cropRect: {
+                            x: Math.round(x * 10000) / 10000,
+                            y: Math.round(y * 10000) / 10000,
+                            w: Math.round(w * 10000) / 10000,
+                            h: Math.round(h * 10000) / 10000
+                        },
+                        sideCrop: null,
+                        compositeThumbnailSrc: null,
+                        _compositeKey: '',
+                        annotations: [],
+                        exifRotation: 0,
+                        seq: `${parentPhoto.seq}-1`,
+                        date: parentPhoto.date || '',
+                        time: parentPhoto.time || '',
+                        location: parentPhoto.location || '',
+                        desc: parentPhoto.desc ? `${parentPhoto.desc}（局部特寫）` : '',
+                        selected: false,
+                        stageX: null,
+                        stageY: null
+                    };
+
+                    let insertAt = parentIndex + 1;
+                    while (insertAt < this.photos.length && this.isDescendantOf(this.photos[insertAt], parentPhoto.uid)) {
+                        insertAt++;
+                    }
+                    this.photos.splice(insertAt, 0, detailPhoto);
+                    this.managedUrls.add(sourceUrl);
+                    this.managedUrls.add(detailPhoto.thumbnailSrc);
+                    this.normalizeLinkedChildrenOrder();
+
+                    const finalIndex = this.photos.indexOf(detailPhoto);
+                    this.photos.forEach((p, idx) => { p.selected = idx === finalIndex; });
+                    this.currentIndex = finalIndex;
+                    this.lastSelectedIndex = finalIndex;
+                    this.lightboxCropDraft = null;
+                    this.setLightboxTool('pan');
+                    this.render();
+                    this.recordHistory('建立局部裁切特寫');
+                    return detailPhoto;
+                } finally {
+                    this.isCreatingCropDetail = false;
+                }
             }
 
             // ============================================================
