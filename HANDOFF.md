@@ -3,17 +3,95 @@
 ## 核心元資料 (Metadata)
 - **Repository**：lianghao02/Photo-Report-Generator
 - **Branch**：main
-- **Commit SHA**：承接基準 `275211027f7c4b07ad95e0e710063f83f5434d95`（本輪提交前撰寫，確切最新 SHA 見 `git log -1`）
+- **Commit SHA**：隨本輪一併提交推送（承接基準 `c02ad13c20ab8232c798dee26f2f3434cdc6c2fe`，實際 SHA 見 `git log -1`）
 - **Skill Version**：v1.0.0
-- **Task Type**：IMPROVE
+- **Task Type**：FIX
 - **Local Path Hint**：04_Photo-Report-Generator
 
 ---
 
 ## 目前狀態
-可交付（已完成第一階段「工作進度儲存／開啟全方位強化（預設 220 ppi 等級最佳化壓縮）＋ 新增依採證時間排序 ＋ 精簡移除分頁預覽、Excel 與下載 ZIP」，以及第二階段「多 `.photo-report` 工作進度檔智慧彙整合併」全數功能實作，並通過 QA、單元測試 4/4、Golden Baseline 與 Playwright E2E 完整實測，待使用者實測或指示後提交）。
+可發布（已完成 Word 案由／日期／時間置中對齊修正、地點 17 全形／說明 68 全形與 2 行防呆控制，以及縮圖「並排／特寫／翻轉／標記」整併為右下角單一膠囊並通過全套自動化測試與實機截圖驗證，準備執行本輪 Commit 與 Push 更新線上版）。
 
 ## 本輪目標
+1. 修正 Word 匯出之「案由、日期、時間」欄位對齊方式為 **水平置中對齊**（`AlignmentType.CENTER`），取代原本受 `JUSTIFIED` 影響造成單行靠左顯示的問題。
+2. 解決 A4 直式上下兩張（`up_down_2`）中「說明」欄位超過 2 行變成 3 行時將同頁第二張說明推至下一頁的跑版問題：
+   - 說明欄位限制最多 **68 個全形佔位**（136 半形單位）且最多 **2 視覺行**（單行 34 全形），防止超出兩行。
+   - 地點欄位（案件預設「採證地點」與單張「地點」）限制最多 **17 個全形佔位**（34 半形單位），單行不可換行。
+   - 落實 **兩個半形字元（例如 `()`、ASCII 英數／空白／半形標點）計為 1 個全形佔位**，並妥善處理 Unicode Surrogate Pair 與 Windows 注音輸入法（IME）組字過程。
+   - 保留已開啟之舊 `.photo-report` 專案檔既有超標文字不被靜默截斷，改以警示、逐步刪減、縮圖／試算表紅框、完整性篩選（「字數過長」）與匯出前提醒處理。
+3. 消除小縮圖下左側 `.thumb-sidecrop-badge` 與右側 `.thumb-annotation-badge` 互疊遮擋照片底部的問題：依使用者選定之方案 **A2（合併成單一右下角膠囊）** 整合特寫／並排／翻轉／標記數，並依縮圖寬度自動切換清楚與精簡標記。
+
+## 基準與已確認事實 (Baseline & Confirmed Facts)
+- 前一輪 Commit `c02ad13c20ab8232c798dee26f2f3434cdc6c2fe` 已同步至 `origin/main`（GitHub Pages 線上版承接該次提交）。
+- 實測 `vendor/docx.umd.js`（`docx@8.5.0`）：`AlignmentType.CENTER` 輸出 `<w:jc w:val="center"/>`；含 `\n` 的 `TextRun` 輸出 `<w:t xml:space="preserve">...</w:t>`，截圖之所以出現 3 行是因為含半形字元合計逾 68 全形（單行 34 全形，雙行合計 68 全形）折行超過表格餘裕高度（~130 dxa）。
+- 所有新增 HTML 類別經確認皆已存在於 `vendor/tailwind.css`（無須異動 `vendor/`）。
+- 縮圖於 `90px～110px` 緊湊模式下內部舞台寬度僅約 `74～94px`，既有左右兩個絕對定位膠囊（合計逾 `82px`）必然碰撞並遮蓋照片底緣；統一整合至右下單一膠囊並保留完整滑鼠懸停 `title` 可完全避免重疊。
+
+## 已完成 (Completed)
+- **Word 匯出對齊修正（`js/exporters/docx-exporter.js`）**：
+  - `up_down_2` 第 1 列：`案由`、`日期`、`時間` 之數值儲存格由 `AlignmentType.JUSTIFIED` 改為 `AlignmentType.CENTER`（與標籤、編號、地點、製作人一致）。
+  - `landscape_3` 第 1 列與第 2 列：`蒐證時間`、時間值、`蒐證地點`、地點值、`製作人`、製作人值與 `照片編號` 統一為 `AlignmentType.CENTER` ＋ `VerticalAlign.CENTER`。
+- **全形／半形寬度計算與截斷核心（`js/validation.js`）**：
+  - 匯出 `MAX_LOCATION_FULLWIDTH = 17`、`MAX_DESC_FULLWIDTH = 68`、`DESC_LINE_FULLWIDTH = 34`、`MAX_DESC_LINES = 2`，以及 `isHalfWidthChar`、`getTextHalfWidthUnits`、`getTextFullWidthLength`、`formatFullWidthCount`、`estimateDescVisualLines`、`truncateToFullWidth`、`inspectTextLimits`。
+  - 支援 UTF-16 Surrogate Pair 安全切字，並於多餘換行超出 `maxLines` 時僅略過多餘換行符號而不刪除後方文字。
+- **即時介面提示、IME 組字與舊檔相容保護（`index.html`、`css/app.css`、`js/app.js`）**：
+  - `#defaultLocation`、`#editLocation`、`#editDesc` 加入即時全形計數器（`X / 17 全形`、`X / 68 全形`）與剩餘／超限警示提示（接近上限轉琥珀色，超限或觸及截斷轉紅色閃爍 2.6 秒提醒）。
+  - 實作 `bindLimitedTextControl` 與 `bindGridTextLimitEvents`，於 `compositionstart`／`compositionend` 保護注音等 IME 組字不被提早截斷，且工作台右側欄與試算表視圖（DataGrid）雙向即時同步。
+  - 若載入含超標文字的舊 `.photo-report` 專案檔，保留原文字不被破壞，顯示紅框警示，編輯時允許逐步刪減至上限內但不允許繼續增字；變更案件預設採證地點時同步重刷各縮圖狀態燈與稽核列。
+- **縮圖單一合併膠囊（A2，防小圖重疊，改動 `css/app.css`、`js/app.js`）**：
+  - 移除左下各自定位的 `.thumb-sidecrop-badge` 與 `.thumb-crop-badge`，於 `getPhotoAnnotationBadgeHtml()` 將「特寫／◫並排／⇄翻轉／標記N」整合進右下角單一 `.thumb-annotation-badge`（加掛 `data-badges` 與完整 `title`）。
+  - 單一並排／單一特寫分別維持墨綠（`--sidecrop`）與天藍（`--crop`）視覺色系；一般寬度（`> 125px`）且僅 1～2 項時顯示清楚全名（如 `◫並排・標記2`），於小縮圖（`<= 125px`）或 3 項以上並存時自動切換緊湊符號（如 `◫・標2`、`◫・⇄・標1`、`特・◫・標1`），搭配 `max-width: calc(100% - 8px)` 與 `text-overflow: ellipsis` 防溢位。
+- **完整度稽核、篩選與匯出前提醒（`js/audit.js`、`js/selection.js`、`js/ui/audit-ui.js`、`js/ui/modal-ui.js`、`js/app.js`）**：
+  - 新增 `overTextLimit` 稽核統計（同時檢查單張地點、繼承案件地點與說明）、篩選按鈕 `#filterBtn_overTextLimit`（`字數過長`），以及匯出確認對話框項目 `地點或說明過長（恐影響排版）：X 張`。
+- **自動化測試與實機視覺驗證（`tests/`）**：
+  - `tests/unit/app-bridge.js` 修正擷取方法邊界以正確支援預設物件參數簽名，並新增全形計算與超標稽核測試（`validation.test.js`、`audit.test.js`、`selection.test.js`）。
+  - `tests/e2e/photo-report.spec.js` 更新第 `2E` 節驗證單一合併膠囊於 150px／95px 縮圖之顯示與幾何邊界防溢位，並新增第 `[8/5]` 節實際解壓 `.docx` `word/document.xml` 驗證 `<w:jc w:val="center"/>`、半形 `()`＝1 全形、使用者 3 行範例截斷、多行防呆、注音 IME 模擬、DataGrid 雙向同步及舊超標專案檔保留／逐步刪減／篩選／匯出提醒。
+
+## 異動檔案 (Changed Files)
+css/app.css、index.html、js/app.js、js/audit.js、js/exporters/docx-exporter.js、js/selection.js、js/ui/audit-ui.js、js/ui/modal-ui.js、js/validation.js、tests/e2e/photo-report.spec.js、tests/unit/app-bridge.js、tests/unit/audit.test.js、tests/unit/selection.test.js、tests/unit/validation.test.js、HANDOFF.md。
+
+## 刻意未修改 (Do Not Do / Deliberately Omitted)
+`up_down_2`、`left_right_2`、`landscape_3` 之表格欄寬（DXA）、邊距與中繼 5 點行高結構；版本號與 Tauri 桌面版安裝檔打包（待功能定版後視需求進行）。
+
+## 尚未完成 (Remaining Work)
+- **P1 (阻斷/必須)**：無。
+- **P2 (重要/當次)**：無。
+- **P3 (改善建議/暫緩)**：日後發布新版桌面安裝檔時可一併升版與打包 Tauri MSI／NSIS。
+
+## 驗證結果 (Validation)
+### 已執行測試與結果
+- `node --check`（全部修改與測試 `.js` 檔）：通過。
+- `git diff --check` 與敏感資料掃描、`powershell -ExecutionPolicy Bypass -File scripts\qa.ps1`：通過。
+- `npm test`（`node tests/run-all-unit.js`）：4/4 全部通過（涵蓋模組與 `MockApp` 宿主委派）。
+- `npm run test:baseline`（`node tests/run-baseline-test.js`）：Word／Excel／PDF Golden Baseline 與三種版型匯出全數通過。
+- `npm run test:e2e`（`node tests/e2e/photo-report.spec.js`）：全部通過（含單一合併膠囊雙尺寸實測與第 `[8/5]` 節 DOCX XML 置中／字數限制全套驗證）。
+- Playwright 實機視覺截圖檢視（1366×768 表單上限／閃爍提示、100px 與 150px 縮圖合併膠囊）：無水平溢位、無徽章重疊、主控台零錯誤。
+### 尚未驗證項目
+未重新升版或打包 Tauri 桌面版安裝檔。
+### 已知風險 (Known Risks)
+無本輪已知阻斷性問題。
+
+## Git 狀態
+- Commit：隨本輪提交至 `main`（實際最新 SHA 請見 `git log -1`，承接基準 `c02ad13`）
+- Push：將隨本輪驗證通過後推送至 `origin/main`
+- Working Tree：Clean（提交後）
+- Branch：main
+
+## 下一步建議動作 (Next Recommended Action)
+線上版使用者可於 GitHub Pages 部署完成後實地匯出一份 `up_down_2` 清冊確認置中對齊、68／17 全形限制與小縮圖單一合併膠囊手感。
+
+## 發布狀態 (Release Status)
+可發布（全套單元測試、Golden Baseline、Playwright E2E、QA 檢核與實機截圖皆已通過）。
+
+---
+
+以下為先前交接紀錄，現況以本輪狀態與 Git 為準。
+
+## 2026-11-10 v2.4.1 工作進度儲存強化、依採證時間排序與多檔智慧彙整（已提交 c02ad13）
+- **核心元資料**：`lianghao02/Photo-Report-Generator`、`main`、承接 `27521102`、`IMPROVE`。
+- **目前狀態**：已完成並推送至 `origin/main`（Commit `c02ad13`）。
+- **本輪目標**：
 1. 全面改善「儲存／開啟工作進度（`.photo-report`）」之日常操作體驗與底層穩定性：
    - 採用方案 A：一般「儲存工作進度（`Ctrl+S`）」與「另存新進度檔…（`Ctrl+Shift+S`）」預設自動執行 220 ppi 等級（長邊 `<= 2000px`）圖片最佳化壓縮並以 `STORE` 快速封裝，不另立重複的「儲存輕量進度檔」按鈕，同時 100% 保留黃框、姓名標籤、旋轉翻轉與裁切並排之非破壞性可編輯狀態。
    - 存檔／開檔／草稿恢復／彙整合併支援進度條「取消」按鈕；修正錯誤提示、補齊 `finally { this.clearProgress(); }`、防止中途失敗之 Object URL 記憶體洩漏，並於開檔與彙整時自動關閉燈箱與重置篩選器為 `all`。

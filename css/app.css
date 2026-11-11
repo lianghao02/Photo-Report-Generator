@@ -1127,9 +1127,13 @@ body {
     right: 4px;
     bottom: 4px;
     z-index: 5;
+    max-width: calc(100% - 8px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     padding: 1px 5px;
     border-radius: 5px;
-    background: rgba(15, 23, 42, 0.85);
+    background: rgba(15, 23, 42, 0.88);
     color: #FFD23F;
     border: 1px solid #FFD23F;
     font-size: 10px;
@@ -1137,35 +1141,15 @@ body {
     line-height: 1.2;
     pointer-events: none;
 }
-.thumb-sidecrop-badge {
-    position: absolute;
-    left: 4px;
-    bottom: 4px;
-    z-index: 5;
-    padding: 1px 5px;
-    border-radius: 5px;
+.thumb-annotation-badge--sidecrop {
     background: rgba(15, 118, 110, 0.92);
     color: #FFFFFF;
-    border: 1px solid #0F172A;
-    font-size: 10px;
-    font-weight: 800;
-    line-height: 1.2;
-    pointer-events: none;
+    border-color: #0F172A;
 }
-.thumb-crop-badge {
-    position: absolute;
-    left: 4px;
-    bottom: 4px;
-    z-index: 5;
-    padding: 1px 5px;
-    border-radius: 5px;
+.thumb-annotation-badge--crop {
     background: rgba(2, 132, 199, 0.92);
     color: #FFFFFF;
-    border: 1px solid #0F172A;
-    font-size: 10px;
-    font-weight: 800;
-    line-height: 1.2;
-    pointer-events: none;
+    border-color: #0F172A;
 }
 .photo-thumb-card--crop-child {
     border-left: 4px solid #0284C7 !important;
@@ -1313,4 +1297,37 @@ input[readonly].seq-locked {
     justify-content: center;
     font-size: 14px;
     flex-shrink: 0;
+}
+
+/* 地點與說明全形字數計算與排版上限警示 */
+.text-limit-counter {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 11px;
+    font-weight: 800;
+    color: #475569;
+    white-space: nowrap;
+}
+.text-limit-counter.is-near-limit {
+    color: #B45309;
+}
+.text-limit-counter.is-over-limit {
+    color: #B91C1C;
+}
+.text-limit-hint {
+    font-size: 11px;
+    line-height: 1.35;
+    color: #475569;
+    margin-top: 2px;
+}
+.text-limit-hint.is-near-limit {
+    color: #B45309;
+    font-weight: 700;
+}
+.text-limit-hint.is-over-limit {
+    color: #B91C1C;
+    font-weight: 800;
+}
+.input-field.input-over-limit {
+    border-color: #DC2626 !important;
+    background: #FEF2F2 !important;
 }

@@ -120,8 +120,12 @@
                     </div>
                 </div>
                 <div>
-                    <label for="defaultLocation" class="block text-[11px] font-bold text-[#6B7280] mb-0.5">採證地點</label>
+                    <div class="flex items-center justify-between gap-1.5 mb-0.5">
+                        <label for="defaultLocation" class="block text-[11px] font-bold text-[#6B7280]">採證地點</label>
+                        <span id="defaultLocationCounter" class="text-limit-counter">0 / 17 全形</span>
+                    </div>
                     <input type="text" id="defaultLocation" class="input-field w-full text-xs py-1 px-2" placeholder="例：現場" value="現場">
+                    <p id="defaultLocationLimitHint" class="text-limit-hint">最多 17 個全形（2 半形＝1 全形）</p>
                 </div>
                 <div>
                     <label for="deptName" class="block text-[11px] font-bold text-[#6B7280] mb-0.5">製作單位（印在頁首）</label>
@@ -259,6 +263,9 @@
                     <button type="button" id="filterBtn_duplicatePhotos" class="audit-filter-btn">
                         <span>檔名重複</span> <span id="auditBadge_duplicatePhotos" class="audit-filter-badge">0</span>
                     </button>
+                    <button type="button" id="filterBtn_overTextLimit" class="audit-filter-btn">
+                        <span>字數過長</span> <span id="auditBadge_overTextLimit" class="audit-filter-badge">0</span>
+                    </button>
                 </div>
                 <div id="filterNoticeText" class="text-[11px] text-[#6B7280] hidden sm:flex items-center gap-1">
                     <span>顯示全部照片</span>
@@ -384,24 +391,32 @@
                             </div>
 
                             <div>
-                                <div class="flex items-center justify-between mb-0.5">
-                                    <label for="editLocation" class="font-bold text-[#6B7280]">地點</label>
-                                    <button type="button" id="btnFillDownLocation" title="把這個地點填到後面的照片" class="text-[10px] text-[#5B5CE2] hover:underline flex items-center gap-0.5">
+                                <div class="flex items-center justify-between gap-2 mb-0.5">
+                                    <div class="flex items-center gap-1.5 min-w-0">
+                                        <label for="editLocation" class="font-bold text-[#6B7280]">地點</label>
+                                        <span id="editLocationCounter" class="text-limit-counter">0 / 17 全形</span>
+                                    </div>
+                                    <button type="button" id="btnFillDownLocation" title="把這個地點填到後面的照片" class="text-[10px] text-[#5B5CE2] hover:underline flex items-center gap-0.5 whitespace-nowrap">
                                         <i class="fa-solid fa-arrow-down"></i> 向下填滿
                                     </button>
                                 </div>
                                 <input type="text" id="editLocation" class="input-field w-full text-xs" placeholder="例：客廳">
                                 <p id="editLocationInheritedHint" class="text-[10px] text-[#9CA3AF] mt-0.5">空白時使用案件地點。</p>
+                                <p id="editLocationLimitHint" class="text-limit-hint">最多 17 個全形（2 半形＝1 全形）</p>
                             </div>
 
                             <div>
-                                <div class="flex items-center justify-between mb-0.5">
-                                    <label for="editDesc" class="font-bold text-[#6B7280]">說明</label>
-                                    <button type="button" id="btnFillDownDescAll" title="把這段說明填到後面還沒寫說明的照片" class="text-[10px] text-[#5B5CE2] font-semibold hover:underline flex items-center gap-0.5">
+                                <div class="flex items-center justify-between gap-2 mb-0.5">
+                                    <div class="flex items-center gap-1.5 min-w-0">
+                                        <label for="editDesc" class="font-bold text-[#6B7280]">說明</label>
+                                        <span id="editDescCounter" class="text-limit-counter">0 / 68 全形</span>
+                                    </div>
+                                    <button type="button" id="btnFillDownDescAll" title="把這段說明填到後面還沒寫說明的照片" class="text-[10px] text-[#5B5CE2] font-semibold hover:underline flex items-center gap-0.5 whitespace-nowrap">
                                         <i class="fa-solid fa-arrows-down-to-line"></i> 向下填滿
                                     </button>
                                 </div>
                                 <textarea id="editDesc" rows="3" class="input-field w-full text-xs leading-relaxed" placeholder="例：客廳桌上查扣手機一支"></textarea>
+                                <p id="editDescLimitHint" class="text-limit-hint">最多 68 個全形・最多 2 行（2 半形＝1 全形）</p>
                             </div>
 
                             <p id="fillDownHint" class="editor-help" aria-live="polite"></p>

@@ -46,6 +46,7 @@
             if (audit.missingLocation > 0) items.push(`未填地點：${audit.missingLocation} 張`);
             if (audit.invalidDateTime > 0) items.push(`時間異常：${audit.invalidDateTime} 張`);
             if (audit.duplicatePhotos > 0) items.push(`同名照片：${audit.duplicatePhotos} 張`);
+            if (audit.overTextLimit > 0) items.push(`地點或說明過長（恐影響排版）：${audit.overTextLimit} 張`);
             listEl.innerHTML = items.map(t => `<li>${t}</li>`).join('');
         }
         if (titleEl) {

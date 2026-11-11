@@ -55,6 +55,11 @@
             badges.duplicatePhotos.textContent = audit.duplicatePhotos;
             badges.duplicatePhotos.classList.toggle('has-warning', audit.duplicatePhotos > 0);
         }
+        if (badges.overTextLimit) {
+            const overCount = audit.overTextLimit || 0;
+            badges.overTextLimit.textContent = overCount;
+            badges.overTextLimit.classList.toggle('has-warning', overCount > 0);
+        }
 
         // 更新按鈕 active 樣式
         const filterIds = {
@@ -63,6 +68,7 @@
             'missingDesc': 'filterBtn_missingDesc',
             'invalidDateTime': 'filterBtn_invalidDateTime',
             'duplicatePhotos': 'filterBtn_duplicatePhotos',
+            'overTextLimit': 'filterBtn_overTextLimit',
         };
         Object.entries(filterIds).forEach(([key, id]) => {
             const btn = document.getElementById(id);
@@ -80,6 +86,7 @@
                     missingDesc: '未填說明',
                     invalidDateTime: '時間異常',
                     duplicatePhotos: '同名照片',
+                    overTextLimit: '字數過長',
                 };
                 const label = labels[activeFilter] || '';
                 filterNoticeText.innerHTML = `<i class="fa-solid fa-filter text-[#5B5CE2]"></i> <span>篩選中：${label}（共 ${visibleCount} 張）</span>`;

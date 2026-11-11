@@ -39,6 +39,29 @@ const visibleDup = getVisiblePhotoIndices(testPhotos, 'duplicatePhotos');
 assert.strictEqual(visibleDup.length, 2, 'duplicatePhotos 應為 2 張 (A.jpg 出現兩次)');
 assert.deepStrictEqual(visibleDup.map(v => v.index), [0, 2]);
 
+// overTextLimit 模式
+const limitPhotos = [
+    { name: 'ok.jpg', location: '一'.repeat(17), desc: '()'.repeat(68) }, // 剛好等於 17 全形與 68 全形（兩行）
+    { name: 'locOver.jpg', location: '一'.repeat(17) + 'A', desc: '正常' }, // 17.5 全形超過地點上限
+    { name: 'descOver.jpg', location: '', desc: '字'.repeat(68) + 'a' }, // 68.5 全形超過說明上限
+    { name: 'lineOver.jpg', location: '現場', desc: '甲\n乙\n丙' } // 3 行超過 2 行限制
+];
+const visibleOverShortDefault = getVisiblePhotoIndices(limitPhotos, 'overTextLimit', '現場');
+assert.deepStrictEqual(visibleOverShortDefault.map(v => v.index), [1, 2, 3], '預設地點正常時應篩出自身超標的 3 張照片');
+
+const visibleOverLongDefault = getVisiblePhotoIndices(limitPhotos, 'overTextLimit', '超過十七個全形字元的預設採證地點名稱測試');
+assert.deepStrictEqual(visibleOverLongDefault.map(v => v.index), [1, 2, 3], '此處 index 2 原本就超過；確認預設地點對空 location 也適用');
+
+const inheritedCheckPhotos = [
+    { name: 'okLoc.jpg', location: '現場', desc: 'ok' },
+    { name: 'inherited.jpg', location: '', desc: 'ok' }
+];
+assert.deepStrictEqual(
+    getVisiblePhotoIndices(inheritedCheckPhotos, 'overTextLimit', '超'.repeat(18)).map(v => v.index),
+    [1],
+    '留空地點應繼承超標預設地點並出現在 overTextLimit 篩選內'
+);
+
 // 2. 測試 getSelectedIndicesOrCurrent
 // 當有選取時回傳已選索引
 const selected = getSelectedIndicesOrCurrent(testPhotos, 0);

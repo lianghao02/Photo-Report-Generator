@@ -14,6 +14,26 @@
 
     const isValidMinguoDate = validation?.isValidMinguoDate || function() { return false; };
     const isValidTimeFormat = validation?.isValidTimeFormat || function() { return false; };
+    const inspectTextLimits = validation?.inspectTextLimits || function(loc, desc) {
+        const calcFullWidth = (str) => {
+            let units = 0;
+            for (const ch of String(str ?? '')) {
+                if (ch === '\r' || ch === '\n') continue;
+                const code = ch.codePointAt(0);
+                const isHalf = (code >= 0x0020 && code <= 0x007E) || code === 0x0009 || (code >= 0xFF61 && code <= 0xFF9F);
+                units += isHalf ? 1 : 2;
+            }
+            return units / 2;
+        };
+        const locStr = String(loc ?? '').trim();
+        const descStr = String(desc ?? '').trim();
+        const lines = !descStr ? 0 : descStr.replace(/\r\n?/g, '\n').split('\n').reduce((sum, seg) => {
+            return sum + Math.max(1, Math.ceil(calcFullWidth(seg) / 34));
+        }, 0);
+        const locationOver = calcFullWidth(locStr) > 17;
+        const descOver = calcFullWidth(descStr) > 68 || lines > 2;
+        return { isOver: locationOver || descOver };
+    };
 
     /**
      * 計算同名照片檔名集合
@@ -49,6 +69,7 @@
                 missingDesc: 0,
                 invalidDateTime: 0,
                 duplicatePhotos: 0,
+                overTextLimit: 0,
                 issuesCount: 0,
                 firstIssueFilter: null
             };
@@ -59,12 +80,15 @@
         let missingDesc = 0;
         let invalidDateTime = 0;
         let duplicatePhotos = 0;
+        let overTextLimit = 0;
 
         const dupSet = buildDuplicateNameSet(photos);
 
         photos.forEach(photo => {
             if (!photo) return;
-            if (!photo.location?.trim() && !trimmedLocation) missingLocation++;
+            const photoLoc = photo.location?.trim() || '';
+            const effectiveLoc = photoLoc || trimmedLocation;
+            if (!effectiveLoc) missingLocation++;
             if (!photo.desc?.trim()) missingDesc++;
 
             const d = photo.date?.trim() || '';
@@ -74,14 +98,19 @@
             if (dateInvalid || timeInvalid) invalidDateTime++;
 
             if (dupSet.has(photo.name)) duplicatePhotos++;
+
+            if (inspectTextLimits(effectiveLoc, photo.desc?.trim() || '').isOver) {
+                overTextLimit++;
+            }
         });
 
-        const issuesCount = missingLocation + missingDesc + invalidDateTime + duplicatePhotos;
+        const issuesCount = missingLocation + missingDesc + invalidDateTime + duplicatePhotos + overTextLimit;
         let firstIssueFilter = null;
         if (missingDesc > 0) firstIssueFilter = 'missingDesc';
         else if (missingLocation > 0) firstIssueFilter = 'missingLocation';
         else if (invalidDateTime > 0) firstIssueFilter = 'invalidDateTime';
         else if (duplicatePhotos > 0) firstIssueFilter = 'duplicatePhotos';
+        else if (overTextLimit > 0) firstIssueFilter = 'overTextLimit';
 
         return {
             total: photos.length,
@@ -89,6 +118,7 @@
             missingDesc,
             invalidDateTime,
             duplicatePhotos,
+            overTextLimit,
             issuesCount,
             firstIssueFilter
         };

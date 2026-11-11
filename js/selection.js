@@ -15,6 +15,24 @@
 
     const isValidMinguoDate = validation?.isValidMinguoDate || function() { return false; };
     const isValidTimeFormat = validation?.isValidTimeFormat || function() { return false; };
+    const inspectTextLimits = validation?.inspectTextLimits || function(loc, desc) {
+        const calcFullWidth = (str) => {
+            let units = 0;
+            for (const ch of String(str ?? '')) {
+                if (ch === '\r' || ch === '\n') continue;
+                const code = ch.codePointAt(0);
+                const isHalf = (code >= 0x0020 && code <= 0x007E) || code === 0x0009 || (code >= 0xFF61 && code <= 0xFF9F);
+                units += isHalf ? 1 : 2;
+            }
+            return units / 2;
+        };
+        const locStr = String(loc ?? '').trim();
+        const descStr = String(desc ?? '').trim();
+        const lines = !descStr ? 0 : descStr.replace(/\r\n?/g, '\n').split('\n').reduce((sum, seg) => {
+            return sum + Math.max(1, Math.ceil(calcFullWidth(seg) / 34));
+        }, 0);
+        return { isOver: calcFullWidth(locStr) > 17 || calcFullWidth(descStr) > 68 || lines > 2 };
+    };
     const buildDuplicateNameSet = audit?.buildDuplicateNameSet || function() { return new Set(); };
 
     /**
@@ -50,6 +68,10 @@
                 case 'duplicatePhotos': {
                     if (!dupSet) dupSet = buildDuplicateNameSet(photos);
                     return dupSet.has(photo.name);
+                }
+                case 'overTextLimit': {
+                    const effectiveLoc = photo.location?.trim() || globalLocation;
+                    return inspectTextLimits(effectiveLoc, photo.desc?.trim() || '').isOver;
                 }
                 default:
                     return true;

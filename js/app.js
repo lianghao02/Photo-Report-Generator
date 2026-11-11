@@ -63,6 +63,8 @@
                 this.activeFilter = 'all';
                 this.pendingExportAction = null;
                 this.pendingSequenceExport = null;
+                this.textLimitInputStates = new WeakMap();
+                this.textLimitFeedbackTimers = new WeakMap();
                 this.initElements();
                 this.initEvents();
                 this.applyWorkspaceLayout();
@@ -70,6 +72,7 @@
                 this.updateLayoutDescription();
                 this.loadAppVersion();
                 this.render();
+                this.refreshAllTextLimitUi();
                 this.recordHistory('初始狀態');
                 this.markProjectSaved();
                 this.checkAndOfferAutoDraft();
@@ -135,8 +138,15 @@
                 this.btnUnlinkChildPhoto = document.getElementById('btnUnlinkChildPhoto');
                 this.editDate = document.getElementById('editDate');
                 this.editTime = document.getElementById('editTime');
+                this.defaultLocationInput = document.getElementById('defaultLocation');
+                this.defaultLocationCounter = document.getElementById('defaultLocationCounter');
+                this.defaultLocationLimitHint = document.getElementById('defaultLocationLimitHint');
                 this.editLocation = document.getElementById('editLocation');
+                this.editLocationCounter = document.getElementById('editLocationCounter');
+                this.editLocationLimitHint = document.getElementById('editLocationLimitHint');
                 this.editDesc = document.getElementById('editDesc');
+                this.editDescCounter = document.getElementById('editDescCounter');
+                this.editDescLimitHint = document.getElementById('editDescLimitHint');
                 this.editDateInheritedHint = document.getElementById('editDateInheritedHint');
                 this.editLocationInheritedHint = document.getElementById('editLocationInheritedHint');
                 this.batchApplyBox = document.getElementById('batchApplyBox');
@@ -152,6 +162,7 @@
                 this.auditBadge_missingDesc = document.getElementById('auditBadge_missingDesc');
                 this.auditBadge_invalidDateTime = document.getElementById('auditBadge_invalidDateTime');
                 this.auditBadge_duplicatePhotos = document.getElementById('auditBadge_duplicatePhotos');
+                this.auditBadge_overTextLimit = document.getElementById('auditBadge_overTextLimit');
                 this.filterNoticeText = document.getElementById('filterNoticeText');
 
                 // 匯出前非阻斷提醒彈窗
@@ -319,9 +330,21 @@
                     event.preventDefault();
                     event.returnValue = '';
                 });
-                ['caseTitle', 'caseDate', 'defaultLocation', 'deptName', 'officerName'].forEach(id => {
+                ['caseTitle', 'caseDate', 'deptName', 'officerName'].forEach(id => {
                     document.getElementById(id).addEventListener('input', () => this.scheduleHistory('修改案件基本資料'));
                 });
+                this.bindLimitedTextControl(this.defaultLocationInput, {
+                    maxFullWidth: 17,
+                    singleLine: true,
+                    onAccept: () => {
+                        this.refreshAllTextLimitUi();
+                        this.photos.forEach((_, idx) => this.refreshThumbCardStatusBadge(idx));
+                        this.updateAuditBarUi();
+                        this.scheduleHistory('修改案件基本資料');
+                    },
+                    onFeedback: () => this.refreshDefaultLocationLimitUi()
+                });
+                this.defaultLocationInput?.addEventListener('blur', () => this.render());
 
                 const caseDateInput = document.getElementById('caseDate');
                 caseDateInput.addEventListener('pointerdown', (e) => this.handleMaskedPointerDown(e, caseDateInput));
@@ -364,8 +387,21 @@
                     e.target.value = masked;
                     this.updateCurrentPhoto('date', masked);
                 });
-                this.editLocation.addEventListener('input', (e) => this.updateCurrentPhoto('location', e.target.value));
-                this.editDesc.addEventListener('input', (e) => this.updateCurrentPhoto('desc', e.target.value));
+                this.bindLimitedTextControl(this.editLocation, {
+                    maxFullWidth: 17,
+                    singleLine: true,
+                    onAccept: (val) => this.updateCurrentPhoto('location', val),
+                    onFeedback: (draft) => this.refreshEditLocationLimitUi(draft)
+                });
+                this.bindLimitedTextControl(this.editDesc, {
+                    maxFullWidth: 68,
+                    singleLine: false,
+                    maxLines: 2,
+                    lineFullWidth: 34,
+                    onAccept: (val) => this.updateCurrentPhoto('desc', val),
+                    onFeedback: (draft) => this.refreshEditDescLimitUi(draft)
+                });
+                this.bindGridTextLimitEvents();
 
                 // 右側向下填滿按鈕
                 document.getElementById('btnFillDownDate').addEventListener('click', () => this.fillDownFromIndex(this.currentIndex, 'date'));
@@ -546,6 +582,7 @@
                 document.getElementById('filterBtn_missingDesc').addEventListener('click', () => this.setActiveFilter('missingDesc'));
                 document.getElementById('filterBtn_invalidDateTime').addEventListener('click', () => this.setActiveFilter('invalidDateTime'));
                 document.getElementById('filterBtn_duplicatePhotos').addEventListener('click', () => this.setActiveFilter('duplicatePhotos'));
+                document.getElementById('filterBtn_overTextLimit')?.addEventListener('click', () => this.setActiveFilter('overTextLimit'));
 
                 // 匯出前稽核彈窗按鈕
                 document.getElementById('btnAuditRenumber').addEventListener('click', () => {
@@ -604,6 +641,10 @@
                         case 'duplicatePhotos': {
                             if (!this._dupSet) this._buildDupSet();
                             return this._dupSet.has(photo.name);
+                        }
+                        case 'overTextLimit': {
+                            const effectiveLoc = photo.location?.trim() || globalLocation;
+                            return this.inspectPhotoTextLimits(effectiveLoc, photo.desc?.trim() || '').isOver;
                         }
                         default:
                             return true;
@@ -1388,8 +1429,443 @@
                 ['caseTitle', 'caseDate', 'defaultLocation', 'deptName', 'officerName', 'layoutSelect'].forEach(id => {
                     if (typeof data[id] === 'string') document.getElementById(id).value = data[id];
                 });
+                this.syncTextLimitInputState(this.defaultLocationInput, this.defaultLocationInput?.value || '');
+                this.refreshDefaultLocationLimitUi();
                 this.updateLayoutDescription();
                 if (this.isLightboxOpen()) this.syncLightboxAnnotationLayerBounds();
+            }
+
+            // ── 全形／半形字數計算與排版上限控制（委派至 PhotoReportValidation 模組）──
+            getTextHalfWidthUnits(text) {
+                if (typeof PhotoReportValidation !== 'undefined' && typeof PhotoReportValidation.getTextHalfWidthUnits === 'function') {
+                    return PhotoReportValidation.getTextHalfWidthUnits(text);
+                }
+                let units = 0;
+                for (const ch of String(text ?? '')) {
+                    if (ch === '\r' || ch === '\n') continue;
+                    const code = ch.codePointAt(0);
+                    const isHalf = (code >= 0x0020 && code <= 0x007E) || code === 0x0009 || (code >= 0xFF61 && code <= 0xFF9F);
+                    units += isHalf ? 1 : 2;
+                }
+                return units;
+            }
+
+            getTextFullWidthLength(text) {
+                return this.getTextHalfWidthUnits(text) / 2;
+            }
+
+            formatFullWidthCount(value) {
+                if (typeof PhotoReportValidation !== 'undefined' && typeof PhotoReportValidation.formatFullWidthCount === 'function') {
+                    return PhotoReportValidation.formatFullWidthCount(value);
+                }
+                const rounded = Math.round((Number(value) || 0) * 2) / 2;
+                return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+            }
+
+            estimateDescVisualLines(text, lineFullWidth = 34) {
+                if (typeof PhotoReportValidation !== 'undefined' && typeof PhotoReportValidation.estimateDescVisualLines === 'function') {
+                    return PhotoReportValidation.estimateDescVisualLines(text, lineFullWidth);
+                }
+                const normalized = String(text ?? '').replace(/\r\n?/g, '\n');
+                if (!normalized.length) return 0;
+                const segments = normalized.split('\n');
+                let totalLines = 0;
+                for (let i = 0; i < segments.length; i++) {
+                    totalLines += Math.max(1, Math.ceil(this.getTextHalfWidthUnits(segments[i]) / (lineFullWidth * 2)));
+                }
+                return totalLines;
+            }
+
+            truncateToFullWidth(text, maxFullWidth, options = {}) {
+                if (typeof PhotoReportValidation !== 'undefined' && typeof PhotoReportValidation.truncateToFullWidth === 'function') {
+                    return PhotoReportValidation.truncateToFullWidth(text, maxFullWidth, options);
+                }
+                const { singleLine = false, maxLines = Infinity, lineFullWidth = 34 } = options;
+                const maxUnits = Math.max(0, Math.round((Number(maxFullWidth) || 0) * 2));
+                let normalized = String(text ?? '').replace(/\r\n?/g, '\n');
+                let truncated = false;
+                if (singleLine && normalized.includes('\n')) {
+                    normalized = normalized.replace(/\n+/g, '');
+                    truncated = true;
+                }
+                let result = '';
+                let usedUnits = 0;
+                for (const ch of normalized) {
+                    if (ch === '\n') {
+                        const candidate = result + '\n';
+                        if (Number.isFinite(maxLines) && this.estimateDescVisualLines(candidate, lineFullWidth) > maxLines) {
+                            truncated = true;
+                            continue;
+                        }
+                        result = candidate;
+                        continue;
+                    }
+                    const charUnits = this.getTextHalfWidthUnits(ch);
+                    if (usedUnits + charUnits > maxUnits) {
+                        truncated = true;
+                        break;
+                    }
+                    const candidate = result + ch;
+                    if (Number.isFinite(maxLines) && this.estimateDescVisualLines(candidate, lineFullWidth) > maxLines) {
+                        truncated = true;
+                        break;
+                    }
+                    result = candidate;
+                    usedUnits += charUnits;
+                }
+                return {
+                    text: result,
+                    halfWidthUnits: usedUnits,
+                    fullWidthLength: usedUnits / 2,
+                    visualLines: Number.isFinite(maxLines) ? this.estimateDescVisualLines(result, lineFullWidth) : (result ? 1 : 0),
+                    truncated
+                };
+            }
+
+            inspectPhotoTextLimits(effectiveLocation, desc) {
+                if (typeof PhotoReportValidation !== 'undefined' && typeof PhotoReportValidation.inspectTextLimits === 'function') {
+                    return PhotoReportValidation.inspectTextLimits(effectiveLocation, desc);
+                }
+                const locStr = String(effectiveLocation ?? '').trim();
+                const descStr = String(desc ?? '').trim();
+                const locationFullWidth = this.getTextFullWidthLength(locStr);
+                const descFullWidth = this.getTextFullWidthLength(descStr);
+                const descLines = this.estimateDescVisualLines(descStr, 34);
+                const locationOver = locationFullWidth > 17;
+                const descOver = descFullWidth > 68 || descLines > 2;
+                return {
+                    locationFullWidth,
+                    descFullWidth,
+                    descLines,
+                    locationOver,
+                    descOver,
+                    isOver: locationOver || descOver
+                };
+            }
+
+            getTextLimitInputState(input) {
+                if (!input) return null;
+                if (!this.textLimitInputStates) this.textLimitInputStates = new WeakMap();
+                let state = this.textLimitInputStates.get(input);
+                if (!state) {
+                    state = {
+                        isComposing: false,
+                        lastCommittedValue: String(input.value ?? ''),
+                        truncatedFlash: false
+                    };
+                    this.textLimitInputStates.set(input, state);
+                }
+                return state;
+            }
+
+            syncTextLimitInputState(input, value) {
+                if (!input) return;
+                const state = this.getTextLimitInputState(input);
+                if (!state) return;
+                state.lastCommittedValue = String(value ?? '');
+                state.truncatedFlash = false;
+            }
+
+            triggerTextLimitTruncatedFlash(input, onClear) {
+                if (!input) return;
+                const state = this.getTextLimitInputState(input);
+                if (state) state.truncatedFlash = true;
+                if (!this.textLimitFeedbackTimers) this.textLimitFeedbackTimers = new WeakMap();
+                const prevTimer = this.textLimitFeedbackTimers.get(input);
+                if (prevTimer) clearTimeout(prevTimer);
+                const timer = setTimeout(() => {
+                    const curState = this.getTextLimitInputState(input);
+                    if (curState) curState.truncatedFlash = false;
+                    if (typeof onClear === 'function') onClear();
+                }, 2600);
+                this.textLimitFeedbackTimers.set(input, timer);
+            }
+
+            resolveLimitedTextInput(input, { maxFullWidth, singleLine = false, maxLines = Infinity, lineFullWidth = 34 }) {
+                const state = this.getTextLimitInputState(input);
+                const prevValue = state ? state.lastCommittedValue : String(input.value ?? '');
+                let rawValue = String(input.value ?? '').replace(/\r\n?/g, '\n');
+                let strippedNewline = false;
+                if (singleLine && rawValue.includes('\n')) {
+                    rawValue = rawValue.replace(/\n+/g, '');
+                    strippedNewline = true;
+                }
+
+                const maxUnits = Math.round((Number(maxFullWidth) || 0) * 2);
+                const prevUnits = this.getTextHalfWidthUnits(prevValue);
+                const prevLines = Number.isFinite(maxLines) ? this.estimateDescVisualLines(prevValue, lineFullWidth) : 1;
+                const prevOver = prevUnits > maxUnits || prevLines > maxLines;
+
+                const rawUnits = this.getTextHalfWidthUnits(rawValue);
+                const rawLines = Number.isFinite(maxLines) ? this.estimateDescVisualLines(rawValue, lineFullWidth) : (rawValue ? 1 : 0);
+                const rawOver = rawUnits > maxUnits || rawLines > maxLines;
+
+                let finalValue = rawValue;
+                let blockedOrTruncated = strippedNewline;
+
+                if (!rawOver) {
+                    finalValue = rawValue;
+                } else if (prevOver && rawUnits <= prevUnits && rawLines <= prevLines && rawValue.length <= prevValue.length) {
+                    // 允許從舊檔帶入的過長文字逐步刪減，不直接暴力截斷使用者原本文字
+                    finalValue = rawValue;
+                } else if (prevOver) {
+                    // 已處於舊資料超長狀態時，不允許再新增字元或換行
+                    finalValue = prevValue;
+                    blockedOrTruncated = true;
+                } else {
+                    const res = this.truncateToFullWidth(rawValue, maxFullWidth, {
+                        singleLine,
+                        maxLines,
+                        lineFullWidth
+                    });
+                    finalValue = res.text;
+                    blockedOrTruncated = blockedOrTruncated || res.truncated;
+                }
+
+                if (input.value !== finalValue) {
+                    const selStart = typeof input.selectionStart === 'number' ? input.selectionStart : finalValue.length;
+                    input.value = finalValue;
+                    const clampedCursor = Math.max(0, Math.min(selStart, finalValue.length));
+                    if (typeof input.setSelectionRange === 'function') {
+                        try {
+                            input.setSelectionRange(clampedCursor, clampedCursor);
+                        } catch {
+                            // 略過部分輸入元件不支援 setSelectionRange 的情況
+                        }
+                    }
+                }
+
+                if (state) state.lastCommittedValue = finalValue;
+                return { finalValue, blockedOrTruncated };
+            }
+
+            bindLimitedTextControl(input, options) {
+                if (!input) return;
+                this.syncTextLimitInputState(input, input.value || '');
+                const commit = (forceAccept = false) => {
+                    const state = this.getTextLimitInputState(input);
+                    if (!forceAccept && state.lastCommittedValue === String(input.value ?? '') && !state.truncatedFlash) {
+                        options.onFeedback?.(input.value);
+                        return;
+                    }
+                    const { finalValue, blockedOrTruncated } = this.resolveLimitedTextInput(input, options);
+                    if (blockedOrTruncated) {
+                        this.triggerTextLimitTruncatedFlash(input, () => options.onFeedback?.(input.value));
+                    } else if (state) {
+                        state.truncatedFlash = false;
+                    }
+                    options.onAccept?.(finalValue);
+                    options.onFeedback?.(finalValue);
+                };
+
+                input.addEventListener('compositionstart', () => {
+                    const state = this.getTextLimitInputState(input);
+                    if (state) state.isComposing = true;
+                });
+                input.addEventListener('compositionend', () => {
+                    const state = this.getTextLimitInputState(input);
+                    if (state) state.isComposing = false;
+                    commit(true);
+                });
+                input.addEventListener('input', (event) => {
+                    const state = this.getTextLimitInputState(input);
+                    if (event?.isComposing || state?.isComposing) {
+                        options.onFeedback?.(input.value);
+                        return;
+                    }
+                    commit(true);
+                });
+            }
+
+            bindGridTextLimitEvents() {
+                if (!this.gridTbody) return;
+                const getGridInputMeta = (target) => {
+                    if (!(target instanceof HTMLInputElement)) return null;
+                    const field = target.dataset.gridField;
+                    const idx = Number(target.dataset.gridIndex);
+                    if ((field !== 'location' && field !== 'desc') || !Number.isInteger(idx) || !this.photos[idx]) return null;
+                    return {
+                        input: target,
+                        field,
+                        idx,
+                        options: field === 'location'
+                            ? { maxFullWidth: 17, singleLine: true }
+                            : { maxFullWidth: 68, singleLine: false, maxLines: 2, lineFullWidth: 34 }
+                    };
+                };
+
+                const commitGridInput = (meta) => {
+                    const { input, field, idx, options } = meta;
+                    const { finalValue, blockedOrTruncated } = this.resolveLimitedTextInput(input, options);
+                    const state = this.getTextLimitInputState(input);
+                    if (blockedOrTruncated) {
+                        this.triggerTextLimitTruncatedFlash(input, () => {
+                            input.title = field === 'location'
+                                ? '地點最多 17 個全形（2 半形＝1 全形）'
+                                : '說明最多 68 個全形・最多 2 行（2 半形＝1 全形）';
+                        });
+                        input.title = field === 'location'
+                            ? '已達上限：地點最多 17 個全形（2 半形＝1 全形）'
+                            : '已達上限：說明最多 68 個全形（2 半形＝1 全形），避免變成 3 行';
+                    } else if (state) {
+                        state.truncatedFlash = false;
+                    }
+
+                    const fullLen = this.getTextFullWidthLength(finalValue);
+                    const lines = field === 'desc' ? this.estimateDescVisualLines(finalValue, 34) : 1;
+                    const isOver = field === 'location'
+                        ? fullLen > 17
+                        : (fullLen > 68 || lines > 2);
+                    input.classList.toggle('input-over-limit', isOver || Boolean(state?.truncatedFlash));
+                    this.updatePhotoField(idx, field, finalValue);
+                };
+
+                this.gridTbody.addEventListener('compositionstart', (e) => {
+                    const meta = getGridInputMeta(e.target);
+                    if (!meta) return;
+                    const state = this.getTextLimitInputState(meta.input);
+                    if (state) state.isComposing = true;
+                });
+                this.gridTbody.addEventListener('compositionend', (e) => {
+                    const meta = getGridInputMeta(e.target);
+                    if (!meta) return;
+                    const state = this.getTextLimitInputState(meta.input);
+                    if (state) state.isComposing = false;
+                    commitGridInput(meta);
+                });
+                this.gridTbody.addEventListener('input', (e) => {
+                    const meta = getGridInputMeta(e.target);
+                    if (!meta) return;
+                    const state = this.getTextLimitInputState(meta.input);
+                    if (e?.isComposing || state?.isComposing) return;
+                    commitGridInput(meta);
+                });
+            }
+
+            refreshDefaultLocationLimitUi(draftValue) {
+                const input = this.defaultLocationInput;
+                const counter = this.defaultLocationCounter;
+                const hint = this.defaultLocationLimitHint;
+                if (!input || !counter || !hint) return;
+                const value = draftValue !== undefined ? String(draftValue) : String(input.value || '');
+                const fullLen = this.getTextFullWidthLength(value);
+                const state = this.getTextLimitInputState(input);
+                const isOver = fullLen > 17;
+                const isFlash = Boolean(state?.truncatedFlash);
+                const isNear = !isOver && !isFlash && fullLen >= 15;
+
+                counter.textContent = `${this.formatFullWidthCount(fullLen)} / 17 全形`;
+                counter.classList.toggle('is-over-limit', isOver || isFlash);
+                counter.classList.toggle('is-near-limit', isNear);
+                input.classList.toggle('input-over-limit', isOver);
+
+                hint.classList.toggle('is-over-limit', isOver || isFlash);
+                hint.classList.toggle('is-near-limit', isNear);
+                if (isOver) {
+                    hint.textContent = `目前 ${this.formatFullWidthCount(fullLen)} 全形，已超出 17 全形上限（建議精簡）`;
+                } else if (isFlash) {
+                    hint.textContent = '已達上限：地點最多 17 個全形（超出部分未寫入）';
+                } else if (isNear) {
+                    hint.textContent = `剩餘 ${this.formatFullWidthCount(17 - fullLen)} 全形（2 半形＝1 全形）`;
+                } else {
+                    hint.textContent = '最多 17 個全形（2 半形＝1 全形）';
+                }
+            }
+
+            refreshEditLocationLimitUi(draftValue) {
+                const input = this.editLocation;
+                const counter = this.editLocationCounter;
+                const hint = this.editLocationLimitHint;
+                if (!input || !counter || !hint) return;
+                const value = draftValue !== undefined ? String(draftValue) : String(input.value || '');
+                const fullLen = this.getTextFullWidthLength(value);
+                const defaultLoc = String(this.defaultLocationInput?.value || '').trim();
+                const inheritedLen = !value.trim() ? this.getTextFullWidthLength(defaultLoc) : 0;
+                const state = this.getTextLimitInputState(input);
+                const isOver = fullLen > 17;
+                const isInheritedOver = !value.trim() && inheritedLen > 17;
+                const isFlash = Boolean(state?.truncatedFlash);
+                const isNear = !isOver && !isFlash && fullLen >= 15;
+
+                counter.textContent = `${this.formatFullWidthCount(fullLen)} / 17 全形`;
+                counter.classList.toggle('is-over-limit', isOver || isFlash || isInheritedOver);
+                counter.classList.toggle('is-near-limit', isNear);
+                input.classList.toggle('input-over-limit', isOver || isInheritedOver);
+
+                hint.classList.toggle('is-over-limit', isOver || isFlash || isInheritedOver);
+                hint.classList.toggle('is-near-limit', isNear);
+                if (isOver) {
+                    hint.textContent = `目前 ${this.formatFullWidthCount(fullLen)} 全形，已超出 17 全形上限（請精簡）`;
+                } else if (isInheritedOver) {
+                    hint.textContent = `繼承的案件地點有 ${this.formatFullWidthCount(inheritedLen)} 全形，已超出 17 全形上限`;
+                } else if (isFlash) {
+                    hint.textContent = '已達上限：地點最多 17 個全形（超出部分未寫入）';
+                } else if (isNear) {
+                    hint.textContent = `剩餘 ${this.formatFullWidthCount(17 - fullLen)} 全形（2 半形＝1 全形）`;
+                } else {
+                    hint.textContent = '最多 17 個全形（2 半形＝1 全形）';
+                }
+            }
+
+            refreshEditDescLimitUi(draftValue) {
+                const input = this.editDesc;
+                const counter = this.editDescCounter;
+                const hint = this.editDescLimitHint;
+                if (!input || !counter || !hint) return;
+                const value = draftValue !== undefined ? String(draftValue) : String(input.value || '');
+                const fullLen = this.getTextFullWidthLength(value);
+                const visualLines = this.estimateDescVisualLines(value, 34);
+                const state = this.getTextLimitInputState(input);
+                const isOver = fullLen > 68 || visualLines > 2;
+                const isFlash = Boolean(state?.truncatedFlash);
+                const isNear = !isOver && !isFlash && (fullLen >= 62 || (visualLines === 2 && fullLen >= 55));
+
+                counter.textContent = `${this.formatFullWidthCount(fullLen)} / 68 全形`;
+                counter.classList.toggle('is-over-limit', isOver || isFlash);
+                counter.classList.toggle('is-near-limit', isNear);
+                input.classList.toggle('input-over-limit', isOver);
+
+                hint.classList.toggle('is-over-limit', isOver || isFlash);
+                hint.classList.toggle('is-near-limit', isNear);
+                if (isOver) {
+                    hint.textContent = fullLen > 68
+                        ? `目前 ${this.formatFullWidthCount(fullLen)} 全形（預估 ${visualLines} 行），超過 68 全形恐變 3 行影響整頁排版`
+                        : `目前預估 ${visualLines} 行，超過 2 行恐影響整頁排版（上限 68 全形・最多 2 行）`;
+                } else if (isFlash) {
+                    hint.textContent = '已達上限（最多 68 全形／2 行），避免變 3 行影響排版';
+                } else if (isNear) {
+                    hint.textContent = `剩餘 ${this.formatFullWidthCount(68 - fullLen)} 全形（第 ${visualLines || 1}／2 行）`;
+                } else {
+                    hint.textContent = '最多 68 個全形・最多 2 行（2 半形＝1 全形）';
+                }
+            }
+
+            refreshAllTextLimitUi() {
+                this.refreshDefaultLocationLimitUi();
+                this.refreshEditLocationLimitUi();
+                this.refreshEditDescLimitUi();
+            }
+
+            refreshThumbCardStatusBadge(index) {
+                const photo = this.photos[index];
+                if (!photo) return;
+                const card = document.getElementById(`thumb_${photo.uid}`);
+                if (!card) return;
+                const defaultLocation = String(this.defaultLocationInput?.value || '').trim();
+                const missingFields = [!String(photo.location || '').trim() && !defaultLocation ? '地點' : '', !String(photo.desc || '').trim() ? '說明' : ''].filter(Boolean);
+                const overLimit = this.inspectPhotoTextLimits(String(photo.location || '').trim() || defaultLocation, String(photo.desc || '').trim()).isOver;
+                const statusIssues = [...missingFields, ...(overLimit ? ['字數過長'] : [])];
+                const statusText = statusIssues.length ? `注意：${statusIssues.join('、')}` : '資料完整';
+                const badge = card.querySelector('.thumb-status-icon');
+                if (badge) {
+                    badge.className = `thumb-status-icon text-[13px] ${statusIssues.length ? 'text-amber-700' : 'text-emerald-700'}`;
+                    badge.title = statusText;
+                    const icon = badge.querySelector('i');
+                    if (icon) {
+                        icon.className = `fa-solid ${statusIssues.length ? 'fa-circle-exclamation' : 'fa-circle-check'}`;
+                    }
+                }
+                card.title = `第 ${photo.seq} 張｜時間：${photo.time || '未填'}｜${statusText}｜雙擊縮圖放大、雙擊編號列編輯，拖曳可排序`;
             }
 
             cloneAnnotations(annotations) {
@@ -3283,20 +3759,49 @@
                 const flipped = Boolean(photo?.flipH);
                 const parentPhoto = this.getValidParentPhoto(photo);
                 const hasSideCrop = Boolean(photo?.sideCrop);
-                const badges = [];
+                if (!parentPhoto && !hasSideCrop && !flipped && annCount === 0) return '';
+
+                const fullLabels = [];
+                const compactTokens = [];
+                const tooltipParts = [];
+                const badgeFlags = [];
+
                 if (parentPhoto) {
-                    badges.push(`<span class="thumb-crop-badge" title="隨 #${escapeHtml(parentPhoto.seq)} 連動之局部裁切特寫">特寫</span>`);
+                    fullLabels.push('特寫');
+                    compactTokens.push('特');
+                    tooltipParts.push(`隨 #${parentPhoto.seq} 連動之局部裁切特寫`);
+                    badgeFlags.push('crop');
                 }
                 if (hasSideCrop) {
-                    badges.push(`<span class="thumb-sidecrop-badge" ${parentPhoto ? 'style="left:36px;" ' : ''}title="含右側同格並排局部放大圖（模式 B）">◫並排</span>`);
+                    fullLabels.push('◫並排');
+                    compactTokens.push('◫');
+                    tooltipParts.push('含右側同格並排局部放大圖（模式 B）');
+                    badgeFlags.push('sidecrop');
                 }
-                if (annCount || flipped) {
-                    const parts = [];
-                    if (flipped) parts.push('⇄翻轉');
-                    if (annCount > 0) parts.push(`標記${annCount}`);
-                    badges.push(`<span class="thumb-annotation-badge" title="${escapeHtml(parts.join('・'))}">${escapeHtml(parts.join(' '))}</span>`);
+                if (flipped) {
+                    fullLabels.push('⇄翻轉');
+                    compactTokens.push('⇄');
+                    tooltipParts.push('水平鏡像翻轉');
+                    badgeFlags.push('flip');
                 }
-                return badges.join('');
+                if (annCount > 0) {
+                    fullLabels.push(`標記${annCount}`);
+                    compactTokens.push(`標${annCount}`);
+                    tooltipParts.push(`標記 ${annCount} 項`);
+                    badgeFlags.push('annotation');
+                }
+
+                // 多種標記共存時合併成單一右下角膠囊，避免小縮圖左右互疊並減少遮擋
+                const useCompactTokens = fullLabels.length > 1 && (this.thumbnailSize <= 125 || fullLabels.length >= 3);
+                const displayText = useCompactTokens ? compactTokens.join('・') : fullLabels.join('・');
+
+                let variantClass = '';
+                if (!annCount && !flipped) {
+                    if (hasSideCrop && !parentPhoto) variantClass = ' thumb-annotation-badge--sidecrop';
+                    else if (parentPhoto && !hasSideCrop) variantClass = ' thumb-annotation-badge--crop';
+                }
+
+                return `<span class="thumb-annotation-badge${variantClass}" data-badges="${badgeFlags.join(',')}" title="${escapeHtml(tooltipParts.join('・'))}">${escapeHtml(displayText)}</span>`;
             }
 
             getStageStep() {
@@ -4393,6 +4898,9 @@
                     this.syncChildCropSequences();
                     this.refreshSequenceBadgesAndGridInputs();
                     this.updateEditorTitleAndLightboxCaption();
+                } else if (field === 'location' || field === 'desc') {
+                    this.refreshThumbCardStatusBadge(this.currentIndex);
+                    this.updateAuditBarUi();
                 }
                 this.scheduleHistory('修改照片欄位');
             }
@@ -4419,29 +4927,49 @@
                 if (typeof PhotoReportAudit !== 'undefined') {
                     return PhotoReportAudit.auditPhotosCompleteness(this.photos, globalLocation);
                 }
-                let missingLocation = 0, missingDesc = 0, invalidDateTime = 0, duplicatePhotos = 0;
+                const calcFullWidth = (str) => {
+                    let units = 0;
+                    for (const ch of String(str ?? '')) {
+                        if (ch === '\r' || ch === '\n') continue;
+                        const code = ch.codePointAt(0);
+                        const isHalf = (code >= 0x0020 && code <= 0x007E) || code === 0x0009 || (code >= 0xFF61 && code <= 0xFF9F);
+                        units += isHalf ? 1 : 2;
+                    }
+                    return units / 2;
+                };
+                const calcLines = (str) => {
+                    const normalized = String(str ?? '').trim().replace(/\r\n?/g, '\n');
+                    if (!normalized) return 0;
+                    return normalized.split('\n').reduce((sum, seg) => sum + Math.max(1, Math.ceil(calcFullWidth(seg) / 34)), 0);
+                };
+                let missingLocation = 0, missingDesc = 0, invalidDateTime = 0, duplicatePhotos = 0, overTextLimit = 0;
                 this.photos.forEach(photo => {
-                    if (!photo.location?.trim() && !globalLocation) missingLocation++;
-                    if (!photo.desc?.trim()) missingDesc++;
+                    const effectiveLoc = photo.location?.trim() || globalLocation;
+                    const descStr = photo.desc?.trim() || '';
+                    if (!effectiveLoc) missingLocation++;
+                    if (!descStr) missingDesc++;
                     const d = photo.date?.trim() || '';
                     const t = photo.time?.trim() || '';
                     const dateInvalid = d ? !this.isValidMinguoDate(d) : false;
                     const timeInvalid = !this.isValidTimeFormat(t);
                     if (dateInvalid || timeInvalid) invalidDateTime++;
                     if (this._dupSet.has(photo.name)) duplicatePhotos++;
+                    if (calcFullWidth(effectiveLoc) > 17 || calcFullWidth(descStr) > 68 || calcLines(descStr) > 2) overTextLimit++;
                 });
-                const issuesCount = missingLocation + missingDesc + invalidDateTime + duplicatePhotos;
+                const issuesCount = missingLocation + missingDesc + invalidDateTime + duplicatePhotos + overTextLimit;
                 let firstIssueFilter = null;
                 if (missingDesc > 0) firstIssueFilter = 'missingDesc';
                 else if (missingLocation > 0) firstIssueFilter = 'missingLocation';
                 else if (invalidDateTime > 0) firstIssueFilter = 'invalidDateTime';
                 else if (duplicatePhotos > 0) firstIssueFilter = 'duplicatePhotos';
+                else if (overTextLimit > 0) firstIssueFilter = 'overTextLimit';
                 return {
                     total: this.photos.length,
                     missingLocation,
                     missingDesc,
                     invalidDateTime,
                     duplicatePhotos,
+                    overTextLimit,
                     issuesCount,
                     firstIssueFilter,
                 };
@@ -4466,7 +4994,7 @@
                 this.btnToggleAudit.classList.toggle('has-issues', issueCount > 0);
                 const summary = issueCount > 0 ? `待檢查 ${issueCount} 項` : '資料檢查通過';
                 const label = open ? `收起檢查・${summary}` : summary;
-                this.btnToggleAudit.title = '檢查未填地點、未填說明、日期時間異常與同名照片；同一張照片可能有多項問題';
+                this.btnToggleAudit.title = '檢查未填地點、未填說明、日期時間異常、同名照片與字數過長；同一張照片可能有多項問題';
                 this.btnToggleAudit.replaceChildren();
                 const icon = document.createElement('i');
                 icon.className = 'fa-solid fa-list-check';
@@ -4508,7 +5036,8 @@
                             missingLocation: this.auditBadge_missingLocation,
                             missingDesc: this.auditBadge_missingDesc,
                             invalidDateTime: this.auditBadge_invalidDateTime,
-                            duplicatePhotos: this.auditBadge_duplicatePhotos
+                            duplicatePhotos: this.auditBadge_duplicatePhotos,
+                            overTextLimit: this.auditBadge_overTextLimit
                         },
                         filterNoticeText: this.filterNoticeText
                     });
@@ -4541,12 +5070,18 @@
                     this.auditBadge_duplicatePhotos.textContent = audit.duplicatePhotos;
                     this.auditBadge_duplicatePhotos.classList.toggle('has-warning', audit.duplicatePhotos > 0);
                 }
+                if (this.auditBadge_overTextLimit) {
+                    const overCount = audit.overTextLimit || 0;
+                    this.auditBadge_overTextLimit.textContent = overCount;
+                    this.auditBadge_overTextLimit.classList.toggle('has-warning', overCount > 0);
+                }
                 const filterIds = {
                     'all': 'filterBtn_all',
                     'missingLocation': 'filterBtn_missingLocation',
                     'missingDesc': 'filterBtn_missingDesc',
                     'invalidDateTime': 'filterBtn_invalidDateTime',
                     'duplicatePhotos': 'filterBtn_duplicatePhotos',
+                    'overTextLimit': 'filterBtn_overTextLimit',
                 };
                 Object.entries(filterIds).forEach(([key, id]) => {
                     const btn = document.getElementById(id);
@@ -4562,6 +5097,7 @@
                             missingDesc: '未填說明',
                             invalidDateTime: '時間異常',
                             duplicatePhotos: '同名照片',
+                            overTextLimit: '字數過長',
                         };
                         const label = labels[this.activeFilter] || '';
                         const count = this.getVisiblePhotoIndices().length;
@@ -4644,6 +5180,7 @@
                     if (audit.missingLocation > 0) items.push(`未填地點：${audit.missingLocation} 張`);
                     if (audit.invalidDateTime > 0) items.push(`時間異常：${audit.invalidDateTime} 張`);
                     if (audit.duplicatePhotos > 0) items.push(`同名照片：${audit.duplicatePhotos} 張`);
+                    if (audit.overTextLimit > 0) items.push(`地點或說明過長（恐影響排版）：${audit.overTextLimit} 張`);
                     this.exportAuditList.innerHTML = items.map(t => `<li>${t}</li>`).join('');
                 }
                 if (titleEl) titleEl.textContent = `匯出前確認（${title}）`;
@@ -4765,7 +5302,9 @@
                     const isCurrent = idx === this.currentIndex ? 'active-editing' : '';
                     const isCropChild = this.isLinkedCropChild(p) ? 'photo-thumb-card--crop-child' : '';
                     const missingFields = [!String(p.location || '').trim() && !defaultLocation ? '地點' : '', !String(p.desc || '').trim() ? '說明' : ''].filter(Boolean);
-                    const statusText = missingFields.length ? `待補：${missingFields.join('、')}` : '資料完整';
+                    const overLimit = this.inspectPhotoTextLimits(String(p.location || '').trim() || defaultLocation, String(p.desc || '').trim()).isOver;
+                    const statusIssues = [...missingFields, ...(overLimit ? ['字數過長'] : [])];
+                    const statusText = statusIssues.length ? `注意：${statusIssues.join('、')}` : '資料完整';
                     const displayLayout = this.getPhotoDisplayLayout(p);
                     const cardTitle = `第 ${p.seq} 張｜時間：${p.time || '未填'}｜${statusText}｜雙擊縮圖放大、雙擊編號列編輯，拖曳可排序`;
 
@@ -4787,8 +5326,8 @@
                                         <i class="fa-regular fa-clock text-blue-600"></i>${escapeHtml(p.time || '未填時間')}
                                     </span>
                                 </div>
-                                <span class="text-[13px] ${missingFields.length ? 'text-amber-700' : 'text-emerald-700'}" title="${escapeHtml(statusText)}">
-                                    <i class="fa-solid ${missingFields.length ? 'fa-circle-exclamation' : 'fa-circle-check'}"></i>
+                                <span class="thumb-status-icon text-[13px] ${statusIssues.length ? 'text-amber-700' : 'text-emerald-700'}" title="${escapeHtml(statusText)}">
+                                    <i class="fa-solid ${statusIssues.length ? 'fa-circle-exclamation' : 'fa-circle-check'}"></i>
                                 </span>
                             </div>
 
@@ -4806,7 +5345,10 @@
                 this.thumbGrid.style.removeProperty('min-height');
 
                 // 渲染試算表視圖 (DataGrid)
-                this.gridTbody.innerHTML = this.photos.map((p, idx) => `
+                this.gridTbody.innerHTML = this.photos.map((p, idx) => {
+                    const locCheck = this.inspectPhotoTextLimits(String(p.location || '').trim(), '');
+                    const descCheck = this.inspectPhotoTextLimits('', String(p.desc || '').trim());
+                    return `
                     <tr class="hover:bg-[#F7F7F5]/70 ${idx === this.currentIndex ? 'bg-blue-50/50' : ''}"
                         ondblclick="window.app.handleCardDblClick(${idx}, event)">
                         <td class="p-2 text-center">
@@ -4830,10 +5372,10 @@
                             <input type="text" value="${escapeHtml(p.time)}" onpointerdown="window.app.handleMaskedPointerDown(event, this)" onfocus="window.app.beginMaskedEntry(this)" oninput="this.value = window.app.sanitizeMaskedEntry(this, 6); window.app.markMaskedEntryChanged(this); window.app.updatePhotoField(${idx}, 'time', this.value)" onblur="this.value = window.app.finishMaskedEntry(this, window.app.formatTimeMask); window.app.updatePhotoField(${idx}, 'time', this.value)" class="input-field w-full text-xs font-mono" placeholder="輸入 4 或 6 碼">
                         </td>
                         <td class="p-2">
-                            <input type="text" value="${escapeHtml(p.location)}" oninput="window.app.updatePhotoField(${idx}, 'location', this.value)" class="input-field w-full text-xs" placeholder="留空＝清冊預設">
+                            <input type="text" data-grid-index="${idx}" data-grid-field="location" value="${escapeHtml(p.location)}" class="input-field w-full text-xs ${locCheck.locationOver ? 'input-over-limit' : ''}" placeholder="留空＝清冊預設" title="地點最多 17 個全形（2 半形＝1 全形）">
                         </td>
                         <td class="p-2">
-                            <input type="text" value="${escapeHtml(p.desc)}" oninput="window.app.updatePhotoField(${idx}, 'desc', this.value)" class="input-field w-full text-xs" placeholder="請填寫現場跡證或狀況說明">
+                            <input type="text" data-grid-index="${idx}" data-grid-field="desc" value="${escapeHtml(p.desc)}" class="input-field w-full text-xs ${descCheck.descOver ? 'input-over-limit' : ''}" placeholder="請填寫現場跡證或狀況說明" title="說明最多 68 個全形・最多 2 行（2 半形＝1 全形）">
                         </td>
                         <td class="p-2 text-[#6B7280] truncate max-w-[110px]" title="${escapeHtml(p.name)}">
                             ${escapeHtml(p.name)}
@@ -4843,7 +5385,11 @@
                             <button type="button" onclick="window.app.removePhoto(${idx})" title="刪除" class="p-1 text-red-500"><i class="fa-regular fa-trash-can"></i></button>
                         </td>
                     </tr>
-                `).join('');
+                `;
+                }).join('');
+                this.gridTbody.querySelectorAll('input[data-grid-field="location"], input[data-grid-field="desc"]').forEach(gridInput => {
+                    this.syncTextLimitInputState(gridInput, gridInput.value || '');
+                });
                 this.renderPagePreview();
                 if (this.isLightboxOpen()) {
                     this.lightboxIndex = this.currentIndex;
@@ -4895,6 +5441,9 @@
                 this.editTime.value = curPhoto.time || '';
                 this.editLocation.value = curPhoto.location || '';
                 this.editDesc.value = curPhoto.desc || '';
+                this.syncTextLimitInputState(this.defaultLocationInput, this.defaultLocationInput?.value || '');
+                this.syncTextLimitInputState(this.editLocation, this.editLocation.value);
+                this.syncTextLimitInputState(this.editDesc, this.editDesc.value);
                 const remaining = totalPhotos - this.currentIndex - 1;
                 ['btnFillDownDate', 'btnFillDownTime', 'btnFillDownLocation', 'btnFillDownDescAll'].forEach(id => {
                     const button = document.getElementById(id);
@@ -4913,6 +5462,7 @@
                 this.editLocationInheritedHint.textContent = defaultLocation
                     ? `空白時用案件地點：${defaultLocation}`
                     : '空白時用案件地點（案件地點還沒填）';
+                this.refreshAllTextLimitUi();
             }
 
             renderPagePreview() {
@@ -4969,6 +5519,17 @@
                     this.syncChildCropSequences();
                     this.refreshSequenceBadgesAndGridInputs();
                     this.updateEditorTitleAndLightboxCaption();
+                } else if (field === 'location' || field === 'desc') {
+                    this.refreshThumbCardStatusBadge(index);
+                    this.updateAuditBarUi();
+                    if (index === this.currentIndex) {
+                        const targetEl = field === 'location' ? this.editLocation : this.editDesc;
+                        if (targetEl && targetEl.value !== value) {
+                            targetEl.value = value;
+                            this.syncTextLimitInputState(targetEl, value);
+                        }
+                        this.refreshAllTextLimitUi();
+                    }
                 }
                 this.scheduleHistory('修改照片欄位');
             }
@@ -6891,7 +7452,7 @@
                         img.style.cssText = layout.imageStyle;
                     }
                     if (stage) {
-                        stage.querySelectorAll('.thumb-annotation-badge, .thumb-crop-badge, .thumb-sidecrop-badge').forEach(el => el.remove());
+                        stage.querySelectorAll('.thumb-annotation-badge').forEach(el => el.remove());
                         const badgeHtml = this.getPhotoAnnotationBadgeHtml(photo);
                         if (badgeHtml) stage.insertAdjacentHTML('beforeend', badgeHtml);
                     }

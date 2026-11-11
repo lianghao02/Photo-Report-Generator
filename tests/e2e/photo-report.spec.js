@@ -1034,23 +1034,72 @@ async function runE2eTests() {
         throw new Error(`Phase 2B 切換框線樣式異常: ${borderRedText} / ${borderNoneText} / ${borderBackYellow}`);
     }
 
-    // 測試旋轉與翻轉時 sideCrop.cropRect 跟隨變換，且等待縮圖合成徽章出現
+    // 測試旋轉與翻轉時 sideCrop.cropRect 跟隨變換，且等待單一合併縮圖徽章出現並驗證不重疊／不超寬
     const cropBeforeRotate = await page.evaluate(() => ({ ...window.app.photos[0].sideCrop.cropRect }));
     await page.click('#btnLightboxRotateCW');
     await page.click('#btnLightboxFlipH');
     await page.waitForFunction(() => {
         const p = window.app.photos[0];
-        const badge = document.querySelector(`#thumb_${p.uid} .thumb-sidecrop-badge`);
-        const img = document.querySelector(`#thumb_${p.uid} .thumbnail-stage img`);
-        return badge && p.compositeThumbnailSrc && img?.src === p.compositeThumbnailSrc;
+        const stage = document.querySelector(`#thumb_${p.uid} .thumbnail-stage`);
+        const badges = stage ? stage.querySelectorAll('.thumb-annotation-badge') : [];
+        const img = stage?.querySelector('img');
+        const hasSideFlag = badges[0]?.getAttribute('data-badges')?.includes('sidecrop');
+        return badges.length === 1 && hasSideFlag && p.compositeThumbnailSrc && img?.src === p.compositeThumbnailSrc;
     }, { timeout: 5000 });
+    const badge3StateText = await page.evaluate(() => {
+        const p = window.app.photos[0];
+        return document.querySelector(`#thumb_${p.uid} .thumb-annotation-badge`)?.textContent?.trim() || '';
+    });
+    if (badge3StateText !== '◫・⇄・標1') {
+        throw new Error(`並排+翻轉+標記應合併為單一精簡膠囊，實際顯示: ${badge3StateText}`);
+    }
     const transformedRect = await page.evaluate(() => ({ ...window.app.photos[0].sideCrop.cropRect }));
     if (transformedRect.x === cropBeforeRotate.x && transformedRect.y === cropBeforeRotate.y) {
         throw new Error(`旋轉／翻轉後 sideCrop.cropRect 未隨方向同步變換: before=${JSON.stringify(cropBeforeRotate)}, after=${JSON.stringify(transformedRect)}`);
     }
-    // 轉正與翻回原方向，方便驗證最終合併寬度大於單張原寬
+    // 轉正與翻回原方向，驗證常見「並排+標記」於 150px／95px 縮圖的單一膠囊切換與真實幾何防溢位
     await page.click('#btnLightboxFlipH');
     await page.click('#btnLightboxRotateCCW');
+    const badgeResizeCheck = await page.evaluate(() => {
+        const p = window.app.photos[0];
+        const origSize = window.app.thumbnailSize;
+        try {
+            window.app.setThumbnailSize(150);
+            const stageLarge = document.querySelector(`#thumb_${p.uid} .thumbnail-stage`);
+            const largeBadges = stageLarge ? Array.from(stageLarge.querySelectorAll('.thumb-annotation-badge, .thumb-sidecrop-badge, .thumb-crop-badge')) : [];
+            const largeText = largeBadges[0]?.textContent?.trim() || '';
+
+            window.app.setThumbnailSize(95);
+            const stageSmall = document.querySelector(`#thumb_${p.uid} .thumbnail-stage`);
+            const smallBadges = stageSmall ? Array.from(stageSmall.querySelectorAll('.thumb-annotation-badge, .thumb-sidecrop-badge, .thumb-crop-badge')) : [];
+            const smallText = smallBadges[0]?.textContent?.trim() || '';
+            const stageRect = stageSmall?.getBoundingClientRect();
+            const badgeRect = smallBadges[0]?.getBoundingClientRect();
+            return {
+                largeCount: largeBadges.length,
+                largeText,
+                smallCount: smallBadges.length,
+                smallText,
+                fitsInsideStage: Boolean(
+                    stageRect && badgeRect &&
+                    badgeRect.left >= stageRect.left &&
+                    badgeRect.right <= stageRect.right &&
+                    badgeRect.width <= stageRect.width - 4
+                )
+            };
+        } finally {
+            window.app.setThumbnailSize(origSize);
+        }
+    });
+    if (
+        badgeResizeCheck.largeCount !== 1 ||
+        badgeResizeCheck.largeText !== '◫並排・標記1' ||
+        badgeResizeCheck.smallCount !== 1 ||
+        badgeResizeCheck.smallText !== '◫・標1' ||
+        !badgeResizeCheck.fitsInsideStage
+    ) {
+        throw new Error(`並排+標記單一合併膠囊在 150px／95px 檢視下異常: ${JSON.stringify(badgeResizeCheck)}`);
+    }
 
     const compositeExportCheck = await page.evaluate(async () => {
         const p = window.app.photos[0];
@@ -2155,6 +2204,306 @@ async function runE2eTests() {
         throw new Error(`後續併入未存修改保護、子特寫合併、錯誤防護或 Ctrl+Z 復原失敗: ${JSON.stringify(mergeCheck)}`);
     }
     console.log('  ✅ 多 .photo-report 工作進度檔智慧彙整（跨機重壓縮去重、防誤合、自動補齊、較晚覆蓋、未存保護、子特寫與復原）驗證成功');
+
+    // 6. 驗證 Word 欄位置中對齊＋地點 17 全形／說明 68 全形 2 行限制＋IME 組字保護＋Grid 同步＋舊檔相容與字數過長篩選
+    console.log('[8/5] 驗證 Word 案由／日期／時間置中與地點／說明全形字數上限保護...');
+    // 6A. 驗證 Word 匯出 XML 對齊（up_down_2 與 landscape_3）
+    const wordAlignCheck = await page.evaluate(async () => {
+        const origSaveAs = window.saveAs;
+        const origAlert = window.alert;
+        const origConfirm = window.confirm;
+        window.alert = () => {};
+        window.confirm = () => true;
+
+        const makeTestPhotoFile = async (name, color) => {
+            const c = document.createElement('canvas');
+            c.width = 800;
+            c.height = 600;
+            const ctx = c.getContext('2d');
+            ctx.fillStyle = color;
+            ctx.fillRect(0, 0, 800, 600);
+            const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.9));
+            return new File([blob], name, { type: 'image/jpeg' });
+        };
+
+        try {
+            await window.app.clearAll(true);
+            document.getElementById('caseTitle').value = '公職人員選舉罷免法';
+            document.getElementById('caseDate').value = '115/11/02';
+            document.getElementById('defaultLocation').value = '關廟尚好食餐廳';
+            document.getElementById('deptName').value = '臺南市政府警察局新化分局';
+            document.getElementById('officerName').value = '巡官梁家豪';
+            await window.app.handleFiles([
+                await makeTestPhotoFile('align_01.jpg', '#1E40AF'),
+                await makeTestPhotoFile('align_02.jpg', '#047857')
+            ]);
+            window.app.photos[0].date = '115/11/02';
+            window.app.photos[0].time = '17:50';
+            window.app.photos[0].location = '關廟尚好食餐廳';
+            window.app.photos[0].desc = '議員支持 4 號(李偉智)、里長支持 3 號(賴延銓)現場說明';
+            window.app.photos[1].time = '18:00';
+            window.app.photos[1].desc = '第二張電子地圖位置標示(南雄路一段)';
+            window.app.render();
+
+            const extractXmlTableAligns = async (layoutVal) => {
+                const layoutSelect = document.getElementById('layoutSelect');
+                layoutSelect.value = layoutVal;
+                layoutSelect.dispatchEvent(new Event('change', { bubbles: true }));
+                let capturedBlob = null;
+                window.saveAs = (blob) => { capturedBlob = blob; };
+                await window.app.exportDocx();
+                const zip = await window.JSZip.loadAsync(capturedBlob);
+                const docXml = await zip.file('word/document.xml').async('text');
+                const xmlDoc = new DOMParser().parseFromString(docXml, 'application/xml');
+                const tables = Array.from(xmlDoc.getElementsByTagName('w:tbl'));
+                const rows = Array.from(tables[0].getElementsByTagName('w:tr'));
+                return rows.map(row => Array.from(row.getElementsByTagName('w:tc')).map(tc => {
+                    const text = Array.from(tc.getElementsByTagName('w:t')).map(n => n.textContent).join('');
+                    const jc = tc.getElementsByTagName('w:jc')[0]?.getAttribute('w:val') || 'none';
+                    const vAlign = tc.getElementsByTagName('w:vAlign')[0]?.getAttribute('w:val') || 'none';
+                    return { text, jc, vAlign };
+                }));
+            };
+
+            const upDownRows = await extractXmlTableAligns('up_down_2');
+            const landscapeRows = await extractXmlTableAligns('landscape_3');
+            document.getElementById('layoutSelect').value = 'up_down_2';
+            document.getElementById('layoutSelect').dispatchEvent(new Event('change', { bubbles: true }));
+            return { upDownRows, landscapeRows };
+        } finally {
+            window.saveAs = origSaveAs;
+            window.alert = origAlert;
+            window.confirm = origConfirm;
+        }
+    });
+
+    const udRow0 = wordAlignCheck.upDownRows[0] || [];
+    if (
+        udRow0.length !== 6 ||
+        udRow0.some(cell => cell.jc !== 'center') ||
+        !udRow0[1].text.includes('公職人員選舉罷免法') ||
+        !udRow0[3].text.includes('115/11/02') ||
+        !udRow0[5].text.includes('17:50')
+    ) {
+        throw new Error(`up_down_2 Word 第 1 列 案由／日期／時間 應全部置中對齊: ${JSON.stringify(udRow0)}`);
+    }
+    const lsRow0 = wordAlignCheck.landscapeRows[0] || [];
+    const lsRow1 = wordAlignCheck.landscapeRows[1] || [];
+    if (
+        lsRow0.some(cell => cell.jc !== 'center' || cell.vAlign !== 'center') ||
+        lsRow1.some(cell => cell.jc !== 'center' || cell.vAlign !== 'center')
+    ) {
+        throw new Error(`landscape_3 Word 上方資訊列應全部水平與垂直置中: row0=${JSON.stringify(lsRow0)}, row1=${JSON.stringify(lsRow1)}`);
+    }
+    console.log('  ✅ Word up_down_2（案由／日期／時間）與 landscape_3 欄位 XML 置中對齊驗證通過');
+
+    // 6B. 驗證 #defaultLocation（17 全形）、#editLocation（17 全形單行）、#editDesc（68 全形・2 行＋IME 組字＋使用者 3 行實例截斷）
+    await page.evaluate(() => {
+        if (window.app.editorCollapsed) window.app.toggleEditor();
+        window.app.currentIndex = 0;
+        window.app.render();
+    });
+    await page.fill('#defaultLocation', '一二三四五六七八九十甲乙丙丁戊己庚辛壬癸');
+    const defLocCheck = await page.evaluate(() => ({
+        val: document.getElementById('defaultLocation').value,
+        counter: document.getElementById('defaultLocationCounter')?.textContent?.trim(),
+        hint: document.getElementById('defaultLocationLimitHint')?.textContent?.trim(),
+        hintOver: document.getElementById('defaultLocationLimitHint')?.classList.contains('is-over-limit')
+    }));
+    if (
+        defLocCheck.val !== '一二三四五六七八九十甲乙丙丁戊己庚' ||
+        defLocCheck.counter !== '17 / 17 全形' ||
+        !defLocCheck.hintOver ||
+        !defLocCheck.hint?.includes('已達上限')
+    ) {
+        throw new Error(`案件採證地點 17 全形上限與提示異常: ${JSON.stringify(defLocCheck)}`);
+    }
+
+    await page.fill('#editLocation', 'A'.repeat(38));
+    const editLocHalfCheck = await page.evaluate(() => ({
+        val: document.getElementById('editLocation').value,
+        counter: document.getElementById('editLocationCounter')?.textContent?.trim(),
+        photoLoc: window.app.photos[0].location
+    }));
+    if (editLocHalfCheck.val !== 'A'.repeat(34) || editLocHalfCheck.counter !== '17 / 17 全形' || editLocHalfCheck.photoLoc !== 'A'.repeat(34)) {
+        throw new Error(`單張地點 34 半形（17 全形）上限驗證失敗: ${JSON.stringify(editLocHalfCheck)}`);
+    }
+
+    // 半形括號 () ＝ 1 全形，剛好 68 全形應完整保留無警告
+    await page.fill('#editDesc', '()'.repeat(68));
+    const editDescExact68 = await page.evaluate(() => ({
+        len: document.getElementById('editDesc').value.length,
+        counter: document.getElementById('editDescCounter')?.textContent?.trim(),
+        overClass: document.getElementById('editDescLimitHint')?.classList.contains('is-over-limit'),
+        photoDescLen: window.app.photos[0].desc.length
+    }));
+    if (editDescExact68.len !== 136 || editDescExact68.counter !== '68 / 68 全形' || editDescExact68.overClass || editDescExact68.photoDescLen !== 136) {
+        throw new Error(`半形 () x 68（=68 全形）應剛好通過上限: ${JSON.stringify(editDescExact68)}`);
+    }
+
+    // 貼上使用者原本造成 3 行的超長說明，應自動限制於 68 全形且 <= 2 行
+    const userOverflowDesc = '議員李偉智、里長參選人賴延銓，由長壽會幹部陪同逐桌敬酒，過程中請托拜票，議員支持 4 號(李偉智)、里長支持 3 號(賴延銓)，總幹事洪金河邊講，邊比手勢';
+    await page.fill('#editDesc', userOverflowDesc);
+    const editDescTruncCheck = await page.evaluate(() => {
+        const val = document.getElementById('editDesc').value;
+        return {
+            val,
+            fullWidth: window.app.getTextFullWidthLength(val),
+            visualLines: window.app.estimateDescVisualLines(val, 34),
+            hint: document.getElementById('editDescLimitHint')?.textContent?.trim(),
+            hintOver: document.getElementById('editDescLimitHint')?.classList.contains('is-over-limit')
+        };
+    });
+    if (
+        editDescTruncCheck.fullWidth > 68 ||
+        editDescTruncCheck.visualLines > 2 ||
+        !editDescTruncCheck.hintOver ||
+        !editDescTruncCheck.hint?.includes('最多 68 全形')
+    ) {
+        throw new Error(`超長說明貼上未正確限制於 68 全形／2 行內: ${JSON.stringify(editDescTruncCheck)}`);
+    }
+
+    // 多餘換行防呆：貼入 3 行僅保留最多 2 行，文字保留不遺失
+    await page.fill('#editDesc', '第一行\n第二行\n第三行');
+    const newlineGuardCheck = await page.evaluate(() => ({
+        val: document.getElementById('editDesc').value,
+        lines: window.app.estimateDescVisualLines(document.getElementById('editDesc').value, 34)
+    }));
+    if (newlineGuardCheck.val !== '第一行\n第二行第三行' || newlineGuardCheck.lines !== 2) {
+        throw new Error(`多行換行防呆失敗: ${JSON.stringify(newlineGuardCheck)}`);
+    }
+
+    // 模擬 Windows 注音 IME 組字過程不被截斷，compositionend 完成選字後才精確截斷
+    const imeCheck = await page.evaluate(() => {
+        const descEl = document.getElementById('editDesc');
+        const setVal = (v) => {
+            descEl.value = v;
+        };
+        setVal('字'.repeat(67));
+        descEl.dispatchEvent(new Event('input', { bubbles: true }));
+
+        descEl.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true, data: '' }));
+        setVal('字'.repeat(67) + 'ㄐㄧˋ'); // 68.5 全形（組字中不能被砍！）
+        descEl.dispatchEvent(new InputEvent('input', { bubbles: true, isComposing: true, data: 'ㄐㄧˋ' }));
+        const duringCompose = descEl.value;
+
+        setVal('字'.repeat(67) + '記敘'); // 69 全形（選字送出超出 1 全形）
+        descEl.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '記敘' }));
+        return {
+            duringCompose,
+            afterComposeEnd: descEl.value,
+            photoDesc: window.app.photos[0].desc
+        };
+    });
+    if (
+        imeCheck.duringCompose !== '字'.repeat(67) + 'ㄐㄧˋ' ||
+        imeCheck.afterComposeEnd !== '字'.repeat(67) + '記' ||
+        imeCheck.photoDesc !== '字'.repeat(67) + '記'
+    ) {
+        throw new Error(`IME 注音組字保護驗證失敗: ${JSON.stringify(imeCheck)}`);
+    }
+    console.log('  ✅ 全形計算（2 半形＝1 全形）、17／68 上限、2 行防呆與注音 IME 保護皆正常');
+
+    // 6C. 驗證試算表（DataGrid）同樣套用字數上限並雙向同步右側欄，以及載入舊 .photo-report 超標文字之保留、逐步刪減、篩選與匯出前提醒
+    await page.click('#btnViewGrid');
+    const gridLimitCheck = await page.evaluate(() => {
+        const gridLoc = document.querySelector('#gridTbody input[data-grid-index="0"][data-grid-field="location"]');
+        gridLoc.value = '甲'.repeat(20);
+        gridLoc.dispatchEvent(new Event('input', { bubbles: true }));
+        return {
+            gridVal: gridLoc.value,
+            editLocVal: document.getElementById('editLocation').value,
+            counter: document.getElementById('editLocationCounter')?.textContent?.trim(),
+            photoLoc: window.app.photos[0].location
+        };
+    });
+    if (
+        gridLimitCheck.gridVal !== '甲'.repeat(17) ||
+        gridLimitCheck.editLocVal !== '甲'.repeat(17) ||
+        gridLimitCheck.counter !== '17 / 17 全形' ||
+        gridLimitCheck.photoLoc !== '甲'.repeat(17)
+    ) {
+        throw new Error(`試算表視圖字數限制與右側欄雙向同步失敗: ${JSON.stringify(gridLimitCheck)}`);
+    }
+    await page.click('#btnViewWorkspace');
+
+    const legacyOverCheck = await page.evaluate(async () => {
+        const origSaveAs = window.saveAs;
+        const origAlert = window.alert;
+        const origConfirm = window.confirm;
+        let savedLegacyBlob = null;
+        window.saveAs = (blob) => { savedLegacyBlob = blob; };
+        window.alert = () => {};
+        window.confirm = () => true;
+        try {
+            window.app.photos[0].location = '現場';
+            window.app.photos[0].desc = '短說明';
+            window.app.photos[1].location = '現場';
+            window.app.photos[1].desc = '短說明';
+            await window.app.saveProject();
+            const zip = await window.JSZip.loadAsync(savedLegacyBlob);
+            const manifest = JSON.parse(await zip.file('manifest.json').async('text'));
+            manifest.photos[0].location = '一二三四五六七八九十甲乙丙丁戊己庚辛壬癸'; // 20 全形超標舊資料
+            manifest.photos[0].desc = '超'.repeat(75); // 75 全形超標舊資料
+            zip.file('manifest.json', JSON.stringify(manifest));
+            const patchedBlob = await zip.generateAsync({ type: 'blob' });
+            const patchedFile = new File([patchedBlob], 'legacy_over_limit.photo-report', { type: 'application/zip' });
+            await window.app.openProjectFromFile(patchedFile);
+
+            const loadedDesc = window.app.photos[0].desc;
+            const loadedCounter = document.getElementById('editDescCounter')?.textContent?.trim();
+            const loadedInputOver = document.getElementById('editDesc')?.classList.contains('input-over-limit');
+
+            // 嘗試在超標舊資料再「加 1 字」應被擋住回原本 75 字；「刪 1 字」變 74 字應允許逐步刪減
+            const descEl = document.getElementById('editDesc');
+            descEl.value = '超'.repeat(76);
+            descEl.dispatchEvent(new Event('input', { bubbles: true }));
+            const afterTryAdd = descEl.value;
+
+            descEl.value = '超'.repeat(74);
+            descEl.dispatchEvent(new Event('input', { bubbles: true }));
+            const afterTryShrink = descEl.value;
+
+            const auditBadgeOver = document.getElementById('auditBadge_overTextLimit')?.textContent?.trim();
+            window.app.setActiveFilter('overTextLimit');
+            const filteredCount = document.querySelectorAll('.photo-thumb-card').length;
+            window.app.setActiveFilter('all');
+
+            window.app.confirmExportWithAudit(() => {}, 'Word 清冊');
+            const auditModalItems = Array.from(document.querySelectorAll('#exportAuditList li')).map(li => li.textContent.trim());
+            window.app.closeModal('exportAuditModal');
+
+            await window.app.clearAll(true);
+            return {
+                loadedDescLen: loadedDesc.length,
+                loadedCounter,
+                loadedInputOver,
+                afterTryAddLen: afterTryAdd.length,
+                afterTryShrinkLen: afterTryShrink.length,
+                auditBadgeOver,
+                filteredCount,
+                auditModalItems
+            };
+        } finally {
+            window.saveAs = origSaveAs;
+            window.alert = origAlert;
+            window.confirm = origConfirm;
+        }
+    });
+
+    if (
+        legacyOverCheck.loadedDescLen !== 75 ||
+        legacyOverCheck.loadedCounter !== '75 / 68 全形' ||
+        !legacyOverCheck.loadedInputOver ||
+        legacyOverCheck.afterTryAddLen !== 75 ||
+        legacyOverCheck.afterTryShrinkLen !== 74 ||
+        legacyOverCheck.auditBadgeOver !== '1' ||
+        legacyOverCheck.filteredCount !== 1 ||
+        !legacyOverCheck.auditModalItems.some(t => t.includes('地點或說明過長（恐影響排版）：1 張'))
+    ) {
+        throw new Error(`舊版超標 .photo-report 保留、逐步刪減、篩選或匯出提醒驗證失敗: ${JSON.stringify(legacyOverCheck)}`);
+    }
+    console.log('  ✅ 試算表同步、舊檔超標文字保留＋逐步刪減、字數過長篩選與匯出確認彈窗皆正常');
 
     if (pageErrors.length > 0) {
         console.warn('⚠️ 頁面出現 Uncaught Error:', pageErrors);

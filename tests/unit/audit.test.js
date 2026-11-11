@@ -101,6 +101,7 @@ assert.strictEqual(auditModuleResult.missingLocation, 1, '未填地點應為 1 (
 assert.strictEqual(auditModuleResult.missingDesc, 1, '未填說明應為 1 (p3)');
 assert.strictEqual(auditModuleResult.invalidDateTime, 2, '時間日期異常應為 2 (p4, p5)');
 assert.strictEqual(auditModuleResult.duplicatePhotos, 2, '同名照片張數應為 2 (p1, p6)');
+assert.strictEqual(auditModuleResult.overTextLimit, 0, '標準測資字數應全部在上限內');
 assert.strictEqual(auditModuleResult.issuesCount, 6, '問題總數應為 1+1+2+2 = 6');
 assert.strictEqual(auditModuleResult.firstIssueFilter, 'missingDesc', '首要篩選應為未填說明');
 
@@ -115,5 +116,64 @@ assert.strictEqual(
     originalPhotosJson,
     'audit 計算前後，傳入之 photos 陣列絕對不得被修改（唯讀性）'
 );
+
+// 3. 字數／行數排版上限稽核（含繼承預設地點與僅字數問題時之首要篩選）
+const overLimitPhotos = [
+    {
+        uid: 'ok1',
+        name: 'OK_01.jpg',
+        date: '115/11/02',
+        time: '17:50',
+        location: '關廟尚好食餐廳',
+        desc: '由長壽會幹部陪同逐桌敬酒(洪金河)'
+    }, // 正常
+    {
+        uid: 'overLocSelf',
+        name: 'LOC_02.jpg',
+        date: '115/11/02',
+        time: '17:51',
+        location: '甲'.repeat(18),
+        desc: '正常說明'
+    }, // 自身地點 > 17 全形
+    {
+        uid: 'overLocInherited',
+        name: 'INH_03.jpg',
+        date: '115/11/02',
+        time: '17:52',
+        location: '',
+        desc: '繼承過長預設地點測試'
+    }, // 留空將繼承過長預設地點
+    {
+        uid: 'overDesc68',
+        name: 'DESC_04.jpg',
+        date: '115/11/02',
+        time: '17:53',
+        location: '現場',
+        desc: '字'.repeat(69)
+    }, // 說明 > 68 全形
+    {
+        uid: 'overDescLines',
+        name: 'LINE_05.jpg',
+        date: '115/11/02',
+        time: '17:54',
+        location: '現場',
+        desc: '第一行\n第二行\n第三行'
+    } // 說明雖短但人工換行達 3 行
+];
+
+// 預設地點正常時：僅 overLocSelf、overDesc68、overDescLines 超標（共 3 張）
+const overAuditWithShortDefault = auditPhotosCompleteness(overLimitPhotos, '現場');
+assert.strictEqual(overAuditWithShortDefault.overTextLimit, 3, '預設地點正常時，字數過長應為 3 張');
+assert.strictEqual(overAuditWithShortDefault.issuesCount, 3, '無其他缺失時總問題數應為 3');
+assert.strictEqual(overAuditWithShortDefault.firstIssueFilter, 'overTextLimit', '僅字數問題時首要篩選應為 overTextLimit');
+
+app.photos = overLimitPhotos;
+global.document = {
+    getElementById: (id) => (id === 'defaultLocation' ? { value: '預設'.repeat(10) } : null)
+};
+const overAuditWithLongDefaultModule = auditPhotosCompleteness(overLimitPhotos, '預設'.repeat(10));
+const overAuditWithLongDefaultApp = app.auditPhotosCompleteness();
+assert.strictEqual(overAuditWithLongDefaultModule.overTextLimit, 4, '預設地點超 17 全形時，繼承照片也應計入 overTextLimit（4 張）');
+assert.deepStrictEqual(overAuditWithLongDefaultApp, overAuditWithLongDefaultModule, '含超標預設地點時 App 與獨立模組結果應完全一致');
 
 console.log('✅ audit.test.js 全部斷言通過！');
