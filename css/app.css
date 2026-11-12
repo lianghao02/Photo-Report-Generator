@@ -1331,3 +1331,96 @@ input[readonly].seq-locked {
     border-color: #DC2626 !important;
     background: #FEF2F2 !important;
 }
+
+/* 工作台依可視高度分配空間；匯出列保留獨立區域，不覆蓋照片或表單。 */
+.case-panel-summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; list-style: none; }
+.case-panel-summary::-webkit-details-marker { display: none; }
+.case-panel-toggle { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+.case-panel-summary:focus-visible, .workspace-help-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.case-panel-help { margin: 8px 0; font-size: 12px; line-height: 1.5; color: var(--text-muted); }
+.workspace-help { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); padding: 0 4px; }
+.workspace-help-button { color: #1D4ED8; text-decoration: underline; min-height: 28px; white-space: nowrap; }
+.toolbar-action-group { flex-wrap: nowrap; }
+.export-bar { position: static; flex-shrink: 0; }
+#stagePanel, #photoPanel, #editorPanel, #workspaceContainer { min-width: 0; }
+.editor-navigation { flex-shrink: 0; gap: 8px; background: var(--surface-card); }
+@media (min-width: 768px) {
+    body { height: 100dvh; min-height: 0; overflow: hidden; }
+    body > header, #appMainLayout { max-width: 1800px; }
+    body > header { flex: 0 0 auto; }
+    body > footer { display: none; }
+    #appMainLayout { flex: 1 1 0; min-height: 0; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: 10px; }
+    #sidePanel { grid-column: 1; grid-row: 1; position: static; max-height: 32vh; overflow: auto; width: 100%; }
+    #sidePanel > section { padding: 10px 12px; }
+    #mainPanelSplitter { display: none; }
+    #stagePanel { grid-column: 1; grid-row: 2; height: 100%; min-height: 0; overflow: hidden; padding: 12px; gap: 8px; }
+    #photoActionToolbar { flex: 0 0 auto; align-items: flex-start; gap: 8px; }
+    #photoActionToolbar > div:first-child { gap: 6px; }
+    .toolbar-action-group { gap: 4px; }
+    .toolbar-divider { display: none; }
+    #workspaceContainer:not(.hidden) { display: grid; grid-template-columns: minmax(0, 1fr) clamp(280px, 28vw, 320px); grid-template-rows: minmax(0, 1fr); flex: 1 1 0; min-height: 0; gap: 12px; margin-top: 0; }
+    #workspaceContainer.editor-collapsed { grid-template-columns: minmax(0, 1fr); }
+    #photoPanel { grid-column: auto; min-height: 0; }
+    #thumbGridDropZone { flex: 1 1 0; min-height: 0; display: flex; }
+    #thumbGrid { flex: 1 1 0; min-height: 0; max-height: none; align-content: start; overflow: auto; }
+    #editorPanel { grid-column: auto; min-height: 0; }
+    #editorPanel #editorCard { position: static; height: 100%; min-height: 0; overflow: hidden; padding: 12px; gap: 8px; }
+    #editorCard > div:first-child { flex-shrink: 0; }
+    #editorPanel .editor-fields { flex: 1 1 0; min-height: 0; overflow-y: auto; padding-right: 5px; scrollbar-gutter: stable; }
+    #editorPanel .editor-navigation { flex-wrap: wrap; }
+    #gridContainer:not(.hidden) { flex: 1 1 0; min-height: 0; max-height: none; }
+    #emptyState:not(.hidden) { flex: 1 1 0; min-height: 0; overflow: auto; }
+    .export-bar { margin-top: 0; padding: 8px 10px; gap: 8px; box-shadow: 0 2px 0 var(--border); }
+}
+@media (min-width: 1200px) {
+    #appMainLayout { grid-template-columns: minmax(280px, min(var(--side-panel-width), 32vw)) 12px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: 0; }
+    #sidePanel { grid-column: 1; grid-row: 1; max-height: 100%; }
+    #mainPanelSplitter { display: flex; grid-column: 2; grid-row: 1; }
+    #stagePanel { grid-column: 3; grid-row: 1; }
+}
+@media (max-width: 767px) {
+    #caseDetails:not([open]) { margin-bottom: 0; }
+    #workspaceContainer { gap: 12px; }
+    .export-bar { position: static; }
+    #editorCard { position: static; }
+}
+/* 主編輯欄將短欄位並排，優先保留說明輸入空間；燈箱維持原有配置。 */
+@media (min-width: 768px) {
+    #editorPanel .editor-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-content: start; gap: 8px; }
+    #editorPanel .editor-fields > * { grid-column: 1 / -1; margin-top: 0; min-width: 0; }
+    #editorPanel .editor-fields > div:nth-child(1) { grid-column: 1; grid-row: 1; }
+    #editorPanel .editor-fields > div:nth-child(3) { grid-column: 2; grid-row: 1; }
+    #editorPanel #fillDownHint { margin-top: 0; }
+}
+#photoActionToolbar button { white-space: nowrap; }
+@media (max-width: 767px) {
+    #photoActionToolbar .toolbar-action-group { flex-wrap: wrap; }
+    #photoActionToolbar .toolbar-divider { display: none; }
+}
+@media (min-width: 768px) {
+    #editorPanel .editor-fields > div:nth-child(1) > label { display: flex; align-items: center; min-height: 28px; }
+}
+/* 窄視窗展開案件資料時使用浮動面板，不擠走照片與固定導覽。 */
+@media (min-width: 768px) and (max-width: 1199px) {
+    #sidePanel { position: relative; z-index: 30; max-height: none; overflow: visible; }
+    #caseDetails { position: relative; }
+    #caseDetails .case-panel-content { position: absolute; top: calc(100% + 8px); left: -12px; right: -12px; max-height: min(60vh, 460px); overflow-y: auto; padding: 12px; background: var(--surface-card); border: 2px solid var(--border); border-radius: 12px; box-shadow: 0 4px 0 var(--border); }
+}
+.project-save-badge--download { background: #FEF3C7 !important; color: #78350F !important; }
+.merge-report-modal { position: fixed; inset: 0; z-index: 80; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(15,23,42,.55); }
+.merge-report-modal.hidden { display: none; }
+.merge-report-panel { width: min(960px,100%); max-height: 90dvh; display: flex; flex-direction: column; gap: 12px; padding: 18px; background: var(--surface-card); border: 2px solid var(--border); border-radius: 14px; box-shadow: var(--shadow); min-height: 0; }
+.merge-report-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.merge-report-header h2 { font-size: 18px; font-weight: 800; }
+.merge-report-header p, .merge-report-note, .merge-report-sources { font-size: 12px; color: var(--text-muted); overflow-wrap: anywhere; }
+.merge-report-close { padding: 6px 10px; border-radius: 8px; white-space: nowrap; }
+#mergeReportBody { overflow: auto; min-height: 0; font-size: 13px; }
+#mergeReportBody h3, #mergeReportBody summary { font-weight: 700; padding: 10px 4px; }
+#mergeReportBody summary { cursor: pointer; }
+#mergeReportBody details { border-top: 1px solid #CBD5E1; }
+.merge-report-table-wrap { overflow-x: auto; }
+#mergeReportBody table { width: 100%; table-layout: fixed; border-collapse: collapse; }
+#mergeReportBody th, #mergeReportBody td { padding: 8px; text-align: left; vertical-align: top; border: 1px solid #CBD5E1; white-space: pre-wrap; overflow-wrap: anywhere; }
+#mergeReportBody thead th { background: #EEF0F3; }
+#mergeReportBody th:first-child { width: 24%; }
+@media (max-width: 600px) { .merge-report-panel { padding: 12px; } .merge-report-header { flex-wrap: wrap; } }

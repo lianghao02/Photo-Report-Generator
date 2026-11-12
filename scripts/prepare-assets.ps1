@@ -47,7 +47,7 @@ $tailwind = Join-Path $root 'node_modules\.bin\tailwindcss.cmd'
 if (Test-Path $tailwind) {
     # 掃描範圍必須包含由 index.html 拆出的 css/app.css 與 js/app.js（主程式字串裡有大量動態類別名稱），
     # 否則重建後會少掉規則、動態產生的畫面元素失去樣式。三者合計的產物與拆分前逐位元組相同。
-    $tailwindContent = (Join-Path $root 'index.html') + ',' + (Join-Path $root 'css\app.css') + ',' + (Join-Path $root 'js\app.js')
+    $tailwindContent = (Join-Path $root 'index.html') + ',' + (Join-Path $root 'css\app.css') + ',' + (Join-Path $root 'js\app.js') + ',' + (Join-Path $root 'js\ui\merge-report-ui.js')
     & $tailwind -i (Join-Path $PSScriptRoot 'tailwind-input.css') -o (Join-Path $vendor 'tailwind.css') --content $tailwindContent --minify
     if ($LASTEXITCODE -ne 0) { throw 'Tailwind CSS build failed.' }
 } elseif (Test-Path (Join-Path $vendor 'tailwind.css')) {

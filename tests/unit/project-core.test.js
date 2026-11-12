@@ -1,0 +1,22 @@
+const assert=require('node:assert/strict');
+const Model=require('../../js/photo-model');
+const Format=require('../../js/project-format');
+const Merge=require('../../js/project-merge');
+const cases=require('../fixtures/merge-compatibility.json');
+const source={uid:'a',name:'照片.jpg',seq:'01',desc:'保留超過上限的舊文字'.repeat(20),annotations:[{id:'one',type:'rect',x:.1,y:.1,w:.2,h:.3}],sideCrop:{cropRect:{x:.1,y:.2,w:.3,h:.4},widthRatio:.65,offsetY:.5,borderColor:'red'},file:{type:'image/jpeg'},src:'blob:original',thumbnailSrc:'blob:thumb'};
+const saved=Model.toRecord(source,{archiveName:'one.jpg'});
+assert(!('file' in saved));assert(!('src' in saved));assert(!('thumbnailSrc' in saved));assert.equal(saved.desc,source.desc);
+saved.annotations[0].x=.8;assert.equal(source.annotations[0].x,.1);
+const history=Model.cloneForHistory(source);assert.equal(history.file,source.file);history.sideCrop.cropRect.x=.8;assert.equal(source.sideCrop.cropRect.x,.1);
+const restored=Model.restore(saved,0,{uid:'a',file:source.file,src:'blob:new',thumbnailSrc:'blob:t',thumbnailAspect:1});assert.equal(restored.desc,source.desc);assert.equal(restored.seq,'01');
+const manifest=Format.createManifest({photos:[saved],caseData:{caseTitle:'相容性'},currentIndex:0,lastSelectedIndex:0});assert.equal(Format.validateManifest(manifest),manifest);
+const legacy=structuredClone(manifest);delete legacy.version;assert.doesNotThrow(()=>Format.validateManifest(legacy));
+assert.throws(()=>Format.validateManifest({...manifest,version:99}),/版本/);
+assert.throws(()=>Format.validateManifest({...manifest,photos:[{...saved,archiveName:'../secret'}]}),/路徑/);
+assert.throws(()=>Format.validateManifest({...manifest,photos:[{...saved,desc:{bad:true}}]}),/必須為文字/);
+assert.throws(()=>Format.validateManifest({...manifest,photos:[saved,saved]}),/重複/);
+for(const c of cases){const target=structuredClone(c.before);assert.deepEqual(Merge.mergeMatchedPhotoRecord(target,c.incoming,c.timestamp),c.result,c.name);assert.deepEqual(target,c.expected,c.name);}
+const report=Merge.buildReport({beforePhotos:[Model.toRecord(source)],afterPhotos:[{...source,desc:'新說明',rotation:90}],beforeCase:{caseTitle:'舊案'},afterCase:{caseTitle:'新案'},sources:['測試.photo-report'],createdAt:'2026-11-12T00:00:00Z'});
+assert.equal(report.caseChanges[0].field,'caseTitle');assert(report.photos[0].changes.some(c=>c.field==='desc'&&c.before===source.desc&&c.after==='新說明'));assert(report.photos[0].changes.some(c=>c.field==='rotation'));
+source.desc='稍後編輯';assert.notEqual(report.photos[0].changes.find(c=>c.field==='desc').before,source.desc);
+console.log('照片資料、舊格式、50組既有彙整規則與前後明細：全部通過');

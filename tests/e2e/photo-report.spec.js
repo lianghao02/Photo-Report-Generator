@@ -2,6 +2,7 @@ const path = require('path');
 const fs = require('fs');
 
 const { chromium } = require('playwright');
+const { trackPageErrors } = require('../helpers/page-errors');
 
 async function runE2eTests() {
     console.log('========================================');
@@ -16,8 +17,7 @@ async function runE2eTests() {
     const page = await context.newPage();
 
     // 監聽 console 警告或錯誤
-    const pageErrors = [];
-    page.on('pageerror', err => pageErrors.push(err.message));
+    const assertNoPageErrors = trackPageErrors(page);
 
     console.log(`[1/5] 開啟頁面: ${fileUrl}`);
     await page.goto(fileUrl, { waitUntil: 'load' });
@@ -1327,7 +1327,11 @@ async function runE2eTests() {
         // 切回上下兩張並向外拉大到貼齊／超出白框右緣，確認外框依然鎖死，並輸出截圖檢查視覺狀態
         await page.click('button[data-lightbox-layout="up_down_2"]');
         await page.waitForTimeout(60);
-        await page.screenshot({ path: 'C:/Users/chia-hao/.gemini/antigravity/brain/68f06b8b-6e4d-44ac-a2aa-808ca2759063/scratch/preview_fixed_updown.png' });
+        if (process.env.PHOTO_REPORT_SCREENSHOT_DIR) {
+            const screenshotDir = path.resolve(process.env.PHOTO_REPORT_SCREENSHOT_DIR);
+            fs.mkdirSync(screenshotDir, { recursive: true });
+            await page.screenshot({ path: path.join(screenshotDir, 'preview_fixed_updown.png') });
+        }
 
         // 清理臨時直式測試圖
         await page.evaluate(() => {
@@ -1619,6 +1623,7 @@ async function runE2eTests() {
         afterCtrlS.photoTimeInApp !== '16:45' ||
         afterCtrlS.photoTimeInManifest !== '16:45' ||
         !afterCtrlS.savedClass ||
+        !afterCtrlS.badgeText.includes('已產生下載檔') ||
         afterCtrlS.unsavedNow
     ) {
         throw new Error(`Ctrl+S 應自動完成時間遮罩定稿、清洗檔名並更新為已儲存狀態: ${JSON.stringify(afterCtrlS)}`);
@@ -2505,9 +2510,7 @@ async function runE2eTests() {
     }
     console.log('  ✅ 試算表同步、舊檔超標文字保留＋逐步刪減、字數過長篩選與匯出確認彈窗皆正常');
 
-    if (pageErrors.length > 0) {
-        console.warn('⚠️ 頁面出現 Uncaught Error:', pageErrors);
-    }
+    assertNoPageErrors();
 
     await browser.close();
     console.log('\n========================================');

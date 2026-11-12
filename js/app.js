@@ -49,6 +49,8 @@
                 this.savedPhotosByUid = new Map();
                 this.currentProjectFileHandle = null;
                 this.currentProjectFileName = '';
+                this.currentProjectSaveMode = '';
+                this.lastMergeReport = null;
                 this.currentProjectSavedAt = null;
                 this.lastLocalEditAt = null;
                 this.initialSaveAs = typeof window !== 'undefined' && typeof window.saveAs === 'function' ? window.saveAs : null;
@@ -56,6 +58,7 @@
                 this.autoDraftStoreName = 'drafts';
                 this.autoDraftTimer = null;
                 this.lastAutoDraftSavedAt = null;
+                this.lastAutoDraftSignature = '';
                 this.pendingAutoDraft = null;
                 this.hadPhotosInSession = false;
                 this.maxAutoDraftPhotos = 120;
@@ -249,6 +252,8 @@
                 });
                 document.getElementById('btnAddPhotos').addEventListener('click', () => this.fileInput.click());
                 document.getElementById('btnAddFolder').addEventListener('click', () => this.folderInput.click());
+                document.getElementById('btnEmptyAddPhotos').addEventListener('click', () => this.fileInput.click());
+                document.getElementById('btnEmptyAddFolder').addEventListener('click', () => this.folderInput.click());
 
                 // 按鈕事件
                 document.getElementById('btnTodayDate').addEventListener('click', () => this.setDefaultTodayDate());
@@ -295,6 +300,21 @@
                     else this.updateAuditBarUi();
                 });
                 this.setupMenus();
+                document.getElementById('btnViewMergeReport').addEventListener('click', () => this.showMergeReport());
+                document.getElementById('btnCloseMergeReport').addEventListener('click', () => this.closeModal('mergeReportModal'));
+                document.getElementById('mergeReportModal').addEventListener('keydown', event => {
+                    if (event.key !== 'Tab') return;
+                    const nodes = Array.from(document.querySelectorAll('#mergeReportModal button, #mergeReportModal summary, #mergeReportBody'));
+                    const first = nodes[0], last = nodes[nodes.length - 1];
+                    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+                    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+                });
+                const caseDetails = document.getElementById('caseDetails');
+                const compactLayout = window.matchMedia('(max-width: 1199px)');
+                const applyCaseLayout = () => { caseDetails.open = !compactLayout.matches; };
+                applyCaseLayout();
+                compactLayout.addEventListener('change', applyCaseLayout);
+                document.getElementById('btnWorkspaceHelp').addEventListener('click', () => this.openModal('shortcutsModal'));
                 document.getElementById('btnClearAll').addEventListener('click', () => this.clearAll());
                 document.getElementById('btnBatchRotate').addEventListener('click', () => this.batchRotate(90));
                 document.getElementById('btnMoveSelectedBackward').addEventListener('click', () => this.moveSelectedBy(-1));
@@ -448,7 +468,7 @@
                             e.preventDefault();
                             return;
                         }
-                        ['shortcutsModal', 'sequenceModal', 'updateModal', 'upToDateModal', 'updateErrorModal', 'exportAuditModal', 'imageLightboxModal'].forEach(id => {
+                        ['shortcutsModal', 'sequenceModal', 'updateModal', 'upToDateModal', 'updateErrorModal', 'exportAuditModal', 'mergeReportModal', 'imageLightboxModal'].forEach(id => {
                             this.closeModal(id);
                         });
                     }
@@ -901,8 +921,7 @@
             }
 
             normalizePhotoFilenameKey(name) {
-                const trimmed = String(name || '').trim().toLowerCase();
-                return trimmed.replace(/\.(jpe?g|png|webp|gif|bmp|heic)$/i, '').replace(/\s+/g, ' ');
+                return PhotoReportProjectMerge.normalizePhotoFilenameKey(name);
             }
 
             computeVisualFingerprintFromCanvas(sourceCanvas) {
@@ -1868,25 +1887,12 @@
                 card.title = `第 ${photo.seq} 張｜時間：${photo.time || '未填'}｜${statusText}｜雙擊縮圖放大、雙擊編號列編輯，拖曳可排序`;
             }
 
-            cloneAnnotations(annotations) {
-                if (!Array.isArray(annotations)) return [];
-                return annotations.map(ann => ({ ...ann }));
+            cloneAnnotations(value) {
+                return PhotoReportPhotoModel.cloneAnnotations(value);
             }
 
-            cloneSideCrop(sideCrop) {
-                if (!sideCrop || typeof sideCrop !== 'object' || !sideCrop.cropRect) return null;
-                return {
-                    cropRect: {
-                        x: Number(sideCrop.cropRect.x) || 0,
-                        y: Number(sideCrop.cropRect.y) || 0,
-                        w: Number(sideCrop.cropRect.w) || 0.2,
-                        h: Number(sideCrop.cropRect.h) || 0.2
-                    },
-                    widthRatio: Number(sideCrop.widthRatio) || 0.65,
-                    offsetY: Number.isFinite(Number(sideCrop.offsetY)) ? Number(sideCrop.offsetY) : 0.5,
-                    borderColor: sideCrop.borderColor === 'red' ? 'red' : sideCrop.borderColor === 'none' ? 'none' : 'yellow',
-                    sourceAnnId: sideCrop.sourceAnnId || null
-                };
+            cloneSideCrop(value) {
+                return PhotoReportPhotoModel.cloneSideCrop(value);
             }
 
             snapshotState(label = '') {
@@ -1895,16 +1901,7 @@
                     caseData: this.getCaseData(),
                     currentIndex: this.currentIndex,
                     lastSelectedIndex: this.lastSelectedIndex,
-                    photos: this.photos.map(photo => ({
-                        ...photo,
-                        flipH: Boolean(photo.flipH),
-                        parentUid: photo.parentUid || null,
-                        cropRect: photo.cropRect ? { ...photo.cropRect } : null,
-                        sideCrop: this.cloneSideCrop(photo.sideCrop),
-                        compositeThumbnailSrc: null,
-                        _compositeKey: '',
-                        annotations: this.cloneAnnotations(photo.annotations)
-                    }))
+                    photos: this.photos.map(photo => PhotoReportPhotoModel.cloneForHistory(photo))
                 };
             }
 
@@ -2004,10 +2001,10 @@
                 });
             }
 
-            markProjectSaved(savedTs = null) {
-                this.savedProjectSignature = this.projectSignature();
+            markProjectSaved(savedTs = null, snapshot = null) {
+                this.savedProjectSignature = snapshot ? PhotoReportHistory.projectSignature(snapshot.caseData, snapshot.photos) : this.projectSignature();
                 this.savedPhotosByUid = new Map(
-                    this.photos.map(photo => [photo.uid, this.getPhotoContentSignature(photo)])
+                    (snapshot?.photos || this.photos).map(photo => [photo.uid, this.getPhotoContentSignature(photo)])
                 );
                 if (savedTs === 'clear') {
                     this.currentProjectSavedAt = null;
@@ -2016,7 +2013,7 @@
                 } else if (this.photos.length > 0 && !this.currentProjectSavedAt) {
                     this.currentProjectSavedAt = Date.now();
                 }
-                this.lastLocalEditAt = null;
+                if (!this.hasUnsavedProjectChanges()) this.lastLocalEditAt = null;
                 this.updateProjectSaveStatusUi();
             }
 
@@ -2053,21 +2050,23 @@
                 this.btnQuickSaveStatus.classList.remove('hidden');
                 this.btnQuickSaveStatus.classList.toggle('project-save-badge--unsaved', unsaved);
                 this.btnQuickSaveStatus.classList.toggle('project-save-badge--saved', !unsaved);
+                this.btnQuickSaveStatus.classList.toggle('project-save-badge--download', !unsaved && this.currentProjectSaveMode === 'download');
                 if (unsaved) {
                     this.quickSaveStatusIcon.className = 'fa-solid fa-circle-exclamation';
-                    const autoDraftHint = this.lastAutoDraftSavedAt ? '・已自動暫存' : '';
+                    const autoDraftHint = this.lastAutoDraftSavedAt && this.lastAutoDraftSignature === this.projectSignature() ? '・已自動暫存' : '';
                     this.quickSaveStatusText.textContent = `還有修改沒存（Ctrl+S）${autoDraftHint}`;
                     this.btnQuickSaveStatus.title = this.currentProjectFileName
-                        ? `點擊直接儲存至「${this.currentProjectFileName}」（快速鍵：Ctrl+S）`
+                        ? (this.currentProjectFileHandle ? `點擊儲存至「${this.currentProjectFileName}」（Ctrl+S）` : '點擊產生新的工作進度下載檔（Ctrl+S）')
                         : '點擊儲存工作進度檔（快速鍵：Ctrl+S）';
                 } else {
-                    this.quickSaveStatusIcon.className = 'fa-solid fa-circle-check';
-                    this.quickSaveStatusText.textContent = this.currentProjectFileName
-                        ? `已儲存：${this.currentProjectFileName}`
-                        : '工作進度已儲存';
-                    this.btnQuickSaveStatus.title = this.currentProjectFileName
-                        ? `目前已儲存至「${this.currentProjectFileName}」（按 Ctrl+S 可再次儲存）`
-                        : '目前工作進度已儲存（按 Ctrl+S 可再次儲存）';
+                    this.quickSaveStatusIcon.className = this.currentProjectSaveMode === 'download' ? 'fa-solid fa-download' : 'fa-solid fa-circle-check';
+                    const label = this.currentProjectSaveMode === 'download' ? '已產生下載檔'
+                        : this.currentProjectSaveMode === 'written' ? '已寫入檔案' : '已載入工作進度';
+                    this.quickSaveStatusText.textContent = this.currentProjectFileName ? label + '：' + this.currentProjectFileName : label;
+                    const time = this.currentProjectSavedAt ? new Date(this.currentProjectSavedAt).toLocaleString('zh-TW') : '';
+                    this.btnQuickSaveStatus.title = this.currentProjectSaveMode === 'download'
+                        ? '已交付瀏覽器下載，請確認下載資料夾已取得「' + this.currentProjectFileName + '」。產生時間：' + time
+                        : label + '「' + this.currentProjectFileName + '」・' + time;
                 }
                 if (this.saveProjectMenuText) {
                     this.saveProjectMenuText.textContent = (this.currentProjectFileHandle && this.currentProjectFileName)
@@ -2296,6 +2295,7 @@
                 this.processingCancelled = false;
 
                 const caseData = this.getCaseData();
+                const savingPhotos = this.photos.map(photo => PhotoReportPhotoModel.cloneForHistory(photo));
                 const safeTitle = this.sanitizeFilename(caseData.caseTitle, '現場照片清冊');
                 const suffix = '_照片清冊專案.photo-report';
                 const suggestedName = (!saveAsNew && this.currentProjectFileHandle && this.currentProjectFileName)
@@ -2326,13 +2326,13 @@
                     const zip = new JSZip();
                     const manifestPhotos = [];
                     const progressText = '正在最佳化圖片並封裝工作進度…';
-                    this.setProgress(progressText, 0, this.photos.length);
+                    this.setProgress(progressText, 0, savingPhotos.length);
 
-                    for (let index = 0; index < this.photos.length; index++) {
+                    for (let index = 0; index < savingPhotos.length; index++) {
                         this.throwIfProcessingCancelled();
-                        const photo = this.photos[index];
+                        const photo = savingPhotos[index];
                         const safeArchivePhotoName = this.sanitizeFilename(photo.name, `photo_${index + 1}.jpg`);
-                        const archiveName = `${String(index + 1).padStart(4, '0')}_${photo.uid}_${safeArchivePhotoName}`;
+                        const archiveName = `${String(index + 1).padStart(4, '0')}_${this.sanitizeFilename(photo.uid, 'photo')}_${safeArchivePhotoName}`;
 
                         let entryBlob = photo.file;
                         let entryType = photo.file?.type || 'image/jpeg';
@@ -2355,31 +2355,10 @@
 
                         // 照片本身已是壓縮格式，一律以 STORE 直接封裝，避免重複 DEFLATE 壓縮造成嚴重卡頓
                         zip.file(`images/${archiveName}`, entryBlob, { compression: 'STORE' });
-                        manifestPhotos.push({
-                            uid: photo.uid,
-                            archiveName,
-                            name: photo.name,
-                            type: entryType,
-                            visualFingerprint: photoFp,
-                            thumbnailAspect: Number(photo.thumbnailAspect) || 1,
-                            rotation: photo.rotation,
-                            flipH: Boolean(photo.flipH),
-                            parentUid: photo.parentUid || null,
-                            cropRect: photo.cropRect ? { ...photo.cropRect } : null,
-                            sideCrop: this.cloneSideCrop(photo.sideCrop),
-                            annotations: this.cloneAnnotations(photo.annotations),
-                            exifRotation: entryExifRotation,
-                            seq: photo.seq,
-                            date: photo.date,
-                            time: photo.time,
-                            timeAutoDefaulted: Boolean(photo.timeAutoDefaulted),
-                            location: photo.location,
-                            desc: photo.desc,
-                            selected: photo.selected,
-                            stageX: Number.isFinite(photo.stageX) ? photo.stageX : null,
-                            stageY: Number.isFinite(photo.stageY) ? photo.stageY : null
-                        });
-                        this.setProgress(progressText, index + 1, this.photos.length);
+                        manifestPhotos.push(PhotoReportPhotoModel.toRecord(photo, {
+                            archiveName, type: entryType, exifRotation: entryExifRotation, visualFingerprint: photoFp
+                        }));
+                        this.setProgress(progressText, index + 1, savingPhotos.length);
                         this.throwIfProcessingCancelled();
                         if ((index + 1) % (lite ? 4 : 10) === 0) await this.yieldToBrowser();
                     }
@@ -2387,32 +2366,33 @@
                     this.throwIfProcessingCancelled();
                     const savedAtIso = new Date().toISOString();
                     const savedAtMs = Date.parse(savedAtIso);
-                    zip.file('manifest.json', JSON.stringify({
-                        format: 'photo-report-project',
-                        version: 1,
-                        liteMode: lite,
-                        savedAt: savedAtIso,
-                        caseData: this.getCaseData(),
-                        currentIndex: this.currentIndex,
-                        lastSelectedIndex: this.lastSelectedIndex,
-                        photos: manifestPhotos
-                    }), { compression: 'DEFLATE', compressionOptions: { level: 6 } });
+                    zip.file('manifest.json', JSON.stringify(PhotoReportProjectFormat.createManifest({
+                        liteMode: lite, savedAt: savedAtIso, caseData,
+                        currentIndex: this.currentIndex, lastSelectedIndex: this.lastSelectedIndex, photos: manifestPhotos
+                    })), { compression: 'DEFLATE', compressionOptions: { level: 6 } });
 
                     const content = await zip.generateAsync({ type: 'blob' });
                     this.throwIfProcessingCancelled();
 
                     if (targetHandle && typeof targetHandle.createWritable === 'function') {
                         const writable = await targetHandle.createWritable();
-                        await writable.write(content);
-                        await writable.close();
+                        try {
+                            await writable.write(content);
+                            await writable.close();
+                        } catch (error) {
+                            if (typeof writable.abort === 'function') { try { await writable.abort(); } catch {} }
+                            throw error;
+                        }
                         this.currentProjectFileHandle = targetHandle;
                         this.currentProjectFileName = targetHandle.name || suggestedName;
+                        this.currentProjectSaveMode = 'written';
                     } else {
                         saveAs(content, suggestedName);
                         this.currentProjectFileName = suggestedName;
+                        this.currentProjectSaveMode = 'download';
                     }
 
-                    this.markProjectSaved(savedAtMs);
+                    this.markProjectSaved(savedAtMs, { caseData, photos: savingPhotos });
                     this.scheduleAutoDraftSave();
                     return true;
                 } finally {
@@ -2438,21 +2418,20 @@
                 this.processingCancelled = false;
                 const restored = [];
                 try {
-                    const zip = await JSZip.loadAsync(file);
-                    this.throwIfProcessingCancelled();
-                    const manifestFile = zip.file('manifest.json');
-                    if (!manifestFile) throw new Error('這不是有效的照片清冊專案檔（缺少 manifest.json）。');
-                    const manifest = JSON.parse(await manifestFile.async('text'));
-                    if (manifest.format !== 'photo-report-project' || !Array.isArray(manifest.photos)) {
-                        throw new Error('專案檔格式不支援或內容不完整。');
-                    }
+                    const { zip, manifest, blobs } = await PhotoReportProjectFormat.readArchive(file, {
+                        Zip: JSZip,
+                        decodeImage: async blob => { const url = URL.createObjectURL(blob); try { await this.loadImage(url); } finally { URL.revokeObjectURL(url); } },
+                        checkCancelled: () => this.throwIfProcessingCancelled(),
+                        onProgress: (current, total) => this.setProgress('正在檢查進度檔圖片…', current, total),
+                        yieldToBrowser: () => this.yieldToBrowser()
+                    });
                     this.setProgress('正在還原專案照片…', 0, manifest.photos.length);
                     for (let index = 0; index < manifest.photos.length; index++) {
                         this.throwIfProcessingCancelled();
                         const saved = manifest.photos[index];
                         const entry = zip.file(`images/${saved.archiveName}`);
                         if (!entry) throw new Error(`專案檔缺少照片：${saved.name}`);
-                        const blob = await entry.async('blob');
+                        const blob = blobs.get(saved.archiveName);
                         this.throwIfProcessingCancelled();
                         const imageFile = new File([blob], saved.name, { type: saved.type || blob.type || 'image/jpeg' });
                         const src = URL.createObjectURL(imageFile);
@@ -2463,38 +2442,10 @@
                             URL.revokeObjectURL(src);
                             throw thumbErr;
                         }
-                        restored.push({
-                            uid: saved.uid || crypto.randomUUID(),
-                            file: imageFile,
-                            name: saved.name,
-                            src,
-                            thumbnailSrc: thumbnail.src,
-                            thumbnailAspect: Number(saved.thumbnailAspect) || thumbnail.aspect,
-                            visualFingerprint: saved.visualFingerprint || thumbnail.visualFingerprint || '',
-                            rotation: Number(saved.rotation) || 0,
-                            flipH: Boolean(saved.flipH),
-                            parentUid: saved.parentUid || null,
-                            cropRect: saved.cropRect && typeof saved.cropRect === 'object' ? {
-                                x: Number(saved.cropRect.x) || 0,
-                                y: Number(saved.cropRect.y) || 0,
-                                w: Number(saved.cropRect.w) || 0.1,
-                                h: Number(saved.cropRect.h) || 0.1
-                            } : null,
-                            sideCrop: this.cloneSideCrop(saved.sideCrop),
-                            compositeThumbnailSrc: null,
-                            _compositeKey: '',
-                            annotations: this.cloneAnnotations(saved.annotations),
-                            exifRotation: Number(saved.exifRotation) || 0,
-                            seq: String(saved.seq ?? index + 1),
-                            date: saved.date || '',
-                            time: saved.time || '',
-                            timeAutoDefaulted: Boolean(saved.timeAutoDefaulted),
-                            location: saved.location || '',
-                            desc: saved.desc || '',
-                            selected: Boolean(saved.selected),
-                            stageX: Number.isFinite(saved.stageX) ? saved.stageX : null,
-                            stageY: Number.isFinite(saved.stageY) ? saved.stageY : null
-                        });
+                        restored.push(PhotoReportPhotoModel.restore(saved, index, {
+                            uid: saved.uid || crypto.randomUUID(), file: imageFile, name: imageFile.name, src,
+                            thumbnailSrc: thumbnail.src, thumbnailAspect: thumbnail.aspect, visualFingerprint: thumbnail.visualFingerprint
+                        }));
                         this.setProgress('正在還原專案照片…', index + 1, manifest.photos.length);
                         this.throwIfProcessingCancelled();
                         if ((index + 1) % 5 === 0) await this.yieldToBrowser();
@@ -2524,6 +2475,8 @@
                     }
                     this.currentProjectFileHandle = fileHandle || null;
                     this.currentProjectFileName = file.name || '';
+                    this.currentProjectSaveMode = 'opened';
+                    this.setMergeReport(null);
                     this.hideAutoDraftBanner();
                     this.recordHistory('開啟專案');
                     const projectTs = this.getProjectTimestamp(manifest, file) || Date.now();
@@ -2552,206 +2505,27 @@
             }
 
             areAnnotationsEqual(annsA, annsB) {
-                const listA = Array.isArray(annsA) ? annsA : [];
-                const listB = Array.isArray(annsB) ? annsB : [];
-                if (listA.length !== listB.length) return false;
-                const norm = (a) => ({
-                    type: a?.type || '',
-                    color: a?.color || 'yellow',
-                    x: Math.round((Number(a?.x) || 0) * 1000) / 1000,
-                    y: Math.round((Number(a?.y) || 0) * 1000) / 1000,
-                    w: Math.round((Number(a?.w) || 0) * 1000) / 1000,
-                    h: Math.round((Number(a?.h) || 0) * 1000) / 1000,
-                    scale: Math.round((Number(a?.scale) || 1) * 100) / 100,
-                    text: String(a?.text || '').trim()
-                });
-                return JSON.stringify(listA.map(norm)) === JSON.stringify(listB.map(norm));
+                return PhotoReportProjectMerge.areAnnotationsEqual(annsA, annsB);
             }
 
             areSideCropsEqual(scA, scB) {
-                const hasA = Boolean(scA && scA.cropRect);
-                const hasB = Boolean(scB && scB.cropRect);
-                if (!hasA && !hasB) return true;
-                if (!hasA || !hasB) return false;
-                const norm = (sc) => ({
-                    x: Math.round((Number(sc.cropRect.x) || 0) * 1000) / 1000,
-                    y: Math.round((Number(sc.cropRect.y) || 0) * 1000) / 1000,
-                    w: Math.round((Number(sc.cropRect.w) || 0) * 1000) / 1000,
-                    h: Math.round((Number(sc.cropRect.h) || 0) * 1000) / 1000,
-                    widthRatio: Math.round((Number(sc.widthRatio) || 0.65) * 1000) / 1000,
-                    offsetY: Math.round((Number.isFinite(Number(sc.offsetY)) ? Number(sc.offsetY) : 0.5) * 1000) / 1000,
-                    borderColor: sc.borderColor === 'red' ? 'red' : sc.borderColor === 'none' ? 'none' : 'yellow'
-                });
-                return JSON.stringify(norm(scA)) === JSON.stringify(norm(scB));
+                return PhotoReportProjectMerge.areSideCropsEqual(scA, scB);
             }
 
             isCropRectSimilar(rectA, rectB) {
-                if (!rectA || !rectB) return false;
-                return Math.abs((Number(rectA.x) || 0) - (Number(rectB.x) || 0)) <= 0.025 &&
-                    Math.abs((Number(rectA.y) || 0) - (Number(rectB.y) || 0)) <= 0.025 &&
-                    Math.abs((Number(rectA.w) || 0) - (Number(rectB.w) || 0)) <= 0.025 &&
-                    Math.abs((Number(rectA.h) || 0) - (Number(rectB.h) || 0)) <= 0.025;
+                return PhotoReportProjectMerge.isCropRectSimilar(rectA, rectB);
             }
 
             allocateMergedMainSeq(workingPhotos, preferredSeq = '') {
-                const existingMain = workingPhotos.filter(p => !this.isLinkedCropChild(p, workingPhotos));
-                const usedSeqs = new Set(workingPhotos.map(p => String(p.seq || '').trim()));
-                const cleanPreferred = String(preferredSeq || '').trim();
-                if (existingMain.length === 0 && cleanPreferred && !usedSeqs.has(cleanPreferred)) {
-                    return cleanPreferred;
-                }
-
-                let prefix = '';
-                let minDigits = 1;
-                let maxNum = existingMain.length;
-                const lastMain = existingMain[existingMain.length - 1];
-                const lastMatch = String(lastMain?.seq || '').match(/^(.*?)(\d+)$/);
-                if (lastMatch) {
-                    prefix = lastMatch[1];
-                    minDigits = lastMatch[2].length;
-                }
-                existingMain.forEach(p => {
-                    const m = String(p.seq || '').match(/^(.*?)(\d+)$/);
-                    if (m && m[1] === prefix) {
-                        const num = parseInt(m[2], 10);
-                        if (Number.isFinite(num) && num > maxNum) maxNum = num;
-                    }
-                });
-
-                let nextNum = Math.max(1, maxNum + 1);
-                let candidate = `${prefix}${String(nextNum).padStart(minDigits, '0')}`;
-                while (usedSeqs.has(candidate)) {
-                    nextNum++;
-                    candidate = `${prefix}${String(nextNum).padStart(minDigits, '0')}`;
-                }
-                return candidate;
+                return PhotoReportProjectMerge.allocateMergedMainSeq(workingPhotos, preferredSeq);
             }
 
             makeUniqueDetailFilenameInList(parentPhoto, photoList) {
-                const origName = String(parentPhoto?.name || 'photo.jpg');
-                const dotIdx = origName.lastIndexOf('.');
-                const base = dotIdx > 0 ? origName.slice(0, dotIdx) : origName;
-                const existingNames = new Set((photoList || []).map(p => p.name));
-                let n = 1;
-                let candidate = `${base}_特寫${n}.jpg`;
-                while (existingNames.has(candidate)) {
-                    n++;
-                    candidate = `${base}_特寫${n}.jpg`;
-                }
-                return candidate;
+                return PhotoReportProjectMerge.makeUniqueDetailFilenameInList(parentPhoto, photoList);
             }
 
             mergeMatchedPhotoRecord(target, incoming, incomingTs) {
-                const targetTs = Number(target._effectiveTs) || 0;
-                const preferIncoming = incomingTs > targetTs;
-                let complemented = false;
-                let overwritten = false;
-
-                ['date', 'location', 'desc'].forEach(field => {
-                    const tVal = String(target[field] || '');
-                    const iVal = String(incoming[field] || '');
-                    const tHas = tVal.trim().length > 0;
-                    const iHas = iVal.trim().length > 0;
-                    if (!tHas && iHas) {
-                        target[field] = iVal;
-                        complemented = true;
-                    } else if (tHas && iHas && tVal.trim() !== iVal.trim() && preferIncoming) {
-                        target[field] = iVal;
-                        overwritten = true;
-                    }
-                });
-
-                const tTime = String(target.time || '').trim();
-                const iTime = String(incoming.time || '').trim();
-                const tIsRealTime = tTime.length > 0 && !(target.timeAutoDefaulted && tTime === '12:00');
-                const iIsRealTime = iTime.length > 0 && !(incoming.timeAutoDefaulted && iTime === '12:00');
-                if (!tIsRealTime && iIsRealTime) {
-                    target.time = iTime;
-                    target.timeAutoDefaulted = false;
-                    complemented = true;
-                } else if (tIsRealTime && iIsRealTime && tTime !== iTime && preferIncoming) {
-                    target.time = iTime;
-                    target.timeAutoDefaulted = Boolean(incoming.timeAutoDefaulted);
-                    overwritten = true;
-                } else if (!tIsRealTime && !iIsRealTime && !tTime && iTime) {
-                    target.time = iTime;
-                    target.timeAutoDefaulted = Boolean(incoming.timeAutoDefaulted);
-                }
-
-                const tRot = (((Number(target.rotation) || 0) % 360) + 360) % 360;
-                const iRot = (((Number(incoming.rotation) || 0) % 360) + 360) % 360;
-                const tFlip = Boolean(target.flipH);
-                const iFlip = Boolean(incoming.flipH);
-                const orientSame = (tRot === iRot) && (tFlip === iFlip);
-                const tHasOrient = tRot !== 0 || tFlip;
-                const iHasOrient = iRot !== 0 || iFlip;
-
-                const tAnns = Array.isArray(target.annotations) ? target.annotations : [];
-                const iAnns = Array.isArray(incoming.annotations) ? incoming.annotations : [];
-                const tHasAnns = tAnns.length > 0;
-                const iHasAnns = iAnns.length > 0;
-
-                const tSide = (target.sideCrop && target.sideCrop.cropRect) ? target.sideCrop : null;
-                const iSide = (incoming.sideCrop && incoming.sideCrop.cropRect) ? incoming.sideCrop : null;
-                const tHasSide = Boolean(tSide);
-                const iHasSide = Boolean(iSide);
-
-                const tHasOverlays = tHasAnns || tHasSide;
-                const iHasOverlays = iHasAnns || iHasSide;
-
-                if (orientSame) {
-                    if (!tHasAnns && iHasAnns) {
-                        target.annotations = this.cloneAnnotations(iAnns);
-                        complemented = true;
-                    } else if (tHasAnns && iHasAnns && !this.areAnnotationsEqual(tAnns, iAnns) && preferIncoming) {
-                        target.annotations = this.cloneAnnotations(iAnns);
-                        overwritten = true;
-                    }
-                    if (!tHasSide && iHasSide) {
-                        target.sideCrop = this.cloneSideCrop(iSide);
-                        complemented = true;
-                    } else if (tHasSide && iHasSide && !this.areSideCropsEqual(tSide, iSide) && preferIncoming) {
-                        target.sideCrop = this.cloneSideCrop(iSide);
-                        overwritten = true;
-                    }
-                } else {
-                    // 方向不同時，標記與並排綁定在對應方向座標系上，協同切換才不會歪框
-                    if (!tHasOverlays && iHasOverlays) {
-                        target.rotation = iRot;
-                        target.flipH = iFlip;
-                        target.annotations = this.cloneAnnotations(iAnns);
-                        target.sideCrop = this.cloneSideCrop(iSide);
-                        complemented = true;
-                    } else if (tHasOverlays && !iHasOverlays) {
-                        // 保留目標已有標記或並排的版本與其方向
-                    } else if (!tHasOrient && iHasOrient) {
-                        target.rotation = iRot;
-                        target.flipH = iFlip;
-                        complemented = true;
-                    } else if (tHasOrient && !iHasOrient) {
-                        // 保留目標已調整過的方向
-                    } else if (preferIncoming) {
-                        target.rotation = iRot;
-                        target.flipH = iFlip;
-                        if (!this.areAnnotationsEqual(tAnns, iAnns)) {
-                            target.annotations = this.cloneAnnotations(iAnns);
-                        }
-                        if (!this.areSideCropsEqual(tSide, iSide)) {
-                            target.sideCrop = this.cloneSideCrop(iSide);
-                        }
-                        overwritten = true;
-                    }
-                }
-
-                if (incomingTs > targetTs) {
-                    target._effectiveTs = incomingTs;
-                }
-
-                return {
-                    complemented,
-                    overwritten,
-                    changed: complemented || overwritten
-                };
+                return PhotoReportProjectMerge.mergeMatchedPhotoRecord(target, incoming, incomingTs);
             }
 
             async mergeProjectFiles(files) {
@@ -2765,6 +2539,11 @@
                 this.finalizeActiveInputsBeforeSave();
                 this.processingCancelled = false;
 
+                const beforePhotos = this.photos.map(photo => PhotoReportPhotoModel.toRecord(photo));
+                const beforeCase = this.getCaseData();
+                const finishReport = () => this.setMergeReport(PhotoReportProjectMerge.buildReport({
+                    beforePhotos, afterPhotos: this.photos, beforeCase, afterCase: this.getCaseData(), sources: fileList.map(file => file.name)
+                }));
                 const newlyCreatedUrls = new Set();
                 try {
                     const parsedSources = [];
@@ -2772,16 +2551,13 @@
                     for (let i = 0; i < fileList.length; i++) {
                         this.throwIfProcessingCancelled();
                         const file = fileList[i];
-                        const zip = await JSZip.loadAsync(file);
-                        this.throwIfProcessingCancelled();
-                        const manifestFile = zip.file('manifest.json');
-                        if (!manifestFile) {
-                            throw new Error(`「${file.name}」不是有效的照片清冊進度檔（缺少 manifest.json）。`);
-                        }
-                        const manifest = JSON.parse(await manifestFile.async('text'));
-                        if (manifest.format !== 'photo-report-project' || !Array.isArray(manifest.photos)) {
-                            throw new Error(`「${file.name}」格式不支援或內容不完整。`);
-                        }
+                        const { zip, manifest } = await PhotoReportProjectFormat.readArchive(file, {
+                        Zip: JSZip,
+                        decodeImage: async blob => { const url = URL.createObjectURL(blob); try { await this.loadImage(url); } finally { URL.revokeObjectURL(url); } },
+                        checkCancelled: () => this.throwIfProcessingCancelled(),
+                        onProgress: (current, total) => this.setProgress('正在檢查進度檔圖片…', current, total),
+                        yieldToBrowser: () => this.yieldToBrowser()
+                    });
                         parsedSources.push({
                             file,
                             zip,
@@ -2824,14 +2600,7 @@
                         );
                         const effectiveTs = isThisPhotoUnchangedFromSave ? baseSavedTimestamp : unsavedTimestamp;
                         workingPhotos.push({
-                            ...photo,
-                            flipH: Boolean(photo.flipH),
-                            parentUid: photo.parentUid || null,
-                            cropRect: photo.cropRect ? { ...photo.cropRect } : null,
-                            sideCrop: this.cloneSideCrop(photo.sideCrop),
-                            compositeThumbnailSrc: null,
-                            _compositeKey: '',
-                            annotations: this.cloneAnnotations(photo.annotations),
+                            ...PhotoReportPhotoModel.cloneForHistory(photo),
                             visualFingerprint: fp,
                             thumbnailAspect: aspect,
                             timeAutoDefaulted: Boolean(photo.timeAutoDefaulted),
@@ -2887,37 +2656,12 @@
                         }
 
                         return {
-                            uid: newUid,
-                            file: imageFile,
-                            name: targetName,
-                            src: srcUrl,
-                            thumbnailSrc: thumbnail.src,
-                            thumbnailAspect: Number(extSaved.thumbnailAspect) || thumbnail.aspect,
-                            visualFingerprint: extSaved.visualFingerprint || thumbnail.visualFingerprint || '',
-                            rotation: Number(extSaved.rotation) || 0,
-                            flipH: Boolean(extSaved.flipH),
-                            parentUid: overrideParentUid || null,
-                            cropRect: extSaved.cropRect && typeof extSaved.cropRect === 'object' ? {
-                                x: Number(extSaved.cropRect.x) || 0,
-                                y: Number(extSaved.cropRect.y) || 0,
-                                w: Number(extSaved.cropRect.w) || 0.1,
-                                h: Number(extSaved.cropRect.h) || 0.1
-                            } : null,
-                            sideCrop: this.cloneSideCrop(extSaved.sideCrop),
-                            compositeThumbnailSrc: null,
-                            _compositeKey: '',
-                            annotations: this.cloneAnnotations(extSaved.annotations),
-                            exifRotation: Number(extSaved.exifRotation) || 0,
-                            seq: newSeq,
-                            date: extSaved._materializedDate || '',
-                            time: extSaved.time || '',
-                            timeAutoDefaulted: Boolean(extSaved.timeAutoDefaulted),
-                            location: extSaved._materializedLocation || '',
-                            desc: extSaved.desc || '',
-                            selected: false,
-                            stageX: null,
-                            stageY: null,
-                            _effectiveTs: extTs
+                            ...PhotoReportPhotoModel.restore(extSaved, workingPhotos.length, {
+                                uid: newUid, file: imageFile, name: targetName, src: srcUrl, thumbnailSrc: thumbnail.src,
+                                thumbnailAspect: thumbnail.aspect, visualFingerprint: thumbnail.visualFingerprint
+                            }),
+                            parentUid: overrideParentUid || null, seq: newSeq, date: extSaved._materializedDate || '',
+                            location: extSaved._materializedLocation || '', selected: false, stageX: null, stageY: null, _effectiveTs: extTs
                         };
                     };
 
@@ -3160,6 +2904,7 @@
                     const anyDataChanged = addedCount > 0 || complementedUids.size > 0 || overwrittenUids.size > 0 || caseDataChanged;
                     if (!anyDataChanged && hadExistingPhotos) {
                         newlyCreatedUrls.forEach(url => URL.revokeObjectURL(url));
+                        finishReport();
                         alert(`已完成比對（${parsedSources.length} 份工作進度），目前 ${this.photos.length} 張照片與說明均完全相同，無須重複加入。`);
                         return true;
                     }
@@ -3210,6 +2955,7 @@
                         details.push(`較晚版本更新 ${overCount} 張`);
                     }
                     const detailSuffix = details.length ? `（${details.join('、')}）` : '';
+                    finishReport();
                     alert(`已完成彙整 ${parsedSources.length} 份工作進度，目前共 ${totalAfter} 張照片${detailSuffix}。如需覆寫或另存整合檔，請按 Ctrl+S 儲存。`);
                     return true;
                 } catch (error) {
@@ -3219,6 +2965,19 @@
                 } finally {
                     this.clearProgress();
                 }
+            }
+
+            setMergeReport(report) {
+                this.lastMergeReport = report;
+                const button = document.getElementById('btnViewMergeReport');
+                if (button) button.disabled = !report;
+            }
+
+            showMergeReport() {
+                if (!this.lastMergeReport) return;
+                PhotoReportMergeReportUi.render(document.getElementById('mergeReportBody'), document.getElementById('mergeReportMeta'), this.lastMergeReport);
+                this.openModal('mergeReportModal');
+                document.getElementById('btnCloseMergeReport').focus();
             }
 
             handleProjectError(error, action = 'open') {
@@ -3265,46 +3024,20 @@
                 if (this.photos.length > this.maxAutoDraftPhotos || totalBytes > this.maxAutoDraftBytes) {
                     return false;
                 }
+                const sourcePhotos = this.photos.map(photo => PhotoReportPhotoModel.cloneForHistory(photo));
+                const snapshotCase = this.getCaseData();
                 const snapshotPhotos = [];
-                for (let i = 0; i < this.photos.length; i++) {
-                    const photo = this.photos[i];
+                for (let i = 0; i < sourcePhotos.length; i++) {
+                    const photo = sourcePhotos[i];
                     if (!photo || !photo.file) continue;
                     const buffer = await photo.file.arrayBuffer();
-                    snapshotPhotos.push({
-                        uid: photo.uid,
-                        name: photo.name,
-                        type: photo.file.type || 'image/jpeg',
-                        buffer,
-                        rotation: photo.rotation || 0,
-                        flipH: Boolean(photo.flipH),
-                        parentUid: photo.parentUid || null,
-                        cropRect: photo.cropRect ? { ...photo.cropRect } : null,
-                        sideCrop: this.cloneSideCrop(photo.sideCrop),
-                        annotations: this.cloneAnnotations(photo.annotations),
-                        exifRotation: photo.exifRotation || 0,
-                        seq: photo.seq,
-                        date: photo.date || '',
-                        time: photo.time || '',
-                        timeAutoDefaulted: Boolean(photo.timeAutoDefaulted),
-                        visualFingerprint: photo.visualFingerprint || '',
-                        thumbnailAspect: Number(photo.thumbnailAspect) || 1,
-                        location: photo.location || '',
-                        desc: photo.desc || '',
-                        selected: Boolean(photo.selected),
-                        stageX: Number.isFinite(photo.stageX) ? photo.stageX : null,
-                        stageY: Number.isFinite(photo.stageY) ? photo.stageY : null
-                    });
+                    snapshotPhotos.push(PhotoReportPhotoModel.toRecord(photo, { buffer }));
                 }
                 if (!snapshotPhotos.length) return false;
-                const payload = {
-                    format: 'photo-report-autodraft',
-                    version: 1,
-                    savedAt: new Date().toISOString(),
-                    caseData: this.getCaseData(),
-                    currentIndex: this.currentIndex,
-                    lastSelectedIndex: this.lastSelectedIndex,
-                    photos: snapshotPhotos
-                };
+                const payload = PhotoReportProjectFormat.createManifest({
+                    draft: true, caseData: snapshotCase, currentIndex: this.currentIndex,
+                    lastSelectedIndex: this.lastSelectedIndex, photos: snapshotPhotos
+                });
                 const db = await this.openAutoDraftDb();
                 try {
                     await new Promise((resolve, reject) => {
@@ -3314,6 +3047,7 @@
                         tx.onerror = () => reject(tx.error);
                     });
                     this.lastAutoDraftSavedAt = new Date();
+                    this.lastAutoDraftSignature = PhotoReportHistory.projectSignature(payload.caseData, payload.photos);
                     this.updateProjectSaveStatusUi();
                     return true;
                 } finally {
@@ -3397,6 +3131,7 @@
                 this.processingCancelled = false;
                 const restored = [];
                 try {
+                    PhotoReportProjectFormat.validateManifest(draft, { draft: true });
                     this.setProgress('正在還原自動暫存進度…', 0, draft.photos.length);
                     for (let index = 0; index < draft.photos.length; index++) {
                         this.throwIfProcessingCancelled();
@@ -3412,38 +3147,10 @@
                             URL.revokeObjectURL(src);
                             throw thumbErr;
                         }
-                        restored.push({
-                            uid: saved.uid || crypto.randomUUID(),
-                            file: imageFile,
-                            name: saved.name || `photo_${index + 1}.jpg`,
-                            src,
-                            thumbnailSrc: thumbnail.src,
-                            thumbnailAspect: Number(saved.thumbnailAspect) || thumbnail.aspect,
-                            visualFingerprint: saved.visualFingerprint || thumbnail.visualFingerprint || '',
-                            rotation: Number(saved.rotation) || 0,
-                            flipH: Boolean(saved.flipH),
-                            parentUid: saved.parentUid || null,
-                            cropRect: saved.cropRect && typeof saved.cropRect === 'object' ? {
-                                x: Number(saved.cropRect.x) || 0,
-                                y: Number(saved.cropRect.y) || 0,
-                                w: Number(saved.cropRect.w) || 0.1,
-                                h: Number(saved.cropRect.h) || 0.1
-                            } : null,
-                            sideCrop: this.cloneSideCrop(saved.sideCrop),
-                            compositeThumbnailSrc: null,
-                            _compositeKey: '',
-                            annotations: this.cloneAnnotations(saved.annotations),
-                            exifRotation: Number(saved.exifRotation) || 0,
-                            seq: String(saved.seq ?? index + 1),
-                            date: saved.date || '',
-                            time: saved.time || '',
-                            timeAutoDefaulted: Boolean(saved.timeAutoDefaulted),
-                            location: saved.location || '',
-                            desc: saved.desc || '',
-                            selected: Boolean(saved.selected),
-                            stageX: Number.isFinite(saved.stageX) ? saved.stageX : null,
-                            stageY: Number.isFinite(saved.stageY) ? saved.stageY : null
-                        });
+                        restored.push(PhotoReportPhotoModel.restore(saved, index, {
+                            uid: saved.uid || crypto.randomUUID(), file: imageFile, name: imageFile.name, src,
+                            thumbnailSrc: thumbnail.src, thumbnailAspect: thumbnail.aspect, visualFingerprint: thumbnail.visualFingerprint
+                        }));
                         this.setProgress('正在還原自動暫存進度…', index + 1, draft.photos.length);
                         this.throwIfProcessingCancelled();
                         if ((index + 1) % 5 === 0) await this.yieldToBrowser();
@@ -3469,11 +3176,14 @@
                     }
                     this.currentProjectFileHandle = null;
                     this.currentProjectFileName = '';
+                    this.currentProjectSaveMode = 'draft';
+                    this.setMergeReport(null);
                     this.currentProjectSavedAt = null;
                     this.lastLocalEditAt = Date.now();
                     this.savedPhotosByUid = new Map();
                     this.pendingAutoDraft = null;
                     this.lastAutoDraftSavedAt = draft.savedAt ? new Date(draft.savedAt) : new Date();
+                    this.lastAutoDraftSignature = this.projectSignature();
                     this.hideAutoDraftBanner();
                     this.recordHistory('恢復自動暫存進度');
                     this.render();
@@ -3529,6 +3239,7 @@
                 this.thumbnailSizeRange.value = String(this.thumbnailSize);
                 this.thumbnailSizeLabel.textContent = `${this.thumbnailSize}px`;
 
+                this.workspaceContainer.classList.toggle('editor-collapsed', this.editorCollapsed);
                 this.workspaceContainer.classList.toggle('lg:grid-cols-12', !this.editorCollapsed);
                 this.workspaceContainer.classList.toggle('lg:grid-cols-1', this.editorCollapsed);
                 this.photoPanel.classList.toggle('lg:col-span-8', !this.editorCollapsed);
@@ -4076,7 +3787,7 @@
             }
 
             hasBlockingModalOpen() {
-                return ['shortcutsModal', 'sequenceModal', 'updateModal', 'upToDateModal', 'updateErrorModal', 'exportAuditModal']
+                return ['shortcutsModal', 'sequenceModal', 'updateModal', 'upToDateModal', 'updateErrorModal', 'exportAuditModal', 'mergeReportModal']
                     .some(id => {
                         const el = document.getElementById(id);
                         return Boolean(el && !el.classList.contains('hidden'));
@@ -4179,6 +3890,8 @@
                     this._dupSet = null;
                     this.currentProjectFileHandle = null;
                     this.currentProjectFileName = '';
+                    this.currentProjectSaveMode = '';
+                    this.setMergeReport(null);
                     this.currentProjectSavedAt = null;
                     this.lastLocalEditAt = null;
                     this.savedPhotosByUid = new Map();
@@ -7488,6 +7201,7 @@
             }
 
             closeModal(id) {
+                if (id === 'mergeReportModal' && !document.getElementById(id).classList.contains('hidden')) this.btnQuickSaveStatus?.focus();
                 if (id === 'sequenceModal') this.pendingSequenceExport = null;
                 if (id === 'exportAuditModal') this.pendingExportAction = null;
                 if (id === 'imageLightboxModal') {
@@ -8091,5 +7805,6 @@
         }
 
         window.addEventListener('DOMContentLoaded', () => {
+            if (typeof PhotoReportPhotoModel === 'undefined' || typeof PhotoReportProjectFormat === 'undefined' || typeof PhotoReportProjectMerge === 'undefined' || typeof PhotoReportMergeReportUi === 'undefined') throw new Error('必要的照片資料模組尚未載入。');
             window.app = new PhotoReportApp();
         });

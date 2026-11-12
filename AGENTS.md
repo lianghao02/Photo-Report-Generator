@@ -36,10 +36,11 @@
 ---
 
 ## 4. 檔案地圖與拆分注意事項
-- `index.html`：版面骨架（約 775 行），依序載入 `vendor/`、`css/app.css`、`js/` 各模組，最後載入主程式 `js/app.js`。**載入順序即執行順序，不可調換**。
+- `index.html`：版面骨架，依序載入 `vendor/`、`css/app.css`、`js/` 各模組，最後載入主程式 `js/app.js`。**載入順序即執行順序，不可調換**。
 - `css/app.css`：主介面樣式（由內嵌 `<style>` 拆出）。`js/app.js`：主程式 App 類別與工作台流程（由內嵌 `<script>` 原封不動拆出，保留縮排以免改變跨行樣板字串）。
+- `js/photo-model.js`：照片資料複製、保存與還原；`js/project-format.js`：進度檔／草稿格式與開檔檢查；`js/project-merge.js`：純資料彙整規則與變更紀錄；`js/ui/merge-report-ui.js`：明細呈現。載入順序為資料模型 ➜ 格式／彙整 ➜ UI ➜ app。
 - 其餘 `js/`：驗證、稽核、選取、歷程、UI 與三個匯出模組（Word／Excel／PDF 互相隔離）。
-- **Tailwind 是依掃描到的類別名稱產生樣式**：`scripts/prepare-assets.ps1` 的 `--content` 必須涵蓋所有含類別名稱的檔案（目前為 `index.html`、`css/app.css`、`js/app.js`）。新增或搬移含類別名稱的程式碼時要同步加入，並比對 `vendor/tailwind.css` 前後是否只增不減。
+- **Tailwind 是依掃描到的類別名稱產生樣式**：`scripts/prepare-assets.ps1` 的 `--content` 必須涵蓋所有含類別名稱的檔案（目前為 `index.html`、`css/app.css`、`js/app.js`、`js/ui/merge-report-ui.js`）。新增或搬移含類別名稱的程式碼時要同步加入，並比對 `vendor/tailwind.css` 前後是否只增不減。
 - 桌面版（Tauri）由 `scripts/prepare-web.ps1` 複製到 `web/`：目前複製 `index.html`、`vendor/`、`js/`、`css/`、`version.txt`；新增頂層資料夾時要一併加入。
 - 單元測試 `tests/unit/app-bridge.js` 從 `index.html` 與 `js/app.js` 依名稱擷取 App 方法；搬移這些方法時要同步更新來源清單。
 - 完整驗證：`npm test`、`npm run test:baseline`（Word／Excel／PDF Golden Baseline）、`npm run test:e2e`，以及下方 QA。

@@ -3,6 +3,178 @@
 ## 核心元資料 (Metadata)
 - **Repository**：lianghao02/Photo-Report-Generator
 - **Branch**：main
+- **Commit SHA**：隨本輪提交（父提交 392e0a12d634fe50b7b41eb089d1a46379963378；本檔包含於提交，實際 SHA 見 git log -1）
+- **Skill Version**：v1.0.0
+- **Task Type**：IMPROVE
+- **Local Path Hint**：04_Photo-Report-Generator
+
+---
+
+## 目前狀態
+可交付（本機修訂版）；五階段計畫、完整測試、Portable跨路徑原生流程及自我檢查已完成。無阻斷與重要問題，依使用者指示停止擴大修改。
+
+## 本輪目標
+依IMPLEMENTATION_PLAN.md保存現有修復與UI基準、補強測試失敗判定、抽出照片／進度格式／彙整邏輯，完成存檔狀態、開檔檢查及彙整明細。使用D:\PicPick照片副本實測，原始資料保持不變。使用者於2026-11-12追加授權「開始修正提交」，本輪固定已驗證成果至本機Git；不推送、不升版、不發布。
+
+## 基準與已確認事實 (Baseline & Confirmed Facts)
+- 開始本計畫時main已有前輪桌面修復、UI與計畫等未提交修改；不得覆寫、reset或只以HEAD當作回復點。
+- 已保存99個正式來源／新增檔案、baseline.patch、baseline-status.txt與前輪Portable產物，均位於被忽略的build/plan-implementation/baseline及baseline-artifacts。
+- 進度格式維持version 1。相容樣本為修改前程式實際產生的v1檔案，另外合成省略版本與錯誤案例；未取得更早正式發行版的真實進度檔，不宣稱全部歷史發行版皆已實測。
+- 原有彙整判定以50組修改前規則輸出及完整既有E2E比對；既有非空案件資料等合併行為保持。
+- 使用者提供的4張照片只複製至被忽略的測試區；來源路徑／雜湊紀錄不加入版本庫。
+
+## 已完成 (Completed)
+- 繼承前輪CSP、加入照片按鈕、拖放設定與六尺寸UI修訂；保存穩定基準。
+- 照片資料統一至js/photo-model.js，區分可保存欄位與File／Object URL執行期資源；歷程副本隔離可變資料。
+- js/project-format.js統一進度與草稿格式、支援版本、欄位結構、ZIP CRC、圖片清單及解碼檢查。開啟／彙整先驗證；異常、取消保留目前工作，釋放臨時URL。保留舊超標文字。
+- js/project-merge.js集中純資料彙整規則與固定前後差異；App保留工作流程、圖片資源與畫面協調。
+- 新增最近成功彙整明細，由js/ui/merge-report-ui.js安全呈現文字／旋轉／標記／特寫與案件欄位前後值；支援Esc、焦點與刪除快捷鍵防護。失敗不覆蓋前次成功紀錄，開啟另一進度／關閉程式不保留，Undo不改寫歷史快照。
+- 存檔狀態明確區分「已產生下載檔」、「已寫入檔案」、「已載入工作進度」及最新自動草稿。實際寫入須等write與close完成，失敗嘗試abort。
+- 修正非同步儲存／草稿期間繼續編輯的狀態誤判：固定開始時資料快照，後續修改仍標未存，舊草稿不顯示為新內容已暫存；補足競態測試。
+- 主要E2E遇pageerror真正失敗；以刻意拋錯／缺模組反例驗證。新增直接測模組的單元測試與進度檔完整性E2E。
+- 已更新README、AGENTS、Tailwind掃描來源及完成計畫。
+- 提交前核對分支main與origin、25個檔案的完整範圍、既有測試與原生驗證證據；更新本輪提交授權與交接狀態，不擴大產品修改。
+
+## 異動檔案 (Changed Files)
+- 累計既有與本輪修改：AGENTS.md、HANDOFF.md、README.md、IMPLEMENTATION_PLAN.md、index.html、css/app.css、js/app.js、package.json、scripts/prepare-assets.ps1、src-tauri/tauri.conf.json、vendor/tailwind.css。
+- 新模組：js/photo-model.js、js/project-format.js、js/project-merge.js、js/ui/merge-report-ui.js。
+- 測試：tests/e2e/photo-report.spec.js、desktop-policy.spec.js、layout.spec.js、project-integrity.spec.js；tests/helpers/page-errors.js、tests/run-all-unit.js、tests/unit/project-core.test.js；tests/fixtures/project-v1.photo-report、merge-compatibility.json、project-fixtures.md。
+- build、web、target及真實照片副本均屬被忽略的本機產物，不應加入Git。
+
+## 刻意未修改 (Do Not Do / Deliberately Omitted)
+使用者排除輸出前預覽，大量照片效能暫緩；不拆影像／燈箱、不新增範本、不新增桌面原生另存API、不更換框架。不修改三種匯出版型尺寸、不升級套件；版本維持2.4.1。
+
+## 尚未完成 (Remaining Work)
+- **P1 (阻斷/必須)**：無。
+- **P2 (重要/當次)**：無。
+- **P3 (改善建議/暫緩)**：Windows 10、其他電腦、125%／150%系統DPI與安裝版實際安裝驗證，正式發布時另安排。
+
+## 驗證結果 (Validation)
+### 已執行測試與結果
+- 最終npm run test:all通過：單元5/5（含50組彙整相容規則）、完整既有E2E、桌面CSP、六尺寸排版、進度完整性／失敗保護／非同步競態、Word／Excel／PDF Golden Baseline及三種版型。
+- 測試使用既有Node Playwright；同時驗證file://直接開啟，未新增測試相依套件。刻意觸發pageerror與必要模組缺少，防線確實拒絕。
+- 以PHOTO_REPORT_TEST_DIR指向D槽照片副本完成4張匯入、保存、重開與文字內容比對，並實際輸出DOCX／PDF。
+- 最新原始碼已重建release EXE、Setup及Portable ZIP，未正式發布。原始碼與web的8個關鍵資源逐位元組一致。
+- 最終Portable解壓至本輪C槽工作區outputs/photo-report-plan-complete/中文 Portable，跨磁碟及含中文、空白路徑正常啟動。
+- 原生視窗完成：開啟4張進度、彙整另1份（去重4張、較新更新1張）、查看說明前後明細及Esc關閉、Ctrl+S正確顯示下載模式、匯出Word與PDF。
+- 原生視窗另以檔案選擇器加入1張照片副本並修改說明、儲存、關閉重啟、開啟下載檔；確認共5張照片與「桌面原生編輯與重開驗證」說明完整還原。
+- 原生下載產物實際解壓與內容檢查：4／5張進度檔CRC及圖片均完整；DOCX含案件名稱、彙整後說明與4張圖片；PDF標頭正確且2頁。
+- D:\PicPick的4張來源SHA-256與開始時紀錄全部一致，原始檔未變更。
+- 解壓EXE與建置EXE逐位元組一致，SHA-256：d4106cf2079c29ca025a22b13759ecf35fab6e2cf18123da81d37290e841fcf5。
+- node --check、git diff --check及scripts/qa.ps1通過。最後文件更新後再核對Git與QA；無敏感資料警訊。
+- 本輪證據位於被忽略的build/plan-implementation/results：網頁產物／截圖、native實際產物與verification.json、SELF_REVIEW.md。含使用者照片的產物不加入版本庫。
+### 尚未驗證項目
+Windows 10、其他電腦、125%／150%系統DPI、檔案總管原生拖入及安裝版實際安裝未另實測。原生測試使用本機預設視窗，六尺寸是瀏覽器可視區測試；不混稱為多DPI實機驗證。原生直接寫入分支使用瀏覽器測試控制代碼驗證，Portable實際採下載流程。
+### 已知風險 (Known Risks)
+下載流程只能確認交付瀏覽器，無法可靠確認使用者最終磁碟存檔；介面已明白提示檢查下載資料夾。彙整明細只保留當次工作階段最近成功紀錄，不是永久修改歷程。沒有本輪已知阻斷或重要問題。
+
+## Git 狀態
+- Commit：本輪提交（包含本檔；實際SHA見git log -1，父提交392e0a12d634fe50b7b41eb089d1a46379963378）
+- Push：否
+- Working Tree：本輪25個檔案提交後確認Clean；包含前輪桌面修復／UI及本輪計畫實作，最終狀態以git status為準
+- Branch：main
+
+## 下一步建議動作 (Next Recommended Action)
+本輪已達完成條件，依授權完成本機Git提交後停止。使用者可測試最新Portable；後續推送或正式發布另依明確授權及Release Gate辦理。
+
+## 發布狀態 (Release Status)
+本機修訂版可交付，已依使用者授權納入本輪Git提交。維持v2.4.1，Setup與Portable已重新建置；未推送、未更新線上版或遠端Release。
+
+---
+
+以下為先前交接紀錄，現況以本輪狀態與 Git 為準。
+
+# HANDOFF
+
+## 核心元資料 (Metadata)
+- **Repository**：lianghao02/Photo-Report-Generator
+- **Branch**：main
+- **Commit SHA**：未提交（基準 392e0a12d634fe50b7b41eb089d1a46379963378）
+- **Skill Version**：v1.0.0
+- **Task Type**：IMPROVE
+- **Local Path Hint**：04_Photo-Report-Generator
+
+---
+
+## 目前狀態
+可交付（本機 UI 修訂版）；最終完整測試、六尺寸版面測試、桌面重新建置及原生工作台驗證全部通過。
+
+## 本輪目標
+承接前輪桌面修復成果，修訂網頁與桌面共用 UI：匯出列不遮擋、案件資料可收合、照片與表單獨立捲動、固定照片切換、改善工具列換行。不提交、不推送、不發布遠端版本。
+
+## 基準與已確認事實 (Baseline & Confirmed Facts)
+- 任務開始時 main 工作目錄乾淨，HEAD 為 392e0a1。
+- 原桌面 EXE、Setup 與 Portable 為 2026-10-22 產物，未包含 11 月功能。
+- 前輪實機觀察空白工作台「加入照片」無檔案選擇視窗；CSP 根因尚未直接取得舊 EXE 主控台證據。
+- Tauri 預設原生拖放會攔截 Windows HTML5 拖放；前端使用 HTML5 drop，未接收原生事件。
+- 原 E2E 寫死個人截圖路徑並因 EPERM 失敗。
+
+## 已完成 (Completed)
+- 空白工作台加入照片／資料夾改為具 ID 按鈕與 addEventListener。
+- Tauri 設定 dragDropEnabled=false；script-src 限制為 self，獨立 script-src-attr 保留現有行內事件，避免 nonce／hash 使 unsafe-inline 失效。
+- 個人截圖改為選用 PHOTO_REPORT_SCREENSHOT_DIR；未設定時不寫入除錯圖片。
+- 新增 desktop-policy.spec.js：本機 HTTP CSP 加入 nonce，驗證照片／資料夾選擇、照片載入、動態縮圖燈箱與拖放設定；納入 test:e2e 與 test:all。
+
+- UI 排版修訂：桌面尺寸以可視高度分配工作區；匯出列獨立、不覆蓋照片或說明欄；照片、表格與編輯欄各自捲動，編輯欄底部照片切換固定可見。
+- 案件欄新增原生 details 收合；1200px 以下預設收合，768～1199px 展開使用浮動面板，不壓縮照片導覽。
+- 主編輯欄維持至少280px、最多320px，短欄位並排；寬視窗最大工作區擴至1800px。小於768px維持文件捲動。
+- 操作說明改為明確的「操作提示」按鈕，工具列以群組換行並保護按鈕文字不被拆行。
+- 新增 tests/e2e/layout.spec.js 並納入完整測試，驗證1920×1080、1366×768、1100×760、900×600、768×600、390×844；涵蓋匯出列／照片不重疊、照片導覽可見、編輯欄寬、案件欄展開、編輯欄收合、表格與燈箱。
+- 重建 Tailwind，逐一展開選擇器比對：原有選擇器零刪除，新增 .underline；未升級套件。
+
+## 異動檔案 (Changed Files)
+css/app.css、index.html、js/app.js、src-tauri/tauri.conf.json、package.json、vendor/tailwind.css、tests/e2e/photo-report.spec.js、tests/e2e/desktop-policy.spec.js、tests/e2e/layout.spec.js、HANDOFF.md（含前輪修復尚未提交範圍）。
+
+## 刻意未修改 (Do Not Do / Deliberately Omitted)
+三大匯出版型、業務資料模型、vendor 套件版本、應用版本號與遠端版本皆未調整；打包產物為本機修復驗證版 v2.4.1，不代表已正式發布。
+
+## 尚未完成 (Remaining Work)
+- **P1 (阻斷/必須)**：無。
+- **P2 (重要/當次)**：無。
+- **P3 (改善建議/暫緩)**：Windows 10、其他電腦及不同系統 DPI 環境驗收另行安排。
+
+## 驗證結果 (Validation)
+### 已執行測試與結果
+- npm run test:all：單元 4/4、完整 E2E、桌面 CSP 回歸、Word／Excel／PDF Golden Baseline 及三種版型匯出全部通過，未使用測試繞過。
+- node --check：js/app.js、tests/e2e/desktop-policy.spec.js 通過。
+- scripts/qa.ps1 通過；vendor 重建後無實質差異。
+- web/index.html、web/js/app.js 與來源 SHA-256 一致。
+- 本輪已以最終 UI 原始碼重新建置 release EXE、NSIS Setup 與 Portable ZIP；版本維持2.4.1，未發布遠端版本。
+- 前輪修復驗證：Portable ZIP 解壓至 C 槽「中文路徑 Portable 163439」，從 D 槽開發目錄以外位置兩次正常啟動；EXE 與建置產物 SHA-256 同為 2AF1E7E218573EEF8E24CED9E03BB3F04D374B30CE68D2088904D21A42D2B95F。
+- 原生視窗實測：加入照片開啟檔案選擇視窗、載入 sample01.jpg／sample02.jpg、編輯說明及 16／68 全形計數、向下填滿、Ctrl+S 存檔、匯出 Word／PDF，全部通過。
+- 結束程式後重新啟動，再由原生檔案選擇視窗開啟 .photo-report，顯示「已開啟工作進度，共 2 張照片」；案件名稱、照片與說明完整還原，資料檢查通過。
+- 實際產物檢查：.photo-report ZIP 包含 manifest.json 與 2 張圖片，兩張 desc 均一致；DOCX XML 包含驗證案件名稱與說明且含 2 個圖片媒體檔；PDF 標頭有效且為 1 頁。
+- 驗證產物已另複製至本輪工作區 outputs/photo-report-desktop-20261112；只使用合成測試照片，未處理使用者案件資料。
+- 最終 npm run test:all 再次全數通過（單元4/4、完整E2E、桌面CSP、六尺寸排版、Word／Excel／PDF Golden Baseline）。
+- 本輪原生桌面：最終Portable解壓至C槽「桌面 排版修訂版」，正常啟動並還原前輪兩張合成測試照片。說明欄、上一張／下一張與匯出列在首屏可見，點擊下一張成功切換第2／2張。
+- 最終桌面截圖：本輪工作區 outputs/photo-report-ui-revision/desktop-final.png；網頁六尺寸截圖亦位於該資料夾。
+- 原始碼與web打包資源（index.html、css/app.css）SHA-256一致；Tailwind原有選擇器零刪除。
+### 尚未驗證項目
+Windows 10、其他電腦、系統125%／150% DPI、由檔案總管拖入檔案及安裝版實際安裝未另驗證。六尺寸含900×600為瀏覽器可視區測試；原生視窗本輪驗證其實際預設尺寸，未聲稱完成原生900×600驗證。
+### 已知風險 (Known Risks)
+打包曾因前輪開啟的舊 EXE 鎖住檔案而失敗；已透過桌面 API 關閉該空白檢查視窗後重試。
+
+## Git 狀態
+- Commit：未提交（基準 392e0a1）
+- Push：否
+- Working Tree：Modified，均為本輪修改
+- Branch：main
+
+## 下一步建議動作 (Next Recommended Action)
+使用者已要求先建立白話實作計畫，見 IMPLEMENTATION_PLAN.md；本輪僅新增計畫，尚未開始分檔或新功能實作。後續接獲開始指示後，依計畫第1階段保存完整工作目錄基準；輸出預覽排除、大量照片處理暫緩。正式發布另依Release Gate與授權處理。
+
+## 發布狀態 (Release Status)
+本機修復版可交付；維持 v2.4.1，未升版、未提交、未推送、未發布遠端版本。
+
+---
+
+以下為先前交接紀錄，現況以本輪狀態與 Git 為準。
+
+# HANDOFF
+
+## 核心元資料 (Metadata)
+- **Repository**：lianghao02/Photo-Report-Generator
+- **Branch**：main
 - **Commit SHA**：隨本輪一併提交推送（承接基準 `c02ad13c20ab8232c798dee26f2f3434cdc6c2fe`，實際 SHA 見 `git log -1`）
 - **Skill Version**：v1.0.0
 - **Task Type**：FIX

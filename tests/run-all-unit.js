@@ -5,7 +5,8 @@ const tests = [
     'tests/unit/validation.test.js',
     'tests/unit/audit.test.js',
     'tests/unit/history.test.js',
-    'tests/unit/selection.test.js'
+    'tests/unit/selection.test.js',
+    'tests/unit/project-core.test.js'
 ];
 
 console.log('========================================');

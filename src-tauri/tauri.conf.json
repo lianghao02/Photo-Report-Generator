@@ -16,11 +16,12 @@
         "minWidth": 900,
         "minHeight": 600,
         "resizable": true,
+        "dragDropEnabled": false,
         "center": true
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://api.github.com"
+      "csp": "default-src 'self'; script-src 'self'; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://api.github.com"
     }
   },
   "bundle": {

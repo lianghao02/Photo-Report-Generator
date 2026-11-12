@@ -60,6 +60,7 @@
                         <i class="fa-solid fa-code-merge"></i> 併入其他工作進度…
                         <input type="file" id="mergeProjectInput" multiple accept=".photo-report,application/zip" class="hidden">
                     </label>
+                    <button type="button" id="btnViewMergeReport" class="app-menu-item" disabled title="查看最近一次彙整的照片與欄位變更">查看最近彙整明細…</button>
                     <button type="button" id="btnSaveProject" class="app-menu-item" title="把照片與已填資料存成檔案，之後可繼續編輯（快速鍵：Ctrl+S；超大原圖會自動以 220 ppi 等級最佳化壓縮）">
                         <i class="fa-solid fa-floppy-disk"></i> <span id="saveProjectMenuText">儲存工作進度（Ctrl+S）</span>
                     </button>
@@ -100,12 +101,15 @@
         <!-- 左側：只放整本清冊共用的案件資料 -->
         <aside id="sidePanel" class="flex flex-col gap-2 lg:sticky lg:top-3 self-start lg:max-h-[calc(100vh-1.5rem)] lg:overflow-y-auto pr-0.5">
         <section class="morandi-card p-3 shadow-xs">
-            <div class="border-b border-[#C7CBD3]/20 pb-1.5 mb-2">
+        <details id="caseDetails" open>
+            <summary class="case-panel-summary pb-1.5">
                 <h2 class="text-sm font-bold text-[#20242B] flex items-center gap-1.5">
                     <i class="fa-solid fa-clipboard-list text-[#5B5CE2]"></i> 案件資料
                 </h2>
-                <p class="text-[11px] text-[#6B7280] mt-0.5">整本清冊共用。照片沒有另外填日期或地點時，就用這裡的資料。</p>
-            </div>
+                <span class="case-panel-toggle">展開／收合</span>
+            </summary>
+            <div class="case-panel-content">
+            <p class="case-panel-help">整本清冊共用。照片沒有另外填日期或地點時，就用這裡的資料。</p>
 
             <div class="grid grid-cols-1 gap-2">
                 <div>
@@ -137,6 +141,8 @@
                 </div>
                 <button type="button" id="btnApplyDefaultsToSelected" class="btn-secondary w-full px-2 py-1.5 rounded-lg text-xs font-bold" title="把上方日期與地點寫進已選照片（之後改案件資料，這些照片不會跟著變）">把日期與地點寫進已選照片</button>
             </div>
+            </div>
+        </details>
         </section>
         </aside>
 
@@ -310,10 +316,10 @@
                     <p class="text-xs font-bold text-slate-700 mt-0.5 leading-relaxed">支援 JPG、PNG、WEBP 與 .photo-report 工作進度檔（一次拖入多個進度檔可自動彙整合併）。</p>
                 </div>
                 <div class="flex flex-wrap justify-center gap-2.5 mt-1">
-                    <button type="button" class="btn-primary px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2" onclick="document.getElementById('fileInput').click()">
+                    <button type="button" id="btnEmptyAddPhotos" class="btn-primary px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2">
                         <i class="fa-solid fa-images"></i> 加入照片
                     </button>
-                    <button type="button" class="btn-secondary px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2" onclick="document.getElementById('folderInput').click()">
+                    <button type="button" id="btnEmptyAddFolder" class="btn-secondary px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2">
                         <i class="fa-solid fa-folder-plus"></i> 加入資料夾
                     </button>
                 </div>
@@ -325,9 +331,9 @@
 
                 <!-- 左側：照片縮圖畫布排版區 (佔 8 欄，照片一覽無遺不拖長) -->
                 <div id="photoPanel" class="lg:col-span-8 flex flex-col gap-2">
-                    <div class="flex items-center justify-between text-xs font-bold text-[#6B7280] px-1">
-                        <span>拖曳照片可調整順序</span>
-                        <span class="text-[12px] font-bold text-[#4B5563]">Ctrl 點選＝多選　Shift＝連選　空白處拖曳＝框選　雙擊縮圖＝放大</span>
+                    <div class="workspace-help">
+                        <span>拖曳排序・雙擊照片放大</span>
+                        <button type="button" id="btnWorkspaceHelp" class="workspace-help-button" title="查看多選、框選與鍵盤操作方式">操作提示</button>
                     </div>
 
                     <div id="thumbGridDropZone" class="relative rounded-xl">
@@ -354,7 +360,7 @@
                         </div>
 
                         <!-- 編輯器欄位 -->
-                        <div class="space-y-2.5 text-xs">
+                        <div class="editor-fields space-y-2.5 text-xs">
                             <div>
                                 <label for="editSeq" class="block font-bold text-[#6B7280] mb-0.5">照片編號</label>
                                 <input type="text" id="editSeq" class="input-field w-full text-xs font-bold text-[#5B5CE2]">
@@ -435,7 +441,7 @@
                         </div>
 
                         <!-- 快速導航與刪除 -->
-                        <div class="flex items-center justify-between pt-2 border-t border-[#C7CBD3]/15 text-xs">
+                        <div class="editor-navigation flex items-center justify-between pt-2 border-t border-[#C7CBD3]/15 text-xs">
                             <div class="flex items-center gap-1">
                                 <button type="button" id="btnPrevPhoto" class="btn-secondary px-2.5 py-1 rounded text-xs" title="上一張 (Alt+Left)"><i class="fa-solid fa-chevron-left"></i> 上一張</button>
                                 <button type="button" id="btnNextPhoto" class="btn-secondary px-2.5 py-1 rounded text-xs" title="下一張 (Alt+Right)">下一張 <i class="fa-solid fa-chevron-right"></i></button>
@@ -889,13 +895,28 @@
         </div>
     </div>
 
+    <div id="mergeReportModal" class="merge-report-modal hidden" role="dialog" aria-modal="true" aria-labelledby="mergeReportTitle">
+        <section class="merge-report-panel">
+            <div class="merge-report-header">
+                <div><h2 id="mergeReportTitle">最近一次彙整明細</h2><p id="mergeReportMeta"></p></div>
+                <button type="button" id="btnCloseMergeReport" class="btn-secondary merge-report-close">關閉（Esc）</button>
+            </div>
+            <p class="merge-report-note">這是該次彙整前後的比較；之後的編輯或復原不會改寫這份紀錄。開啟另一份工作進度或關閉程式後不保留。</p>
+            <div id="mergeReportBody" tabindex="0"></div>
+        </section>
+    </div>
+
     <!-- 模組化純邏輯與 UI 控制器抽離 (Phase 1 ~ Phase 3) -->
     <script src="js/validation.js"></script>
     <script src="js/audit.js"></script>
     <script src="js/selection.js"></script>
     <script src="js/history.js"></script>
+    <script src="js/photo-model.js"></script>
+    <script src="js/project-format.js"></script>
+    <script src="js/project-merge.js"></script>
     <script src="js/ui/audit-ui.js"></script>
     <script src="js/ui/modal-ui.js"></script>
+    <script src="js/ui/merge-report-ui.js"></script>
 
     <!-- 模組化匯出引擎抽離 (Phase 4) -->
     <script src="js/exporters/excel-exporter.js"></script>
