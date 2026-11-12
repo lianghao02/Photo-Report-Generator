@@ -3,18 +3,18 @@
 ## 核心元資料 (Metadata)
 - **Repository**：lianghao02/Photo-Report-Generator
 - **Branch**：main
-- **Commit SHA**：隨本輪提交（父提交 392e0a12d634fe50b7b41eb089d1a46379963378；本檔包含於提交，實際 SHA 見 git log -1）
+- **Commit SHA**：程式81859616bba196a960ca257651b6bbc00994b1cd；部署紀錄隨後續文件提交（實際HEAD見git log -1）
 - **Skill Version**：v1.0.0
-- **Task Type**：IMPROVE
+- **Task Type**：HANDOFF
 - **Local Path Hint**：04_Photo-Report-Generator
 
 ---
 
 ## 目前狀態
-可交付（本機修訂版）；五階段計畫、完整測試、Portable跨路徑原生流程及自我檢查已完成。無阻斷與重要問題，依使用者指示停止擴大修改。
+可交付；程式提交8185961已推送main，GitHub Pages部署成功並通過線上實測。五階段計畫、完整測試、Portable原生流程與自我檢查均完成，停止擴大修改。
 
 ## 本輪目標
-依IMPLEMENTATION_PLAN.md保存現有修復與UI基準、補強測試失敗判定、抽出照片／進度格式／彙整邏輯，完成存檔狀態、開檔檢查及彙整明細。使用D:\PicPick照片副本實測，原始資料保持不變。使用者於2026-11-12追加授權「開始修正提交」，本輪固定已驗證成果至本機Git；不推送、不升版、不發布。
+依IMPLEMENTATION_PLAN.md保存現有修復與UI基準、補強測試失敗判定、抽出照片／進度格式／彙整邏輯，完成存檔狀態、開檔檢查及彙整明細。使用D:\PicPick照片副本實測，原始資料保持不變。使用者先授權「開始修正提交」，再授權「推送部署push」；已完成main推送、GitHub Pages部署及線上驗證，不升版、不建立桌面Release。
 
 ## 基準與已確認事實 (Baseline & Confirmed Facts)
 - 開始本計畫時main已有前輪桌面修復、UI與計畫等未提交修改；不得覆寫、reset或只以HEAD當作回復點。
@@ -33,7 +33,8 @@
 - 修正非同步儲存／草稿期間繼續編輯的狀態誤判：固定開始時資料快照，後續修改仍標未存，舊草稿不顯示為新內容已暫存；補足競態測試。
 - 主要E2E遇pageerror真正失敗；以刻意拋錯／缺模組反例驗證。新增直接測模組的單元測試與進度檔完整性E2E。
 - 已更新README、AGENTS、Tailwind掃描來源及完成計畫。
-- 提交前核對分支main與origin、25個檔案的完整範圍、既有測試與原生驗證證據；更新本輪提交授權與交接狀態，不擴大產品修改。
+- 提交前核對分支main與origin、25個檔案的完整範圍、既有測試與原生驗證證據；不擴大產品修改。
+- 已將8185961推送origin/main；Pages工作流程43245056838成功，線上8個關鍵資源與提交逐位元組一致，合成素材完成開檔／彙整／明細／下載／重開。README與計畫同步更新部署狀態。
 
 ## 異動檔案 (Changed Files)
 - 累計既有與本輪修改：AGENTS.md、HANDOFF.md、README.md、IMPLEMENTATION_PLAN.md、index.html、css/app.css、js/app.js、package.json、scripts/prepare-assets.ps1、src-tauri/tauri.conf.json、vendor/tailwind.css。
@@ -63,22 +64,24 @@
 - 解壓EXE與建置EXE逐位元組一致，SHA-256：d4106cf2079c29ca025a22b13759ecf35fab6e2cf18123da81d37290e841fcf5。
 - node --check、git diff --check及scripts/qa.ps1通過。最後文件更新後再核對Git與QA；無敏感資料警訊。
 - 本輪證據位於被忽略的build/plan-implementation/results：網頁產物／截圖、native實際產物與verification.json、SELF_REVIEW.md。含使用者照片的產物不加入版本庫。
+- GitHub Pages：https://lianghao02.github.io/Photo-Report-Generator/ 。工作流程https://github.com/lianghao02/Photo-Report-Generator/actions/runs/43245056838已完成且success，對應8185961。
+- 線上Playwright驗證：8個資源HTTP 200且與提交一致；2張合成照片進度開啟、較新版彙整、明細顯示／Esc、Ctrl+S下載狀態、下載檔CRC與說明內容、重開全部通過；pageerror／console error／requestfailed均0。證據位於results/online，沒有使用或上傳真實照片。
 ### 尚未驗證項目
 Windows 10、其他電腦、125%／150%系統DPI、檔案總管原生拖入及安裝版實際安裝未另實測。原生測試使用本機預設視窗，六尺寸是瀏覽器可視區測試；不混稱為多DPI實機驗證。原生直接寫入分支使用瀏覽器測試控制代碼驗證，Portable實際採下載流程。
 ### 已知風險 (Known Risks)
 下載流程只能確認交付瀏覽器，無法可靠確認使用者最終磁碟存檔；介面已明白提示檢查下載資料夾。彙整明細只保留當次工作階段最近成功紀錄，不是永久修改歷程。沒有本輪已知阻斷或重要問題。
 
 ## Git 狀態
-- Commit：本輪提交（包含本檔；實際SHA見git log -1，父提交392e0a12d634fe50b7b41eb089d1a46379963378）
-- Push：否
-- Working Tree：本輪25個檔案提交後確認Clean；包含前輪桌面修復／UI及本輪計畫實作，最終狀態以git status為準
+- Commit：程式8185961與後續部署紀錄文件提交（實際HEAD見git log -1）
+- Push：是，origin/main
+- Working Tree：Clean（本輪文件提交後於交付前核對git status及遠端HEAD）
 - Branch：main
 
 ## 下一步建議動作 (Next Recommended Action)
-本輪已達完成條件，依授權完成本機Git提交後停止。使用者可測試最新Portable；後續推送或正式發布另依明確授權及Release Gate辦理。
+程式與文件推送完成，等待最後文件部署成功並核對遠端HEAD後結案；不擴大產品修改。後續桌面Release需依使用者授權與Release Gate另行辦理。
 
 ## 發布狀態 (Release Status)
-本機修訂版可交付，已依使用者授權納入本輪Git提交。維持v2.4.1，Setup與Portable已重新建置；未推送、未更新線上版或遠端Release。
+網頁版已推送並部署GitHub Pages，線上功能驗證通過。維持v2.4.1；本機Setup與Portable已重新建置驗證，未建立或更新桌面遠端Release。
 
 ---
 
