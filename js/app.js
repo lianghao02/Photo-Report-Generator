@@ -141,6 +141,8 @@
                 this.btnUnlinkChildPhoto = document.getElementById('btnUnlinkChildPhoto');
                 this.editDate = document.getElementById('editDate');
                 this.editTime = document.getElementById('editTime');
+                this.caseTitleInput = document.getElementById('caseTitle');
+                this.caseTitleLimitHint = document.getElementById('caseTitleLimitHint');
                 this.defaultLocationInput = document.getElementById('defaultLocation');
                 this.defaultLocationCounter = document.getElementById('defaultLocationCounter');
                 this.defaultLocationLimitHint = document.getElementById('defaultLocationLimitHint');
@@ -351,13 +353,18 @@
                     event.returnValue = '';
                 });
                 ['caseTitle', 'caseDate', 'deptName', 'officerName'].forEach(id => {
-                    document.getElementById(id).addEventListener('input', () => this.scheduleHistory('修改案件基本資料'));
+                    document.getElementById(id).addEventListener('input', () => {
+                        if (id === 'caseTitle') this.refreshCaseTitleLimitUi();
+                        if (id === 'caseDate') this.refreshInheritedDateLocationHints();
+                        this.scheduleHistory('修改案件基本資料');
+                    });
                 });
                 this.bindLimitedTextControl(this.defaultLocationInput, {
                     maxFullWidth: 17,
                     singleLine: true,
                     onAccept: () => {
                         this.refreshAllTextLimitUi();
+                        this.refreshInheritedDateLocationHints();
                         this.photos.forEach((_, idx) => this.refreshThumbCardStatusBadge(idx));
                         this.updateAuditBarUi();
                         this.scheduleHistory('修改案件基本資料');
@@ -374,7 +381,16 @@
                     this.sanitizeMaskedEntry(e.target, 7);
                     this.markMaskedEntryChanged(e.target);
                 });
-                caseDateInput.addEventListener('blur', (e) => { e.target.value = this.finishMaskedEntry(e.target, this.formatDateMask); });
+                caseDateInput.addEventListener('blur', (e) => {
+                    const beforeBlur = e.target.value;
+                    const nextValue = this.finishMaskedEntry(e.target, this.formatDateMask);
+                    e.target.value = nextValue;
+                    this.refreshInheritedDateLocationHints();
+                    if (nextValue !== beforeBlur || this.historyTimer) {
+                        this.flushPendingHistory();
+                        this.recordHistory('修改案件基本資料');
+                    }
+                });
 
                 // 右側編輯器即時輸入事件
                 this.editSeq.addEventListener('input', (e) => {
@@ -633,6 +649,7 @@
                 const mDay = now.getDate();
                 document.getElementById('caseDate').value = `${mYear}${String(mMonth).padStart(2, '0')}${String(mDay).padStart(2, '0')}`;
                 document.getElementById('caseDate').value = this.formatDateMask(document.getElementById('caseDate').value, true);
+                this.refreshInheritedDateLocationHints();
                 this.scheduleHistory('填入今天日期');
             }
 
@@ -1214,25 +1231,41 @@
                 if (pendingExport?.action) this.confirmExportWithAudit(pendingExport.action, pendingExport.title);
             }
 
+            getFillDownTargetEntries(index) {
+                if (!this.photos[index]) return [];
+                if (this.activeFilter && this.activeFilter !== 'all') {
+                    // 當前編輯這張可能剛填完欄位而已離開篩選條件，因此直接取索引在其之後的可見項目
+                    return this.getVisiblePhotoIndices().filter(entry => entry.index > index);
+                }
+                return this.photos.slice(index + 1).map((photo, offset) => ({ photo, index: index + 1 + offset }));
+            }
+
             fillDownFromIndex(index, field) {
                 if (!this.photos[index]) return;
                 const val = this.photos[index][field];
-                const targets = this.photos.slice(index + 1);
-                if (!targets.length) return alert('這是最後一張照片，沒有後續照片可填入。');
+                const targetEntries = this.getFillDownTargetEntries(index);
+                const targets = targetEntries.map(entry => entry.photo);
+                if (!targets.length) {
+                    return alert(this.activeFilter && this.activeFilter !== 'all'
+                        ? '目前篩選下沒有後續照片可填入。'
+                        : '這是最後一張照片，沒有後續照片可填入。');
+                }
                 const label = { date: '日期', time: '時間', location: '地點', desc: '說明' }[field];
                 const overwriteCount = field === 'desc' ? 0 : targets.filter(photo => String(photo[field] || '').trim() && photo[field] !== val).length;
-                if (overwriteCount && !confirm(`將第 ${index + 1} 張的${label}套用至後續 ${targets.length} 張照片，其中 ${overwriteCount} 張已有不同內容，將被取代。要繼續嗎？（可按 Ctrl＋Z 復原）`)) return;
+                const filterPrefix = this.activeFilter && this.activeFilter !== 'all' ? '目前篩選下後續' : '後續';
+                if (overwriteCount && !confirm(`將第 ${index + 1} 張的${label}套用至${filterPrefix} ${targets.length} 張照片，其中 ${overwriteCount} 張已有不同內容，將被取代。要繼續嗎？（可按 Ctrl＋Z 復原）`)) return;
                 let skipped = 0;
                 let updated = 0;
-                for (let i = index + 1; i < this.photos.length; i++) {
+                for (let i = 0; i < targets.length; i++) {
+                    const targetPhoto = targets[i];
                     // 跡證說明欄位：若目標格已有資料，跳過不覆寫
-                    if (field === 'desc' && this.photos[i][field].trim() !== '') {
+                    if (field === 'desc' && String(targetPhoto[field] || '').trim() !== '') {
                         skipped++;
                         continue;
                     }
-                    if (this.photos[i][field] !== val) {
-                        this.photos[i][field] = val;
-                        if (field === 'time') this.photos[i].timeAutoDefaulted = false;
+                    if (targetPhoto[field] !== val) {
+                        targetPhoto[field] = val;
+                        if (field === 'time') targetPhoto.timeAutoDefaulted = false;
                         updated++;
                     }
                 }
@@ -1411,13 +1444,10 @@
                 this.currentView = nextView;
                 this.workspaceContainer.classList.toggle('hidden', nextView !== 'workspace');
                 this.gridContainer.classList.toggle('hidden', nextView !== 'grid');
-                if (this.previewContainer) this.previewContainer.classList.add('hidden');
                 const activeClass = "px-2.5 py-1 rounded text-xs font-bold bg-[#5B5CE2] text-white flex items-center gap-1 shadow-2xs";
                 const idleClass = "px-2.5 py-1 rounded text-xs font-bold text-[#6B7280] hover:text-[#20242B] flex items-center gap-1";
                 document.getElementById('btnViewWorkspace').className = nextView === 'workspace' ? activeClass : idleClass;
                 document.getElementById('btnViewGrid').className = nextView === 'grid' ? activeClass : idleClass;
-                const btnViewPreview = document.getElementById('btnViewPreview');
-                if (btnViewPreview) btnViewPreview.className = idleClass;
                 this.render();
             }
 
@@ -1449,7 +1479,9 @@
                     if (typeof data[id] === 'string') document.getElementById(id).value = data[id];
                 });
                 this.syncTextLimitInputState(this.defaultLocationInput, this.defaultLocationInput?.value || '');
+                this.refreshCaseTitleLimitUi();
                 this.refreshDefaultLocationLimitUi();
+                this.refreshInheritedDateLocationHints();
                 this.updateLayoutDescription();
                 if (this.isLightboxOpen()) this.syncLightboxAnnotationLayerBounds();
             }
@@ -1826,6 +1858,34 @@
                 }
             }
 
+            refreshCaseTitleLimitUi() {
+                const input = this.caseTitleInput;
+                const hint = this.caseTitleLimitHint;
+                if (!input || !hint) return;
+                const fullLen = this.getTextFullWidthLength(String(input.value || '').trim());
+                const showWarn = fullLen > 10;
+                hint.classList.toggle('hidden', !showWarn);
+                hint.classList.toggle('is-near-limit', showWarn);
+                if (showWarn) {
+                    hint.textContent = `案由約 ${this.formatFullWidthCount(fullLen)} 全形，上下兩張第一列較窄可能會換行`;
+                }
+            }
+
+            refreshInheritedDateLocationHints() {
+                const defaultDate = document.getElementById('caseDate')?.value?.trim() || '';
+                const defaultLocation = document.getElementById('defaultLocation')?.value?.trim() || '';
+                if (this.editDateInheritedHint) {
+                    this.editDateInheritedHint.textContent = defaultDate
+                        ? `空白時用案件日期：${defaultDate}`
+                        : '空白時用案件日期（案件日期還沒填）';
+                }
+                if (this.editLocationInheritedHint) {
+                    this.editLocationInheritedHint.textContent = defaultLocation
+                        ? `空白時用案件地點：${defaultLocation}`
+                        : '空白時用案件地點（案件地點還沒填）';
+                }
+            }
+
             refreshEditDescLimitUi(draftValue) {
                 const input = this.editDesc;
                 const counter = this.editDescCounter;
@@ -1855,11 +1915,15 @@
                 } else if (isNear) {
                     hint.textContent = `剩餘 ${this.formatFullWidthCount(68 - fullLen)} 全形（第 ${visualLines || 1}／2 行）`;
                 } else {
-                    hint.textContent = '最多 68 個全形・最多 2 行（2 半形＝1 全形）';
+                    const layout = this.layoutSelect?.value || 'up_down_2';
+                    hint.textContent = (layout === 'left_right_2' || layout === 'landscape_3')
+                        ? '上限 68 全形（左右／橫式較窄，實際約折 3～4 行）'
+                        : '最多 68 個全形・最多 2 行（2 半形＝1 全形）';
                 }
             }
 
             refreshAllTextLimitUi() {
+                this.refreshCaseTitleLimitUi();
                 this.refreshDefaultLocationLimitUi();
                 this.refreshEditLocationLimitUi();
                 this.refreshEditDescLimitUi();
@@ -2688,8 +2752,8 @@
                                 if (!curVal && extVal) {
                                     workingCaseData[k] = extCase[k];
                                     caseDataChanged = true;
-                                } else if (!hadExistingPhotos && curVal && extVal && curVal !== extVal && extTs > workingCaseTs) {
-                                    // 若較晚檔改寫空白工作台的共用預設日期／地點，暫記既有留空照片的原預設值；未再被較晚檔配對的專屬照片才實體化保留
+                                } else if (curVal && extVal && curVal !== extVal && extTs > workingCaseTs) {
+                                    // 若較晚檔改寫共用預設日期／地點，暫記既有留空照片的原預設值；未再被較晚檔配對的專屬照片才實體化保留
                                     if (k === 'caseDate') {
                                         workingPhotos.forEach(wp => {
                                             if (!String(wp.date || '').trim() && !wp._fallbackCaseDate) wp._fallbackCaseDate = curVal;
@@ -3942,6 +4006,7 @@
                 };
                 this.layoutDescription.textContent = descriptions[this.layoutSelect.value] || descriptions.up_down_2;
                 this.updateLayoutMiniPreview();
+                this.refreshEditDescLimitUi?.();
             }
 
             updateLayoutMiniPreview() {
@@ -4599,6 +4664,27 @@
                 this.selectPhotoByKeyboard(delta);
             }
 
+            syncEditorFieldToGridRow(index, field, value) {
+                const row = this.gridTbody?.children?.[index];
+                if (!row) return;
+                if (field === 'location' || field === 'desc') {
+                    const input = row.querySelector(`input[data-grid-field="${field}"]`);
+                    if (!input) return;
+                    if (input.value !== value) {
+                        input.value = value;
+                        this.syncTextLimitInputState(input, value);
+                    }
+                    const check = field === 'location'
+                        ? this.inspectPhotoTextLimits(String(value || '').trim(), '')
+                        : this.inspectPhotoTextLimits('', String(value || '').trim());
+                    input.classList.toggle('input-over-limit', field === 'location' ? check.locationOver : check.descOver);
+                } else if (field === 'date' || field === 'time') {
+                    const nthCol = field === 'date' ? 4 : 5;
+                    const input = row.querySelector(`td:nth-child(${nthCol}) input`);
+                    if (input && input.value !== value) input.value = value;
+                }
+            }
+
             updateCurrentPhoto(field, value) {
                 const photo = this.photos[this.currentIndex];
                 if (!photo) return;
@@ -4612,8 +4698,11 @@
                     this.refreshSequenceBadgesAndGridInputs();
                     this.updateEditorTitleAndLightboxCaption();
                 } else if (field === 'location' || field === 'desc') {
+                    this.syncEditorFieldToGridRow(this.currentIndex, field, value);
                     this.refreshThumbCardStatusBadge(this.currentIndex);
                     this.updateAuditBarUi();
+                } else if (field === 'date' || field === 'time') {
+                    this.syncEditorFieldToGridRow(this.currentIndex, field, value);
                 }
                 this.scheduleHistory('修改照片欄位');
             }
@@ -4850,6 +4939,39 @@
                 return parts.some((part, index) => part[1] !== prefix || Number(part[2]) !== start + index);
             }
 
+            getLayoutSharedFieldWarnings(exportTitle) {
+                const layout = this.layoutSelect?.value || 'up_down_2';
+                if (layout !== 'left_right_2' && layout !== 'landscape_3') return [];
+                const perPage = layout === 'landscape_3' ? 3 : 2;
+                const defaultDate = document.getElementById('caseDate')?.value?.trim() || '';
+                const defaultLoc = document.getElementById('defaultLocation')?.value?.trim() || '';
+                let ignoredCount = 0;
+
+                for (let start = 0; start < this.photos.length; start += perPage) {
+                    const first = this.photos[start];
+                    if (!first) continue;
+                    const firstDate = String(first.date || '').trim() || defaultDate;
+                    const firstTime = String(first.time || '').trim();
+                    const firstLoc = String(first.location || '').trim() || defaultLoc;
+                    for (let offset = 1; offset < perPage && start + offset < this.photos.length; offset++) {
+                        const other = this.photos[start + offset];
+                        if (!other) continue;
+                        const oDateRaw = String(other.date || '').trim();
+                        const oLocRaw = String(other.location || '').trim();
+                        const oTime = String(other.time || '').trim();
+                        const oDateEff = oDateRaw || defaultDate;
+                        const oLocEff = oLocRaw || defaultLoc;
+                        if ((oDateRaw && oDateEff !== firstDate) || (oTime && oTime !== firstTime) || (oLocRaw && oLocEff !== firstLoc)) {
+                            ignoredCount++;
+                        }
+                    }
+                }
+                if (!ignoredCount) return [];
+                const layoutLabel = layout === 'left_right_2' ? '左右兩張' : '橫式三張';
+                const formatPrefix = String(exportTitle || '').replace(/清冊$/, '');
+                return [`注意：${formatPrefix}「${layoutLabel}」每頁只會印第 1 張的日期、時間與地點，另有 ${ignoredCount} 張個別填寫的日期／時間／地點不會印出（建議改用上下兩張）`];
+            }
+
             // 匯出前編號與完整度檢查，保留使用者直接匯出的選擇。
             confirmExportWithAudit(action, title) {
                 if (!this.photos.length) {
@@ -4858,7 +4980,8 @@
                 }
                 const audit = this.auditPhotosCompleteness();
                 const sequenceMismatch = this.hasSequenceOrderMismatch();
-                if (audit.issuesCount === 0 && !sequenceMismatch) {
+                const layoutWarnings = this.getLayoutSharedFieldWarnings(title);
+                if (audit.issuesCount === 0 && !sequenceMismatch && layoutWarnings.length === 0) {
                     action();
                     return;
                 }
@@ -4866,10 +4989,12 @@
                 document.getElementById('exportSequenceNotice').hidden = !sequenceMismatch;
                 document.getElementById('btnAuditRenumber').hidden = !sequenceMismatch;
                 this.btnAuditViewIssues.hidden = audit.issuesCount === 0;
-                this.exportAuditList.hidden = audit.issuesCount === 0;
+                this.exportAuditList.hidden = audit.issuesCount === 0 && layoutWarnings.length === 0;
                 document.getElementById('exportAuditHint').textContent = sequenceMismatch
                     ? '照片編號未依目前順序連續排列。可先重新編號，也可保留原編號匯出。'
-                    : '以下資料可再確認；也可以直接匯出。';
+                    : (audit.issuesCount === 0 && layoutWarnings.length > 0
+                        ? '若需每張照片顯示不同時間或地點，請取消並改用「上下兩張」。'
+                        : '以下資料可再確認；也可以直接匯出。');
                 this.btnAuditProceedExport.querySelector('span').textContent = sequenceMismatch ? '保留編號匯出' : '仍要匯出';
 
                 // 有問題時顯示提醒彈窗，暫存 action
@@ -4882,7 +5007,8 @@
                         titleEl: titleEl,
                         listEl: this.exportAuditList,
                         exportTitle: title,
-                        audit: audit
+                        audit: audit,
+                        layoutWarnings: layoutWarnings
                     });
                     return;
                 }
@@ -4894,7 +5020,14 @@
                     if (audit.invalidDateTime > 0) items.push(`時間異常：${audit.invalidDateTime} 張`);
                     if (audit.duplicatePhotos > 0) items.push(`同名照片：${audit.duplicatePhotos} 張`);
                     if (audit.overTextLimit > 0) items.push(`地點或說明過長（恐影響排版）：${audit.overTextLimit} 張`);
-                    this.exportAuditList.innerHTML = items.map(t => `<li>${t}</li>`).join('');
+                    layoutWarnings.forEach(msg => items.push(msg));
+                    const frag = document.createDocumentFragment();
+                    items.forEach(t => {
+                        const li = document.createElement('li');
+                        li.textContent = t;
+                        frag.appendChild(li);
+                    });
+                    this.exportAuditList.replaceChildren(frag);
                 }
                 if (titleEl) titleEl.textContent = `匯出前確認（${title}）`;
                 this.exportAuditModal?.classList.remove('hidden');
@@ -4994,14 +5127,12 @@
                     this.emptyState.classList.remove('hidden');
                     this.workspaceContainer.classList.add('hidden');
                     this.gridContainer.classList.add('hidden');
-                    if (this.previewContainer) this.previewContainer.classList.add('hidden');
                     return;
                 }
 
                 this.emptyState.classList.add('hidden');
                 this.workspaceContainer.classList.toggle('hidden', this.currentView !== 'workspace');
                 this.gridContainer.classList.toggle('hidden', this.currentView !== 'grid');
-                if (this.previewContainer) this.previewContainer.classList.toggle('hidden', this.currentView !== 'preview');
 
                 if (this.currentIndex >= totalPhotos) this.currentIndex = totalPhotos - 1;
                 if (this.currentIndex < 0) this.currentIndex = 0;
@@ -5103,7 +5234,6 @@
                 this.gridTbody.querySelectorAll('input[data-grid-field="location"], input[data-grid-field="desc"]').forEach(gridInput => {
                     this.syncTextLimitInputState(gridInput, gridInput.value || '');
                 });
-                this.renderPagePreview();
                 if (this.isLightboxOpen()) {
                     this.lightboxIndex = this.currentIndex;
                     this.updateLightbox({ preserveZoomIfSamePhoto: true });
@@ -5129,10 +5259,8 @@
             }
 
             populateEditorFields() {
-                const totalPhotos = this.photos.length;
                 const curPhoto = this.photos[this.currentIndex];
                 if (!curPhoto) return;
-                const defaultLocation = document.getElementById('defaultLocation').value.trim();
                 this.updateEditorTitleAndLightboxCaption();
                 this.editSeq.value = curPhoto.seq || '';
                 const parentPhoto = this.getValidParentPhoto(curPhoto);
@@ -5157,69 +5285,23 @@
                 this.syncTextLimitInputState(this.defaultLocationInput, this.defaultLocationInput?.value || '');
                 this.syncTextLimitInputState(this.editLocation, this.editLocation.value);
                 this.syncTextLimitInputState(this.editDesc, this.editDesc.value);
-                const remaining = totalPhotos - this.currentIndex - 1;
+                const remaining = this.getFillDownTargetEntries(this.currentIndex).length;
+                const filteredMode = Boolean(this.activeFilter && this.activeFilter !== 'all');
+                const scopeWord = filteredMode ? '目前篩選下後續' : '後續';
                 ['btnFillDownDate', 'btnFillDownTime', 'btnFillDownLocation', 'btnFillDownDescAll'].forEach(id => {
                     const button = document.getElementById(id);
                     button.disabled = remaining === 0;
-                    button.title = remaining === 0 ? '沒有後續照片可填入' : id === 'btnFillDownDescAll'
-                        ? `填入後續 ${remaining} 張的空白說明，保留已有內容`
-                        : `套用至後續 ${remaining} 張，將取代原有內容；覆寫不同內容前會先確認`;
+                    button.title = remaining === 0
+                        ? (filteredMode ? '目前篩選下沒有後續照片可填入' : '沒有後續照片可填入')
+                        : id === 'btnFillDownDescAll'
+                            ? `填入${scopeWord} ${remaining} 張的空白說明，保留已有內容`
+                            : `套用至${scopeWord} ${remaining} 張，將取代原有內容；覆寫不同內容前會先確認`;
                 });
                 document.getElementById('fillDownHint').textContent = remaining
-                    ? `向下填滿範圍：後續 ${remaining} 張。日期、時間與地點會取代原值；說明只填空白。`
-                    : '這是最後一張照片，沒有後續照片可填入。';
-                const defaultDate = document.getElementById('caseDate').value.trim();
-                this.editDateInheritedHint.textContent = defaultDate
-                    ? `空白時用案件日期：${defaultDate}`
-                    : '空白時用案件日期（案件日期還沒填）';
-                this.editLocationInheritedHint.textContent = defaultLocation
-                    ? `空白時用案件地點：${defaultLocation}`
-                    : '空白時用案件地點（案件地點還沒填）';
+                    ? `向下填滿範圍：${scopeWord} ${remaining} 張。日期、時間與地點會取代原值；說明只填空白。`
+                    : (filteredMode ? '目前篩選下沒有後續照片可填入。' : '這是最後一張照片，沒有後續照片可填入。');
+                this.refreshInheritedDateLocationHints();
                 this.refreshAllTextLimitUi();
-            }
-
-            renderPagePreview() {
-                const perPage = this.getPhotosPerPage();
-                const layout = this.layoutSelect.value;
-                const defaultLocation = document.getElementById('defaultLocation').value.trim();
-                const gridClass = layout === 'up_down_2' ? 'grid-cols-1 max-w-[420px]' :
-                    layout === 'left_right_2' ? 'grid-cols-2' : 'grid-cols-3';
-                const pages = [];
-                for (let start = 0; start < this.photos.length; start += perPage) {
-                    const pagePhotos = this.photos.slice(start, start + perPage);
-                    const cells = pagePhotos.map((photo, offset) => {
-                        const index = start + offset;
-                        return `
-                            <button type="button" onclick="window.app.selectPreviewPhoto(${index})" class="text-left min-w-0 border border-[#C7CBD3]/25 rounded-lg p-1.5 bg-white hover:border-[#5B5CE2] transition ${index === this.currentIndex ? 'ring-2 ring-[#5B5CE2]/50' : ''}">
-                                <div class="aspect-[4/3] bg-[#EEF0F3] rounded flex items-center justify-center overflow-hidden">
-                                    <img src="${(photo.sideCrop && photo.compositeThumbnailSrc) ? photo.compositeThumbnailSrc : photo.thumbnailSrc}" data-preview-uid="${photo.uid}" alt="${escapeHtml(photo.name)}" style="transform: ${(photo.sideCrop && photo.compositeThumbnailSrc) ? 'none' : `${photo.flipH ? 'scaleX(-1) ' : ''}rotate(${photo.rotation}deg)`};" class="w-full h-full object-contain">
-                                </div>
-                                <div class="mt-1 text-[10px] font-bold text-[#20242B] truncate">#${escapeHtml(photo.seq)} ${escapeHtml(photo.location || defaultLocation || '未填地點')}</div>
-                                <div class="text-[10px] text-[#6B7280] truncate">${escapeHtml(photo.desc || '（無說明）')}</div>
-                            </button>`;
-                    }).join('');
-                    pages.push(`
-                        <section class="bg-white border-2 border-[#C7CBD3]/25 rounded-xl shadow-sm p-3">
-                            <div class="flex items-center justify-between mb-2 text-[11px] text-[#6B7280]">
-                                <span class="font-bold text-[#20242B]">第 ${pages.length + 1} 頁</span>
-                                <span>${layout === 'up_down_2' ? '直式上下兩張' : layout === 'left_right_2' ? '直式左右兩張' : '橫式三張'}</span>
-                            </div>
-                            <div class="grid ${gridClass} gap-2 mx-auto">${cells}</div>
-                        </section>`);
-                }
-                if (!this.previewContainer) return;
-                this.previewContainer.innerHTML = `
-                    <div class="mb-3 text-xs text-[#6B7280] flex items-center gap-1.5"><i class="fa-solid fa-circle-info text-[#5B5CE2]"></i> 分頁預覽僅供確認照片順序與分組；實際表格以 Word 匯出為準。</div>
-                    <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">${pages.join('')}</div>`;
-            }
-
-            selectPreviewPhoto(index) {
-                if (!this.photos[index]) return;
-                this.photos.forEach((photo, photoIndex) => photo.selected = photoIndex === index);
-                this.currentIndex = index;
-                this.lastSelectedIndex = index;
-                this.render();
-                this.recordHistory('從分頁預覽選取照片');
             }
 
             updatePhotoField(index, field, value) {
@@ -5232,6 +5314,16 @@
                     this.syncChildCropSequences();
                     this.refreshSequenceBadgesAndGridInputs();
                     this.updateEditorTitleAndLightboxCaption();
+                    if (index === this.currentIndex && this.editSeq && this.editSeq.value !== value) {
+                        this.editSeq.value = value;
+                    }
+                } else if (field === 'date' || field === 'time') {
+                    this.refreshThumbCardStatusBadge(index);
+                    this.updateAuditBarUi();
+                    if (index === this.currentIndex) {
+                        const targetEl = field === 'date' ? this.editDate : this.editTime;
+                        if (targetEl && targetEl.value !== value) targetEl.value = value;
+                    }
                 } else if (field === 'location' || field === 'desc') {
                     this.refreshThumbCardStatusBadge(index);
                     this.updateAuditBarUi();
@@ -7121,11 +7213,6 @@
                         rowImg.src = layout.isComposite ? layout.src : photo.thumbnailSrc;
                         rowImg.style.transform = layout.isComposite ? 'none' : `${photo.flipH ? 'scaleX(-1) ' : ''}rotate(${photo.rotation || 0}deg)`;
                     }
-                }
-                const previewImg = this.previewContainer?.querySelector(`img[data-preview-uid="${photo.uid}"]`);
-                if (previewImg) {
-                    previewImg.src = layout.isComposite ? layout.src : photo.thumbnailSrc;
-                    previewImg.style.transform = layout.isComposite ? 'none' : `${photo.flipH ? 'scaleX(-1) ' : ''}rotate(${photo.rotation || 0}deg)`;
                 }
             }
 

@@ -2510,6 +2510,199 @@ async function runE2eTests() {
     }
     console.log('  ✅ 試算表同步、舊檔超標文字保留＋逐步刪減、字數過長篩選與匯出確認彈窗皆正常');
 
+    // [9/5] 驗證審計修復項目：PDF 換行分段、左右／橫式第 2 張略過提醒、案由提示、#caseDate blur、先開後併案由覆蓋、篩選向下填滿與試算表同步
+    console.log('[9/5] 驗證 PDF 換行、版型共享欄位提醒、案件日期 blur、彙整統一與篩選向下填滿...');
+    const auditFixesCheck = await page.evaluate(async () => {
+        const origAlert = window.alert;
+        const origConfirm = window.confirm;
+        const origSaveAs = window.saveAs;
+        const origFillText = CanvasRenderingContext2D.prototype.fillText;
+        window.alert = () => {};
+        window.confirm = () => true;
+
+        try {
+            await window.app.clearAll(true);
+            const canvas = document.createElement('canvas');
+            canvas.width = 400;
+            canvas.height = 300;
+            const cctx = canvas.getContext('2d');
+            cctx.fillStyle = '#334155';
+            cctx.fillRect(0, 0, 400, 300);
+            const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.85));
+            const makeFile = (n) => new File([blob], n, { type: 'image/jpeg' });
+            await window.app.handleFiles([makeFile('audit1.jpg'), makeFile('audit2.jpg'), makeFile('audit3.jpg')]);
+
+            // 1. #caseTitle 超 10 全形提醒 & #caseDate blur 補斜線寫回歷史與右欄提示
+            const titleEl = document.getElementById('caseTitle');
+            titleEl.value = '公職人員選舉罷免法賄選案件';
+            titleEl.dispatchEvent(new Event('input', { bubbles: true }));
+            const titleHintShown = !document.getElementById('caseTitleLimitHint')?.classList.contains('hidden');
+
+            const caseDateEl = document.getElementById('caseDate');
+            caseDateEl.dispatchEvent(new Event('focus', { bubbles: true }));
+            caseDateEl.value = '1151116';
+            caseDateEl.dispatchEvent(new Event('input', { bubbles: true }));
+            caseDateEl.dispatchEvent(new Event('blur', { bubbles: true }));
+            const caseDateAfterBlur = caseDateEl.value;
+            const inheritedDateHint = document.getElementById('editDateInheritedHint')?.textContent || '';
+            const latestHistCaseDate = window.app.history[window.app.historyIndex]?.caseData?.caseDate || '';
+
+            // 2. PDF \n 換行繪製與 1:1 表格黑線邊框驗證
+            window.app.photos.forEach((p, idx) => {
+                p.location = '第一勘驗點';
+                p.time = `10:0${idx}`;
+                p.timeAutoDefaulted = false;
+                p.desc = idx === 0 ? '第一行說明\n第二行說明' : `正常說明${idx}`;
+            });
+            const drawnTextLines = [];
+            let pdfCellRectCount = 0;
+            CanvasRenderingContext2D.prototype.fillText = function(text, ...rest) {
+                drawnTextLines.push(String(text));
+                return origFillText.call(this, text, ...rest);
+            };
+            const origJsPdf = window.jspdf.jsPDF;
+            window.jspdf.jsPDF = function(...args) {
+                const doc = new origJsPdf(...args);
+                const origRect = doc.rect.bind(doc);
+                doc.rect = (...rectArgs) => {
+                    pdfCellRectCount++;
+                    return origRect(...rectArgs);
+                };
+                doc.save = () => {};
+                return doc;
+            };
+            try {
+                await window.app.exportPdf();
+            } finally {
+                CanvasRenderingContext2D.prototype.fillText = origFillText;
+                window.jspdf.jsPDF = origJsPdf;
+            }
+            const pdfSplitLineOk = drawnTextLines.some(t => t === '說明') &&
+                drawnTextLines.some(t => t === '第一行說明') &&
+                drawnTextLines.some(t => t === '第二行說明');
+            const pdfGridBordersOk = pdfCellRectCount >= 45; // 3 張照片 × 15 個表格儲存格黑線
+
+            // 3. 左右兩張版型提示 + 第 2 張不同地點於 Word／PDF 匯出確認時皆提醒
+            const layoutEl = document.getElementById('layoutSelect');
+            layoutEl.value = 'left_right_2';
+            layoutEl.dispatchEvent(new Event('change', { bubbles: true }));
+            const narrowDescHint = document.getElementById('editDescLimitHint')?.textContent || '';
+
+            window.app.photos[1].location = '另一處不同地點';
+            window.app.confirmExportWithAudit(() => {}, 'Word 清冊');
+            const wordWarnItems = Array.from(document.querySelectorAll('#exportAuditList li')).map(li => li.textContent.trim());
+            const viewIssuesHidden = document.getElementById('btnAuditViewIssues')?.hidden === true;
+            window.app.closeModal('exportAuditModal');
+
+            window.app.confirmExportWithAudit(() => {}, 'PDF 清冊');
+            const pdfWarnItems = Array.from(document.querySelectorAll('#exportAuditList li')).map(li => li.textContent.trim());
+            window.app.closeModal('exportAuditModal');
+            layoutEl.value = 'up_down_2';
+            layoutEl.dispatchEvent(new Event('change', { bubbles: true }));
+
+            // 4. 篩選狀態下向下填滿不覆蓋隱藏照片 + DataGrid 改 date/time 即時同步右欄
+            document.getElementById('defaultLocation').value = '';
+            window.app.photos[0].location = '';
+            window.app.photos[1].location = '保留的原地點';
+            window.app.photos[2].location = '';
+            window.app.setActiveFilter('missingLocation');
+            window.app.currentIndex = 0;
+            window.app.updateCurrentPhoto('location', '新現場地點');
+            window.app.fillDownFromIndex(0, 'location');
+            const filterFillCheck = {
+                p1Kept: window.app.photos[1].location,
+                p2Updated: window.app.photos[2].location
+            };
+            window.app.setActiveFilter('all');
+
+            window.app.currentIndex = 0;
+            window.app.render();
+            const gridDateInput = document.querySelector('#gridTbody tr:first-child td:nth-child(4) input');
+            const gridTimeInput = document.querySelector('#gridTbody tr:first-child td:nth-child(5) input');
+            gridDateInput.value = '115/11/20';
+            window.app.updatePhotoField(0, 'date', '115/11/20');
+            gridTimeInput.value = '18:30';
+            window.app.updatePhotoField(0, 'time', '18:30');
+            const gridSyncDate = document.getElementById('editDate').value;
+            const gridSyncTime = document.getElementById('editTime').value;
+
+            // 5. 先開早檔 A 再併入晚檔 B（僅變更案由），確認案由隨較晚存檔更新
+            let savedBlobA = null;
+            let savedBlobB = null;
+            let saveCount = 0;
+            window.saveAs = (b) => {
+                saveCount++;
+                if (saveCount === 1) savedBlobA = b;
+                else savedBlobB = b;
+            };
+            document.getElementById('caseTitle').value = '舊案由名稱';
+            await window.app.saveProject({ lite: true });
+            const zipA = await window.JSZip.loadAsync(savedBlobA);
+            const manA = JSON.parse(await zipA.file('manifest.json').async('text'));
+            manA.savedAt = '2026-11-10T08:00:00.000Z';
+            zipA.file('manifest.json', JSON.stringify(manA));
+            const blobA = await zipA.generateAsync({ type: 'blob' });
+
+            document.getElementById('caseTitle').value = '新案由名稱';
+            await window.app.saveProject({ lite: true });
+            const zipB = await window.JSZip.loadAsync(savedBlobB);
+            const manB = JSON.parse(await zipB.file('manifest.json').async('text'));
+            manB.savedAt = '2026-11-10T10:00:00.000Z';
+            zipB.file('manifest.json', JSON.stringify(manB));
+            const blobB = await zipB.generateAsync({ type: 'blob' });
+
+            await window.app.openProjectFromFile(new File([blobA], 'early_case.photo-report', { type: 'application/zip' }));
+            await window.app.mergeProjectFiles([new File([blobB], 'late_case.photo-report', { type: 'application/zip' })]);
+            const mergedCaseTitle = document.getElementById('caseTitle').value;
+            const mergedCaseChanged = Boolean(window.app.lastMergeReport?.caseChanges?.some(c => c.field === 'caseTitle' && c.after === '新案由名稱'));
+
+            await window.app.clearAll(true);
+            return {
+                titleHintShown,
+                caseDateAfterBlur,
+                inheritedDateHint,
+                latestHistCaseDate,
+                pdfSplitLineOk,
+                pdfGridBordersOk,
+                narrowDescHint,
+                wordWarnItems,
+                pdfWarnItems,
+                viewIssuesHidden,
+                filterFillCheck,
+                gridSyncDate,
+                gridSyncTime,
+                mergedCaseTitle,
+                mergedCaseChanged
+            };
+        } finally {
+            window.alert = origAlert;
+            window.confirm = origConfirm;
+            window.saveAs = origSaveAs;
+        }
+    });
+
+    if (
+        !auditFixesCheck.titleHintShown ||
+        auditFixesCheck.caseDateAfterBlur !== '115/11/16' ||
+        !auditFixesCheck.inheritedDateHint.includes('115/11/16') ||
+        auditFixesCheck.latestHistCaseDate !== '115/11/16' ||
+        !auditFixesCheck.pdfSplitLineOk ||
+        !auditFixesCheck.pdfGridBordersOk ||
+        !auditFixesCheck.narrowDescHint.includes('左右／橫式較窄') ||
+        !auditFixesCheck.wordWarnItems.some(t => t.includes('只會印第 1 張的日期、時間與地點') && t.includes('1 張')) ||
+        !auditFixesCheck.pdfWarnItems.some(t => t.includes('只會印第 1 張的日期、時間與地點') && t.includes('1 張')) ||
+        !auditFixesCheck.viewIssuesHidden ||
+        auditFixesCheck.filterFillCheck.p1Kept !== '保留的原地點' ||
+        auditFixesCheck.filterFillCheck.p2Updated !== '新現場地點' ||
+        auditFixesCheck.gridSyncDate !== '115/11/20' ||
+        auditFixesCheck.gridSyncTime !== '18:30' ||
+        auditFixesCheck.mergedCaseTitle !== '新案由名稱' ||
+        !auditFixesCheck.mergedCaseChanged
+    ) {
+        throw new Error(`第 [9/5] 節審計修正項目回歸驗證失敗: ${JSON.stringify(auditFixesCheck)}`);
+    }
+    console.log('  ✅ PDF 換行、版型略過欄位提醒、案件日期 blur、彙整統一、篩選向下填滿與試算表同步全數通過');
+
     assertNoPageErrors();
 
     await browser.close();

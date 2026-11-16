@@ -38,16 +38,29 @@
      * @param {string} options.exportTitle - 匯出清冊名稱（如 Word 清冊）
      * @param {Object} options.audit - 稽核結果物件
      */
-    function showExportAuditPrompt({ modal, titleEl, listEl, exportTitle, audit }) {
+    function showExportAuditPrompt({ modal, titleEl, listEl, exportTitle, audit, layoutWarnings = [] }) {
         if (!modal) return;
-        if (listEl && audit) {
+        if (listEl) {
             const items = [];
-            if (audit.missingDesc > 0) items.push(`未填說明：${audit.missingDesc} 張`);
-            if (audit.missingLocation > 0) items.push(`未填地點：${audit.missingLocation} 張`);
-            if (audit.invalidDateTime > 0) items.push(`時間異常：${audit.invalidDateTime} 張`);
-            if (audit.duplicatePhotos > 0) items.push(`同名照片：${audit.duplicatePhotos} 張`);
-            if (audit.overTextLimit > 0) items.push(`地點或說明過長（恐影響排版）：${audit.overTextLimit} 張`);
-            listEl.innerHTML = items.map(t => `<li>${t}</li>`).join('');
+            if (audit) {
+                if (audit.missingDesc > 0) items.push(`未填說明：${audit.missingDesc} 張`);
+                if (audit.missingLocation > 0) items.push(`未填地點：${audit.missingLocation} 張`);
+                if (audit.invalidDateTime > 0) items.push(`時間異常：${audit.invalidDateTime} 張`);
+                if (audit.duplicatePhotos > 0) items.push(`同名照片：${audit.duplicatePhotos} 張`);
+                if (audit.overTextLimit > 0) items.push(`地點或說明過長（恐影響排版）：${audit.overTextLimit} 張`);
+            }
+            if (Array.isArray(layoutWarnings)) {
+                layoutWarnings.forEach(msg => {
+                    if (msg) items.push(String(msg));
+                });
+            }
+            const frag = document.createDocumentFragment();
+            items.forEach(text => {
+                const li = document.createElement('li');
+                li.textContent = text;
+                frag.appendChild(li);
+            });
+            listEl.replaceChildren(frag);
         }
         if (titleEl) {
             titleEl.textContent = `匯出前確認（${exportTitle}）`;
