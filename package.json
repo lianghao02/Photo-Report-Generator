@@ -1,6 +1,6 @@
 {
   "name": "photo-report-generator",
-  "version": "2.4.1",
+  "version": "2.5.0",
   "scripts": {
     "test": "node tests/run-all-unit.js",
     "test:e2e": "node tests/e2e/photo-report.spec.js && node tests/e2e/desktop-policy.spec.js && node tests/e2e/layout.spec.js && node tests/e2e/project-integrity.spec.js",
