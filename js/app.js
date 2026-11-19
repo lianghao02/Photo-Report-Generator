@@ -1144,6 +1144,10 @@
 
             handleExportError(error) {
                 this.clearProgress();
+                if (error?.message === '使用者已取消處理。') {
+                    alert('已取消匯出，已完成的照片資料會保留。');
+                    return;
+                }
                 console.error(error);
                 alert(`匯出失敗：${error.message || '圖片無法處理，請確認檔案格式是否受支援。'}`);
             }
@@ -2280,8 +2284,19 @@
 
             showExportSaveReminder(formatLabel = '報表') {
                 if (!this.exportSaveReminderBanner) return;
+                const isLegacyOverwrite = Boolean(
+                    this.currentProjectFileHandle &&
+                    /\.photo-report$/i.test(this.currentProjectFileName || '')
+                );
                 if (this.exportSaveReminderText) {
-                    this.exportSaveReminderText.textContent = `${formatLabel}已匯出，目前尚有未儲存的編輯進度，建議存成 .prp 以便日後開啟修改。`;
+                    this.exportSaveReminderText.textContent = isLegacyOverwrite
+                        ? `${formatLabel}已匯出，目前開啟的舊版進度檔「${this.currentProjectFileName}」尚有未儲存變更，建議立即存檔（或按 Ctrl+Shift+S 另存為 .prp）。`
+                        : `${formatLabel}已匯出，目前尚有未儲存的編輯進度，建議存成 .prp 以便日後開啟修改。`;
+                }
+                if (this.btnSaveAfterExport) {
+                    this.btnSaveAfterExport.innerHTML = isLegacyOverwrite
+                        ? '<i class="fa-solid fa-floppy-disk"></i> 覆寫原進度檔'
+                        : '<i class="fa-solid fa-floppy-disk"></i> 立即存進度 (.prp)';
                 }
                 this.exportSaveReminderBanner.classList.remove('hidden');
             }
@@ -7911,24 +7926,31 @@
                 this.processingCancelled = false;
 
                 const zip = new JSZip();
-                const caseTitle = document.getElementById('caseTitle').value.trim() || '現場照片';
+                const rawTitle = this.sanitizeFilename(document.getElementById('caseTitle').value, '現場照片');
+                const cleanTitle = rawTitle.replace(/_+/g, '_').replace(/^_+|_+$/g, '') || '現場照片';
 
-                this.setProgress('正在壓縮照片並建立 ZIP…', 0, this.photos.length);
-                for (let i = 0; i < this.photos.length; i++) {
-                    const p = this.photos[i];
-                    const processed = await this.processImageToBlob(p, 1600, 0.88);
-                    const ext = 'jpg';
-                    const filename = `${p.seq}_${p.name.replace(/\.[^/.]+$/, '')}.${ext}`;
-                    zip.file(filename, processed.blob);
-                    this.setProgress('正在壓縮照片並建立 ZIP…', i + 1, this.photos.length);
+                try {
+                    this.setProgress('正在壓縮照片並建立 ZIP…', 0, this.photos.length);
+                    for (let i = 0; i < this.photos.length; i++) {
+                        this.throwIfProcessingCancelled();
+                        const p = this.photos[i];
+                        const processed = await this.processImageToBlob(p, 1600, 0.88);
+                        this.throwIfProcessingCancelled();
+                        const ext = 'jpg';
+                        const filename = `${p.seq}_${p.name.replace(/\.[^/.]+$/, '')}.${ext}`;
+                        zip.file(filename, processed.blob);
+                        this.setProgress('正在壓縮照片並建立 ZIP…', i + 1, this.photos.length);
+                        if ((i + 1) % 5 === 0) await this.yieldToBrowser();
+                    }
+
                     this.throwIfProcessingCancelled();
-                    if ((i + 1) % 5 === 0) await this.yieldToBrowser();
+                    this.setProgress('正在封裝 ZIP 檔案…', this.photos.length, this.photos.length);
+                    const content = await zip.generateAsync({ type: 'blob' });
+                    this.throwIfProcessingCancelled();
+                    saveAs(content, `${cleanTitle}_最佳化照片包.zip`);
+                } finally {
+                    this.clearProgress();
                 }
-
-                this.setProgress('正在封裝 ZIP 檔案…', this.photos.length, this.photos.length);
-                const content = await zip.generateAsync({ type: 'blob' });
-                saveAs(content, `${caseTitle}_最佳化照片包.zip`);
-                this.clearProgress();
             }
         }
 

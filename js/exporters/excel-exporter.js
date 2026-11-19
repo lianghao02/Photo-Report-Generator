@@ -63,7 +63,8 @@
         const wb = xlsxLib.utils.book_new();
         xlsxLib.utils.book_append_sheet(wb, ws, '工作表1');
 
-        const safeName = `${date || '報告'}_${title}_資料清單.xlsx`.replace(/[\\/:*?"<>|]/g, '_');
+        const compactDate = String(date || '').replace(/[\\/:*?"<>|\s-]+/g, '');
+        const safeName = `${compactDate ? `${compactDate}_` : ''}${title}_資料清單.xlsx`.replace(/[\\/:*?"<>|]/g, '_');
         xlsxLib.writeFile(wb, safeName);
     }
 

@@ -2769,6 +2769,42 @@ async function runE2eTests() {
             await window.app.exportDocx();
             const afterCleanExportHidden = banner.classList.contains('hidden');
 
+            const origXlsxWrite = window.XLSX.writeFile;
+            let excelWithDateName = '';
+            let excelNoDateName = '';
+            try {
+                window.XLSX.writeFile = (_wb, name) => {
+                    if (!excelWithDateName) excelWithDateName = String(name || '');
+                    else excelNoDateName = String(name || '');
+                };
+                caseDateEl.value = '115/11/02';
+                window.app.exportExcel();
+                caseDateEl.value = '';
+                window.app.exportExcel();
+            } finally {
+                window.XLSX.writeFile = origXlsxWrite;
+            }
+
+            caseTitleEl.value = '115/11/10:案由*測試?';
+            await window.app.exportZip();
+            const zipSanitizedName = saved.find(item => item.name.endsWith('.zip'))?.name || '';
+
+            const capturedAlerts = [];
+            window.alert = (msg) => capturedAlerts.push(String(msg || ''));
+            window.app.handleExportError(new Error('使用者已取消處理。'));
+            const cancelAlertMsg = capturedAlerts[capturedAlerts.length - 1] || '';
+
+            window.app.currentProjectFileHandle = { name: 'legacy_old.photo-report' };
+            window.app.currentProjectFileName = 'legacy_old.photo-report';
+            window.app.showExportSaveReminder('Word');
+            const legacyOverwriteBtnText = document.getElementById('btnSaveAfterExport')?.textContent?.trim() || '';
+            window.app.currentProjectFileHandle = null;
+            window.app.currentProjectFileName = '';
+            window.app.showExportSaveReminder('Word');
+            const restoredPrpBtnText = document.getElementById('btnSaveAfterExport')?.textContent?.trim() || '';
+            window.app.hideExportSaveReminder();
+            window.alert = () => {};
+
             let dropPrpRestored = false;
             if (prpFile) {
                 caseTitleEl.value = '將被覆蓋的舊案由';
@@ -2796,6 +2832,12 @@ async function runE2eTests() {
                 afterSaveHidden,
                 unsavedAfterBannerSave,
                 afterCleanExportHidden,
+                excelWithDateName,
+                excelNoDateName,
+                zipSanitizedName,
+                cancelAlertMsg,
+                legacyOverwriteBtnText,
+                restoredPrpBtnText,
                 dropPrpRestored
             };
         } finally {
@@ -2820,6 +2862,12 @@ async function runE2eTests() {
         !prpAndReminderCheck.afterSaveHidden ||
         prpAndReminderCheck.unsavedAfterBannerSave ||
         !prpAndReminderCheck.afterCleanExportHidden ||
+        prpAndReminderCheck.excelWithDateName !== '1151102_極簡檔名測試_資料清單.xlsx' ||
+        prpAndReminderCheck.excelNoDateName !== '極簡檔名測試_資料清單.xlsx' ||
+        prpAndReminderCheck.zipSanitizedName !== '115_11_10_案由_測試_最佳化照片包.zip' ||
+        !prpAndReminderCheck.cancelAlertMsg.includes('已取消匯出') ||
+        !prpAndReminderCheck.legacyOverwriteBtnText.includes('覆寫原進度檔') ||
+        !prpAndReminderCheck.restoredPrpBtnText.includes('.prp') ||
         !prpAndReminderCheck.dropPrpRestored
     ) {
         throw new Error(`.prp 精簡命名與匯出後未存提醒驗證失敗: ${JSON.stringify(prpAndReminderCheck)}`);
