@@ -312,8 +312,8 @@ async function runE2eTests() {
 
         try {
             await window.app.saveProject();
-            const project = savedFiles.find(file => file.name.endsWith('.photo-report'));
-            if (!project) throw new Error('未產生專案檔');
+            const project = savedFiles.find(file => file.name.endsWith('.prp'));
+            if (!project) throw new Error('未產生 .prp 進度檔');
             const projectFile = new File([project.blob], project.name, { type: 'application/zip' });
             await window.app.openProject({ target: { files: [projectFile], value: '' } });
 
@@ -1619,7 +1619,7 @@ async function runE2eTests() {
         };
     });
     if (
-        afterCtrlS.fileName !== '115_11_10_竊盜案_測試__照片清冊專案.photo-report' ||
+        !/^115_11_10_竊盜案_測試_\d{4}_\d{4}\.prp$/.test(afterCtrlS.fileName || '') ||
         afterCtrlS.photoTimeInApp !== '16:45' ||
         afterCtrlS.photoTimeInManifest !== '16:45' ||
         !afterCtrlS.savedClass ||
@@ -1802,7 +1802,7 @@ async function runE2eTests() {
         }
     });
     if (
-        !liteAndDropResult.liteName.endsWith('_照片清冊專案.photo-report') ||
+        !/_\d{4}_\d{4}\.prp$/.test(liteAndDropResult.liteName || '') ||
         liteAndDropResult.liteSize >= liteAndDropResult.fullSize ||
         liteAndDropResult.restoredMaxDim > 2000 ||
         liteAndDropResult.restoredRotation !== 90 ||
@@ -2702,6 +2702,129 @@ async function runE2eTests() {
         throw new Error(`第 [9/5] 節審計修正項目回歸驗證失敗: ${JSON.stringify(auditFixesCheck)}`);
     }
     console.log('  ✅ PDF 換行、版型略過欄位提醒、案件日期 blur、彙整統一、篩選向下填滿與試算表同步全數通過');
+
+    const prpAndReminderCheck = await page.evaluate(async () => {
+        const saved = [];
+        const origSaveAs = window.saveAs;
+        const origConfirm = window.confirm;
+        const origAlert = window.alert;
+        const origJsPdf = window.jspdf.jsPDF;
+        const pdfSavedNames = [];
+        window.saveAs = (blob, name) => saved.push({ name: String(name || ''), blob });
+        window.confirm = () => true;
+        window.alert = () => {};
+        window.jspdf.jsPDF = function(...args) {
+            const doc = new origJsPdf(...args);
+            doc.save = (name) => {
+                pdfSavedNames.push(String(name || ''));
+            };
+            return doc;
+        };
+        try {
+            const canvas = document.createElement('canvas');
+            canvas.width = 40;
+            canvas.height = 30;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#0ea5e9';
+            ctx.fillRect(0, 0, 40, 30);
+            const imgBlob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.9));
+            await window.app.handleFiles([new File([imgBlob], 'reminder_test.jpg', { type: 'image/jpeg' })]);
+            await new Promise(resolve => setTimeout(resolve, 60));
+
+            const caseTitleEl = document.getElementById('caseTitle');
+            const caseDateEl = document.getElementById('caseDate');
+            caseTitleEl.value = '極簡檔名測試';
+            caseTitleEl.dispatchEvent(new Event('input', { bubbles: true }));
+            caseDateEl.value = '115/11/02';
+            caseDateEl.dispatchEvent(new Event('input', { bubbles: true }));
+            window.app.layoutSelect.value = 'up_down_2';
+
+            const banner = document.getElementById('exportSaveReminderBanner');
+            const bannerText = document.getElementById('exportSaveReminderText');
+            const initialHidden = banner.classList.contains('hidden');
+
+            await window.app.exportDocx();
+            const wordWithDateName = saved.find(item => item.name.endsWith('.docx'))?.name || '';
+            const afterWordVisible = !banner.classList.contains('hidden');
+            const afterWordMsg = bannerText?.textContent?.trim() || '';
+
+            document.getElementById('btnDismissSaveAfterExport')?.click();
+            const afterDismissHidden = banner.classList.contains('hidden');
+
+            caseDateEl.value = '';
+            caseDateEl.dispatchEvent(new Event('input', { bubbles: true }));
+            await window.app.exportPdf();
+            const pdfNoDateName = pdfSavedNames[pdfSavedNames.length - 1] || '';
+            const afterPdfVisible = !banner.classList.contains('hidden');
+            const afterPdfMsg = bannerText?.textContent?.trim() || '';
+
+            document.getElementById('btnSaveAfterExport')?.click();
+            for (let i = 0; i < 40 && window.app.hasUnsavedProjectChanges(); i++) {
+                await new Promise(resolve => setTimeout(resolve, 25));
+            }
+            const prpFile = saved.find(item => item.name.endsWith('.prp'));
+            const afterSaveHidden = banner.classList.contains('hidden');
+            const unsavedAfterBannerSave = window.app.hasUnsavedProjectChanges();
+
+            await window.app.exportDocx();
+            const afterCleanExportHidden = banner.classList.contains('hidden');
+
+            let dropPrpRestored = false;
+            if (prpFile) {
+                caseTitleEl.value = '將被覆蓋的舊案由';
+                const dropTarget = document.getElementById('emptyState');
+                const dt = new DataTransfer();
+                dt.items.add(new File([prpFile.blob], prpFile.name, { type: 'application/zip' }));
+                const dropEvent = new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt });
+                dropTarget.dispatchEvent(dropEvent);
+                for (let i = 0; i < 40 && document.getElementById('caseTitle').value !== '極簡檔名測試'; i++) {
+                    await new Promise(resolve => setTimeout(resolve, 25));
+                }
+                dropPrpRestored = document.getElementById('caseTitle').value === '極簡檔名測試';
+            }
+
+            return {
+                initialHidden,
+                wordWithDateName,
+                afterWordVisible,
+                afterWordMsg,
+                afterDismissHidden,
+                pdfNoDateName,
+                afterPdfVisible,
+                afterPdfMsg,
+                prpName: prpFile?.name || '',
+                afterSaveHidden,
+                unsavedAfterBannerSave,
+                afterCleanExportHidden,
+                dropPrpRestored
+            };
+        } finally {
+            window.saveAs = origSaveAs;
+            window.confirm = origConfirm;
+            window.alert = origAlert;
+            window.jspdf.jsPDF = origJsPdf;
+            await window.app.clearAll(true);
+        }
+    });
+
+    if (
+        !prpAndReminderCheck.initialHidden ||
+        prpAndReminderCheck.wordWithDateName !== '1151102_極簡檔名測試_現場照片清冊.docx' ||
+        !prpAndReminderCheck.afterWordVisible ||
+        !prpAndReminderCheck.afterWordMsg.includes('Word') ||
+        !prpAndReminderCheck.afterDismissHidden ||
+        prpAndReminderCheck.pdfNoDateName !== '極簡檔名測試_現場照片清冊.pdf' ||
+        !prpAndReminderCheck.afterPdfVisible ||
+        !prpAndReminderCheck.afterPdfMsg.includes('PDF') ||
+        !/^極簡檔名測試_\d{4}_\d{4}\.prp$/.test(prpAndReminderCheck.prpName) ||
+        !prpAndReminderCheck.afterSaveHidden ||
+        prpAndReminderCheck.unsavedAfterBannerSave ||
+        !prpAndReminderCheck.afterCleanExportHidden ||
+        !prpAndReminderCheck.dropPrpRestored
+    ) {
+        throw new Error(`.prp 精簡命名與匯出後未存提醒驗證失敗: ${JSON.stringify(prpAndReminderCheck)}`);
+    }
+    console.log('  ✅ .prp 精簡命名、Word／PDF 去符號與無「報告_」檔名、匯出後提醒列及拖放載入 .prp 驗證通過');
 
     assertNoPageErrors();
 

@@ -559,7 +559,8 @@
             }
         }
 
-        const safeName = `${date || '報告'}_${title}_現場照片清冊.pdf`.replace(/[\\/:*?"<>|]/g, '_');
+        const compactDate = String(date || '').replace(/[\\/:*?"<>|\s-]+/g, '');
+        const safeName = `${compactDate ? `${compactDate}_` : ''}${title}_現場照片清冊.pdf`.replace(/[\\/:*?"<>|]/g, '_');
         pdf.save(safeName);
         clearProgress();
     }

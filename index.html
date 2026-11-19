@@ -52,19 +52,19 @@
                 </summary>
                 <div class="app-menu-panel">
                     <p class="app-menu-group">工作進度</p>
-                    <label class="app-menu-item" title="開啟之前儲存的工作進度（也可直接把 .photo-report 拖進畫面）">
+                    <label class="app-menu-item" title="開啟之前儲存的工作進度（支援 .prp 與舊版 .photo-report，也可直接拖進畫面）">
                         <i class="fa-solid fa-folder-open"></i> 開啟工作進度…
-                        <input type="file" id="importProjectInput" accept=".photo-report,application/zip" class="hidden">
+                        <input type="file" id="importProjectInput" accept=".prp,.photo-report,application/zip" class="hidden">
                     </label>
-                    <label class="app-menu-item" title="把另一份（或多份）.photo-report 進度檔彙整到目前清冊：同照片自動去重並保留較新版本，新照片自動接續">
+                    <label class="app-menu-item" title="把另一份（或多份）.prp／.photo-report 進度檔彙整到目前清冊：同照片自動去重並保留較新版本，新照片自動接續">
                         <i class="fa-solid fa-code-merge"></i> 併入其他工作進度…
-                        <input type="file" id="mergeProjectInput" multiple accept=".photo-report,application/zip" class="hidden">
+                        <input type="file" id="mergeProjectInput" multiple accept=".prp,.photo-report,application/zip" class="hidden">
                     </label>
                     <button type="button" id="btnViewMergeReport" class="app-menu-item" disabled title="查看最近一次彙整的照片與欄位變更">查看最近彙整明細…</button>
-                    <button type="button" id="btnSaveProject" class="app-menu-item" title="把照片與已填資料存成檔案，之後可繼續編輯（快速鍵：Ctrl+S；超大原圖會自動以 220 ppi 等級最佳化壓縮）">
+                    <button type="button" id="btnSaveProject" class="app-menu-item" title="把照片與已填資料存成 .prp 檔案，之後可繼續編輯（快速鍵：Ctrl+S；超大原圖會自動以 220 ppi 等級最佳化壓縮）">
                         <i class="fa-solid fa-floppy-disk"></i> <span id="saveProjectMenuText">儲存工作進度（Ctrl+S）</span>
                     </button>
-                    <button type="button" id="btnSaveProjectAs" class="app-menu-item" title="另存成新的 .photo-report 檔案（快速鍵：Ctrl+Shift+S）">
+                    <button type="button" id="btnSaveProjectAs" class="app-menu-item" title="另存成新的 .prp 工作進度檔（快速鍵：Ctrl+Shift+S）">
                         <i class="fa-regular fa-copy"></i> 另存新進度檔…
                     </button>
                 </div>
@@ -313,8 +313,8 @@
                     <i class="fa-solid fa-cloud-arrow-up"></i>
                 </div>
                 <div class="max-w-md">
-                    <h3 class="text-base font-black text-slate-900">把照片、資料夾或 .photo-report 進度檔拖到這裡</h3>
-                    <p class="text-xs font-bold text-slate-700 mt-0.5 leading-relaxed">支援 JPG、PNG、WEBP 與 .photo-report 工作進度檔（一次拖入多個進度檔可自動彙整合併）。</p>
+                    <h3 class="text-base font-black text-slate-900">把照片、資料夾或 .prp 進度檔拖到這裡</h3>
+                    <p class="text-xs font-bold text-slate-700 mt-0.5 leading-relaxed">支援 JPG、PNG、WEBP 與 .prp／.photo-report 工作進度檔（一次拖入多個進度檔可自動彙整合併）。</p>
                 </div>
                 <div class="flex flex-wrap justify-center gap-2.5 mt-1">
                     <button type="button" id="btnEmptyAddPhotos" class="btn-primary px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2">
@@ -491,6 +491,26 @@
                         <!-- 動態注入試算表列 -->
                     </tbody>
                 </table>
+            </div>
+
+            <!-- 匯出後未存進度提醒列（做法 1：匯出報表完成且有未存異動時顯示） -->
+            <div id="exportSaveReminderBanner" class="export-save-reminder hidden" role="status" aria-live="polite">
+                <div class="flex items-center gap-2.5 min-w-0">
+                    <span class="export-save-reminder__icon" aria-hidden="true">
+                        <i class="fa-solid fa-floppy-disk"></i>
+                    </span>
+                    <div class="min-w-0">
+                        <p id="exportSaveReminderText" class="text-xs font-extrabold text-slate-900 leading-snug">報表已匯出，目前尚有未儲存的編輯進度，建議存成 .prp 以便日後開啟修改。</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2 flex-shrink-0">
+                    <button type="button" id="btnSaveAfterExport" class="neo-btn bg-emerald-400 hover:bg-emerald-300 text-slate-900 px-3 py-1.5 text-xs font-black">
+                        <i class="fa-solid fa-floppy-disk"></i> 立即存進度 (.prp)
+                    </button>
+                    <button type="button" id="btnDismissSaveAfterExport" class="neo-btn bg-white hover:bg-slate-100 text-slate-700 px-2.5 py-1.5 text-xs font-bold">
+                        暫不用
+                    </button>
+                </div>
             </div>
 
             <!-- 匯出列：版型與匯出固定在照片區底部 -->

@@ -1424,3 +1424,32 @@ input[readonly].seq-locked {
 #mergeReportBody thead th { background: #EEF0F3; }
 #mergeReportBody th:first-child { width: 24%; }
 @media (max-width: 600px) { .merge-report-panel { padding: 12px; } .merge-report-header { flex-wrap: wrap; } }
+.export-save-reminder {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 8px 12px;
+    border-radius: 14px;
+    border: 2px solid var(--border);
+    background: #ECFDF5;
+    box-shadow: 0 3px 0 var(--border);
+    flex-shrink: 0;
+}
+.export-save-reminder.hidden {
+    display: none !important;
+}
+.export-save-reminder__icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    border: 2px solid var(--border);
+    background: #34D399;
+    color: #0F172A;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    flex-shrink: 0;
+}

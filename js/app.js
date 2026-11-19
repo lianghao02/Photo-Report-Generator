@@ -129,6 +129,10 @@
                 this.autoDraftBannerMeta = document.getElementById('autoDraftBannerMeta');
                 this.btnRestoreAutoDraft = document.getElementById('btnRestoreAutoDraft');
                 this.btnDiscardAutoDraft = document.getElementById('btnDiscardAutoDraft');
+                this.exportSaveReminderBanner = document.getElementById('exportSaveReminderBanner');
+                this.exportSaveReminderText = document.getElementById('exportSaveReminderText');
+                this.btnSaveAfterExport = document.getElementById('btnSaveAfterExport');
+                this.btnDismissSaveAfterExport = document.getElementById('btnDismissSaveAfterExport');
 
                 // 右側編輯器元件
                 this.editorCard = document.getElementById('editorCard');
@@ -331,6 +335,8 @@
                 document.getElementById('btnSaveProject').addEventListener('click', () => this.saveProject({ fromUserPicker: true }).catch(error => this.handleProjectError(error, 'save')));
                 this.btnSaveProjectAs?.addEventListener('click', () => this.saveProject({ saveAsNew: true, fromUserPicker: true }).catch(error => this.handleProjectError(error, 'save')));
                 this.btnQuickSaveStatus?.addEventListener('click', () => this.saveProject({ fromUserPicker: true }).catch(error => this.handleProjectError(error, 'save')));
+                this.btnSaveAfterExport?.addEventListener('click', () => this.saveProject({ fromUserPicker: true }).catch(error => this.handleProjectError(error, 'save')));
+                this.btnDismissSaveAfterExport?.addEventListener('click', () => this.hideExportSaveReminder());
                 this.btnRestoreAutoDraft?.addEventListener('click', () => this.restoreAutoDraft().catch(error => this.handleProjectError(error, 'open')));
                 this.btnDiscardAutoDraft?.addEventListener('click', () => this.discardAutoDraft());
                 document.getElementById('importProjectInput').addEventListener('change', (e) => this.openProject(e));
@@ -2012,7 +2018,7 @@
                     event.preventDefault();
                     setDragOver(false);
                     const droppedFiles = Array.from(event.dataTransfer?.files || []);
-                    const projectFiles = droppedFiles.filter(file => /\.photo-report$/i.test(file.name || ''));
+                    const projectFiles = droppedFiles.filter(file => this.isProjectArchiveFilename(file.name));
                     if (projectFiles.length === 1) {
                         let fileHandle = null;
                         try {
@@ -2020,7 +2026,7 @@
                             const firstItem = items.find(item => item.kind === 'file');
                             if (firstItem && typeof firstItem.getAsFileSystemHandle === 'function') {
                                 const handle = await firstItem.getAsFileSystemHandle();
-                                if (handle && handle.kind === 'file' && /\.photo-report$/i.test(handle.name || '')) {
+                                if (handle && handle.kind === 'file' && this.isProjectArchiveFilename(handle.name)) {
                                     fileHandle = handle;
                                 }
                             }
@@ -2035,7 +2041,7 @@
                         return;
                     }
                     const files = droppedFiles.filter(file => file.type.startsWith('image/'));
-                    if (!files.length) return alert('請拖入支援的圖片檔案或 .photo-report 工作進度檔。');
+                    if (!files.length) return alert('請拖入支援的圖片檔案或 .prp／.photo-report 工作進度檔。');
                     this.handleFiles(files).catch(error => this.handleProcessingError(error));
                 });
             }
@@ -2101,9 +2107,12 @@
             }
 
             updateProjectSaveStatusUi() {
-                if (!this.btnQuickSaveStatus || !this.quickSaveStatusText || !this.quickSaveStatusIcon) return;
                 const hasPhotos = this.photos.length > 0;
                 const unsaved = this.hasUnsavedProjectChanges();
+                if (!hasPhotos || !unsaved) {
+                    this.hideExportSaveReminder();
+                }
+                if (!this.btnQuickSaveStatus || !this.quickSaveStatusText || !this.quickSaveStatusIcon) return;
                 if (!hasPhotos && !unsaved) {
                     this.btnQuickSaveStatus.classList.add('hidden');
                     if (this.saveProjectMenuText) {
@@ -2255,6 +2264,32 @@
                 return cleaned || fallback;
             }
 
+            isProjectArchiveFilename(filename) {
+                return /\.(?:prp|photo-report)$/i.test(String(filename || '').trim());
+            }
+
+            buildProjectSuggestedFilename(caseTitle, now = new Date()) {
+                const rawTitle = this.sanitizeFilename(caseTitle, '現場照片清冊');
+                const cleanTitle = rawTitle.replace(/_+/g, '_').replace(/^_+|_+$/g, '') || '現場照片清冊';
+                const month = String(now.getMonth() + 1).padStart(2, '0');
+                const day = String(now.getDate()).padStart(2, '0');
+                const hours = String(now.getHours()).padStart(2, '0');
+                const minutes = String(now.getMinutes()).padStart(2, '0');
+                return `${cleanTitle}_${month}${day}_${hours}${minutes}.prp`;
+            }
+
+            showExportSaveReminder(formatLabel = '報表') {
+                if (!this.exportSaveReminderBanner) return;
+                if (this.exportSaveReminderText) {
+                    this.exportSaveReminderText.textContent = `${formatLabel}已匯出，目前尚有未儲存的編輯進度，建議存成 .prp 以便日後開啟修改。`;
+                }
+                this.exportSaveReminderBanner.classList.remove('hidden');
+            }
+
+            hideExportSaveReminder() {
+                this.exportSaveReminderBanner?.classList.add('hidden');
+            }
+
             finalizeActiveInputsBeforeSave() {
                 const active = document.activeElement;
                 if (active instanceof HTMLInputElement) {
@@ -2360,11 +2395,9 @@
 
                 const caseData = this.getCaseData();
                 const savingPhotos = this.photos.map(photo => PhotoReportPhotoModel.cloneForHistory(photo));
-                const safeTitle = this.sanitizeFilename(caseData.caseTitle, '現場照片清冊');
-                const suffix = '_照片清冊專案.photo-report';
                 const suggestedName = (!saveAsNew && this.currentProjectFileHandle && this.currentProjectFileName)
                     ? this.currentProjectFileName
-                    : `${safeTitle}${suffix}`;
+                    : this.buildProjectSuggestedFilename(caseData.caseTitle);
 
                 const isDefaultSaveAs = !this.initialSaveAs || window.saveAs === this.initialSaveAs;
                 let targetHandle = (!saveAsNew && isDefaultSaveAs && this.currentProjectFileHandle)
@@ -2376,8 +2409,8 @@
                         targetHandle = await window.showSaveFilePicker({
                             suggestedName,
                             types: [{
-                                description: '現場照片清冊工作進度檔 (.photo-report)',
-                                accept: { 'application/zip': ['.photo-report'] }
+                                description: '現場照片清冊工作進度檔 (.prp)',
+                                accept: { 'application/zip': ['.prp', '.photo-report'] }
                             }]
                         });
                     } catch (pickerError) {
@@ -7765,7 +7798,11 @@
             async exportDocx() {
                 if (typeof PhotoReportDocxExporter !== 'undefined') {
                     this.processingCancelled = false;
-                    return PhotoReportDocxExporter.exportDocx(this.getExportContext());
+                    const exported = await PhotoReportDocxExporter.exportDocx(this.getExportContext());
+                    if (this.photos.length > 0 && this.hasUnsavedProjectChanges()) {
+                        this.showExportSaveReminder('Word');
+                    }
+                    return exported;
                 }
                 alert('Word 匯出模組尚未載入！');
             }
@@ -7785,7 +7822,11 @@
             async exportPdf() {
                 if (typeof PhotoReportPdfExporter !== 'undefined') {
                     this.processingCancelled = false;
-                    return PhotoReportPdfExporter.exportPdf(this.getExportContext());
+                    const exported = await PhotoReportPdfExporter.exportPdf(this.getExportContext());
+                    if (this.photos.length > 0 && this.hasUnsavedProjectChanges()) {
+                        this.showExportSaveReminder('PDF');
+                    }
+                    return exported;
                 }
                 alert('PDF 匯出模組尚未載入！');
             }
