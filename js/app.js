@@ -2423,10 +2423,17 @@
                 }
             }
 
-            showExportDirSavedNotice(folderName) {
+            showExportDirNotice(message, tone = 'success') {
                 if (!this.exportDirSavedNotice) return;
-                this.exportDirSavedNotice.textContent = `已存進「${folderName}」`;
+                this.exportDirSavedNotice.textContent = String(message || '');
+                this.exportDirSavedNotice.className = tone === 'warn'
+                    ? 'text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded-lg whitespace-nowrap'
+                    : 'text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-lg whitespace-nowrap';
                 this.exportDirSavedNotice.classList.remove('hidden');
+            }
+
+            showExportDirSavedNotice(folderName) {
+                this.showExportDirNotice(`已存進「${folderName}」`, 'success');
             }
 
             async setExportDirectoryHandle(handle, { persist = true } = {}) {
@@ -2491,12 +2498,14 @@
                     this.openModal('exportDirGuideModal');
                     return false;
                 }
+                const pickerOpenedAt = Date.now();
                 try {
                     const handle = await window.showDirectoryPicker({
                         mode: 'readwrite',
                         id: 'photo-report-export-zone'
                     });
                     if (!handle) return false;
+                    let permissionPending = false;
                     if (typeof handle.queryPermission === 'function') {
                         const status = await handle.queryPermission({ mode: 'readwrite' });
                         if (status === 'denied') {
@@ -2510,16 +2519,27 @@
                                     alert('瀏覽器尚未允許寫入這個資料夾；若跳出「允許編輯檔案」提示請按允許，或改選其他資料夾。');
                                     return false;
                                 }
+                                if (reqStatus !== 'granted') permissionPending = true;
                             } catch (permErr) {
                                 // 若使用者在資料夾視窗瀏覽較久導致時效過期，先綁定資料夾；實際點匯出當下會再喚起授權
                                 if (permErr?.name !== 'NotAllowedError') throw permErr;
+                                permissionPending = true;
                             }
                         }
                     }
                     await this.setExportDirectoryHandle(handle, { persist: true });
+                    this.showExportDirNotice(
+                        permissionPending ? `已選「${handle.name}」（匯出時將再詢問編輯權限）` : `已指定「${handle.name}」`,
+                        permissionPending ? 'warn' : 'success'
+                    );
                     return true;
                 } catch (error) {
-                    if (error?.name === 'AbortError') return false;
+                    if (error?.name === 'AbortError') {
+                        if (Date.now() - pickerOpenedAt > 1200) {
+                            this.showExportDirNotice('未完成資料夾授權：若已點選資料夾卻沒跳允許提示，請點網址列左側圖示開啟「檔案編輯」權限', 'warn');
+                        }
+                        return false;
+                    }
                     throw error;
                 }
             }

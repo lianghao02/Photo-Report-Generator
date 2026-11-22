@@ -89,7 +89,7 @@ async function main(){
         clean();await page.close();
         console.log(`實際照片／測試素材 ${photos.length} 張：存檔、重開及內容比對通過`);
         const failurePage=await browser.newPage();const errors=trackPageErrors(failurePage);await failurePage.goto('about:blank');const boom=failurePage.waitForEvent('pageerror');await failurePage.evaluate(()=>{setTimeout(()=>{throw new Error('刻意測試錯誤防線');},0);});await boom;assert.throws(errors,/未處理例外/);await failurePage.close();
-        const missing=await browser.newPage();const missingErrors=trackPageErrors(missing);await missing.route('**/js/project-format.js',route=>route.abort());const absent=missing.waitForEvent('pageerror');await missing.goto(pathToFileURL(path.resolve(__dirname,'../../index.html')).href);const error=await absent;assert.match(error.message,/必要的/);assert.throws(missingErrors,/未處理例外/);await missing.close();
+        const missing=await browser.newPage();const missingErrors=trackPageErrors(missing);await missing.route('**/js/project-format.js*',route=>route.abort());const absent=missing.waitForEvent('pageerror');await missing.goto(pathToFileURL(path.resolve(__dirname,'../../index.html')).href);const error=await absent;assert.match(error.message,/必要的/);assert.throws(missingErrors,/未處理例外/);await missing.close();
         console.log('刻意觸發例外與必要模組缺少：測試防線確實能攔截');
     }finally{await browser.close();}
 }

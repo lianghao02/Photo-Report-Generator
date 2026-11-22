@@ -139,8 +139,28 @@ async function main() {
         assert.equal(afterRealClickExport.reqActivated, true, '權限請求必須在點擊有效期間完成');
         assert.equal(afterRealClickExport.downloadsCount, 0, '寫入指定資料夾時不應退回下載區');
         assert(afterRealClickExport.files.includes('1151103_001_公職人員選舉罷免法/1151103_001_公職人員選舉罷免法_現場照片清冊.docx'));
-        assert(afterRealClickExport.files.includes('1151103_001_公職人員選舉罷免法/001_公職人員選舉罷免法.prp'));
+        assert.equal(afterRealClickExport.files.includes('1151103_001_公職人員選舉罷免法/001_公職人員選舉罷免法.prp'), true);
         assert.equal(afterRealClickExport.notice, '已存進「1151103_001_公職人員選舉罷免法」');
+
+        // 驗證若瀏覽器於選擇資料夾超過 1.2 秒後無聲拋出 AbortError（如權限被關閉），畫面應顯示明確提醒而非靜默失敗
+        const abortDiagnostic = await page.evaluate(async () => {
+            await window.app.clearExportDirectory();
+            window.showDirectoryPicker = async () => {
+                await new Promise(r => setTimeout(r, 1250));
+                const err = new Error('The user aborted a request.');
+                err.name = 'AbortError';
+                throw err;
+            };
+            const picked = await window.app.pickExportDirectory({ skipGuide: true });
+            return {
+                picked,
+                noticeVisible: !document.getElementById('exportDirSavedNotice')?.classList.contains('hidden'),
+                noticeText: document.getElementById('exportDirSavedNotice')?.textContent?.trim() || ''
+            };
+        });
+        assert.equal(abortDiagnostic.picked, false);
+        assert.equal(abortDiagnostic.noticeVisible, true);
+        assert(abortDiagnostic.noticeText.includes('未完成資料夾授權'), 'AbortError 逾時應顯示明確權限診斷提醒');
 
         assert.deepEqual(errors, [], '桌面 CSP 不應產生未捕捉例外');
         console.log('桌面 CSP：照片／資料夾選擇、載入照片、動態縮圖燈箱、指定案件資料夾匯出及拖放設定通過');
