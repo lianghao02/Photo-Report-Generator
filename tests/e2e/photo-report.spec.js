@@ -2504,7 +2504,7 @@ async function runE2eTests() {
         legacyOverCheck.afterTryShrinkLen !== 74 ||
         legacyOverCheck.auditBadgeOver !== '1' ||
         legacyOverCheck.filteredCount !== 1 ||
-        !legacyOverCheck.auditModalItems.some(t => t.includes('地點或說明過長（恐影響排版）：1 張'))
+        !legacyOverCheck.auditModalItems.some(t => t.includes('地點或說明過長（恐影響當前版型排版）：1 張'))
     ) {
         throw new Error(`舊版超標 .photo-report 保留、逐步刪減、篩選或匯出提醒驗證失敗: ${JSON.stringify(legacyOverCheck)}`);
     }
@@ -2688,7 +2688,7 @@ async function runE2eTests() {
         auditFixesCheck.latestHistCaseDate !== '115/11/16' ||
         !auditFixesCheck.pdfSplitLineOk ||
         !auditFixesCheck.pdfGridBordersOk ||
-        !auditFixesCheck.narrowDescHint.includes('左右／橫式較窄') ||
+        !(auditFixesCheck.narrowDescHint.includes('72 個全形') && auditFixesCheck.narrowDescHint.includes('單行約 18 全形')) ||
         !auditFixesCheck.wordWarnItems.some(t => t.includes('只會印第 1 張的日期、時間與地點') && t.includes('1 張')) ||
         !auditFixesCheck.pdfWarnItems.some(t => t.includes('只會印第 1 張的日期、時間與地點') && t.includes('1 張')) ||
         !auditFixesCheck.viewIssuesHidden ||
@@ -2873,6 +2873,225 @@ async function runE2eTests() {
         throw new Error(`.prp 精簡命名與匯出後未存提醒驗證失敗: ${JSON.stringify(prpAndReminderCheck)}`);
     }
     console.log('  ✅ .prp 精簡命名、Word／PDF 去符號與無「報告_」檔名、匯出後提醒列及拖放載入 .prp 驗證通過');
+
+    // [10/5] 驗證依三種版型動態區分字數／行數上限、對象欄位與案件匯出區自動歸檔
+    console.log('[10/5] 驗證版型動態字數上限、對象／嫌疑人欄位與案件匯出區歸檔...');
+    const zoneAndLayoutLimitsCheck = await page.evaluate(async () => {
+        const origConfirm = window.confirm;
+        const origAlert = window.alert;
+        const origSaveAs = window.saveAs;
+        const alerts = [];
+        const confirms = [];
+        let confirmResponse = true;
+        window.alert = (m) => alerts.push(String(m || ''));
+        window.confirm = (m) => { confirms.push(String(m || '')); return confirmResponse; };
+
+        try {
+            const canvas = document.createElement('canvas');
+            canvas.width = 40;
+            canvas.height = 30;
+            const cctx = canvas.getContext('2d');
+            cctx.fillStyle = '#2563eb';
+            cctx.fillRect(0, 0, 40, 30);
+            const imgBlob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.9));
+            await window.app.handleFiles([new File([imgBlob], 'zone_test.jpg', { type: 'image/jpeg' })]);
+            await new Promise(r => setTimeout(r, 60));
+
+            const layoutEl = document.getElementById('layoutSelect');
+            const editDescEl = document.getElementById('editDesc');
+            const editLocEl = document.getElementById('editLocation');
+            const defaultLocEl = document.getElementById('defaultLocation');
+            const descCounterEl = document.getElementById('editDescCounter');
+            const descHintEl = document.getElementById('editDescLimitHint');
+            const defaultLocCounterEl = document.getElementById('defaultLocationCounter');
+
+            // 1. 驗證三種版型動態上限切換與舊字不截斷保護
+            layoutEl.value = 'up_down_2';
+            layoutEl.dispatchEvent(new Event('change', { bubbles: true }));
+            const upDownDescCounterInit = descCounterEl.textContent.trim();
+
+            editDescEl.value = '字'.repeat(60);
+            editDescEl.dispatchEvent(new Event('input', { bubbles: true }));
+            const upDown60Len = window.app.photos[0].desc.length;
+
+            layoutEl.value = 'left_right_2';
+            layoutEl.dispatchEvent(new Event('change', { bubbles: true }));
+            const leftRightCounter = descCounterEl.textContent.trim();
+            const leftRightHint = descHintEl.textContent.trim();
+            editDescEl.value = '字'.repeat(75);
+            editDescEl.dispatchEvent(new Event('input', { bubbles: true }));
+            const leftRightClampedLen = window.app.photos[0].desc.length;
+
+            layoutEl.value = 'landscape_3';
+            layoutEl.dispatchEvent(new Event('change', { bubbles: true }));
+            const landscapeCounterOver = descCounterEl.textContent.trim();
+            const landscapeDefaultLocCounter = defaultLocCounterEl.textContent.trim();
+            const landscapeKeptLen = window.app.photos[0].desc.length;
+            const landscapeOverAudit = window.app.auditPhotosCompleteness().overTextLimit;
+
+            // 清回短文字後在橫式三張從頭輸入，應停在 54 全形
+            editDescEl.value = '';
+            editDescEl.dispatchEvent(new Event('input', { bubbles: true }));
+            editDescEl.value = '字'.repeat(60);
+            editDescEl.dispatchEvent(new Event('input', { bubbles: true }));
+            const landscapeFreshCapLen = window.app.photos[0].desc.length;
+
+            editLocEl.value = '地'.repeat(18);
+            editLocEl.dispatchEvent(new Event('input', { bubbles: true }));
+            const landscapeLocCapLen = window.app.photos[0].location.length;
+
+            // 切回上下兩張與正常文字供匯出區驗證
+            layoutEl.value = 'up_down_2';
+            layoutEl.dispatchEvent(new Event('change', { bubbles: true }));
+            editLocEl.value = '現場門口';
+            editLocEl.dispatchEvent(new Event('input', { bubbles: true }));
+            editDescEl.value = '現場採證紀錄';
+            editDescEl.dispatchEvent(new Event('input', { bubbles: true }));
+
+            // 2. 模擬授權案件匯出區資料夾（支援 getDirectoryHandle / getFileHandle / createWritable）
+            const mockFs = new Map();
+            const createMockDir = (dirName, prefix = '') => ({
+                name: dirName,
+                kind: 'directory',
+                async queryPermission() { return 'granted'; },
+                async requestPermission() { return 'granted'; },
+                async getDirectoryHandle(subName) {
+                    return createMockDir(subName, prefix ? `${prefix}/${subName}` : subName);
+                },
+                async getFileHandle(fileName, opts = {}) {
+                    const key = prefix ? `${prefix}/${fileName}` : fileName;
+                    if (!opts.create && !mockFs.has(key)) {
+                        const err = new Error('File not found');
+                        err.name = 'NotFoundError';
+                        throw err;
+                    }
+                    return {
+                        name: fileName,
+                        kind: 'file',
+                        async createWritable() {
+                            const chunks = [];
+                            return {
+                                async write(data) { chunks.push(data); },
+                                async close() {
+                                    const blob = new Blob(chunks);
+                                    mockFs.set(key, blob);
+                                },
+                                async abort() {}
+                            };
+                        }
+                    };
+                }
+            });
+
+            const mockRoot = createMockDir('案件匯出區');
+            await window.app.setExportDirectoryHandle(mockRoot, { persist: false });
+            const dirLabelAfterBind = document.getElementById('exportDirLabel')?.textContent?.trim();
+            const clearBtnVisible = !document.getElementById('btnClearExportDir')?.classList.contains('hidden');
+            const syncWrapVisible = !document.getElementById('exportAutoSavePrpWrap')?.classList.contains('hidden');
+
+            document.getElementById('caseDate').value = '115/11/02';
+            document.getElementById('caseSubject').value = '某A';
+            document.getElementById('caseTitle').value = '詐欺案';
+
+            await window.app.exportDocx();
+            const filesAfterDocx = Array.from(mockFs.keys());
+            const unsavedAfterAutoSync = window.app.hasUnsavedProjectChanges();
+            const reminderHiddenAfterAutoSync = document.getElementById('exportSaveReminderBanner').classList.contains('hidden');
+
+            // 檢查 Word 內文未混入對象欄位，只用原本案由；且產出的 .prp 確實含 caseSubject
+            const docxBlob = mockFs.get('1151102_某A_詐欺案/1151102_某A_詐欺案_現場照片清冊.docx');
+            const docxZip = await window.JSZip.loadAsync(await docxBlob.arrayBuffer());
+            const docxXml = await docxZip.file('word/document.xml').async('string');
+            const wordHasSubjectLeak = docxXml.includes('某A');
+
+            const prpBlob = mockFs.get('1151102_某A_詐欺案/某A_詐欺案.prp');
+            const prpZip = await window.JSZip.loadAsync(await prpBlob.arrayBuffer());
+            const prpManifest = JSON.parse(await prpZip.file('manifest.json').async('text'));
+
+            // 關閉「同步 .prp」再改字並匯出 PDF，驗證 PDF 寫入資料夾且提醒列再次出現
+            document.getElementById('chkExportAutoSavePrp').checked = false;
+            editDescEl.value = '補拍第二段說明';
+            editDescEl.dispatchEvent(new Event('input', { bubbles: true }));
+            await window.app.exportPdf();
+            const filesAfterPdf = Array.from(mockFs.keys());
+            const reminderVisibleWhenSyncOff = !document.getElementById('exportSaveReminderBanner').classList.contains('hidden');
+
+            // 模擬「工作階段未知舊同名檔」且使用者取消覆寫 -> 應自動加時間尾碼不蓋舊檔
+            window.app.sessionKnownExportPaths.clear();
+            confirmResponse = false;
+            await window.app.exportDocx();
+            const filesAfterConflictCancel = Array.from(mockFs.keys());
+
+            await window.app.clearExportDirectory();
+            const dirLabelAfterClear = document.getElementById('exportDirLabel')?.textContent?.trim();
+
+            return {
+                upDownDescCounterInit,
+                upDown60Len,
+                leftRightCounter,
+                leftRightHint,
+                leftRightClampedLen,
+                landscapeCounterOver,
+                landscapeDefaultLocCounter,
+                landscapeKeptLen,
+                landscapeOverAudit,
+                landscapeFreshCapLen,
+                landscapeLocCapLen,
+                dirLabelAfterBind,
+                clearBtnVisible,
+                syncWrapVisible,
+                filesAfterDocx,
+                unsavedAfterAutoSync,
+                reminderHiddenAfterAutoSync,
+                wordHasSubjectLeak,
+                prpSubject: prpManifest?.caseData?.caseSubject || '',
+                filesAfterPdf,
+                reminderVisibleWhenSyncOff,
+                confirmsCount: confirms.length,
+                hasSuffixedCopy: filesAfterConflictCancel.some(k => /1151102_某A_詐欺案\/1151102_某A_詐欺案_現場照片清冊_\d{6}\.docx$/.test(k)),
+                dirLabelAfterClear
+            };
+        } finally {
+            window.confirm = () => true;
+            await window.app.clearExportDirectory();
+            window.app.clearAll();
+            window.confirm = origConfirm;
+            window.alert = origAlert;
+            window.saveAs = origSaveAs;
+        }
+    });
+
+    if (
+        !zoneAndLayoutLimitsCheck.upDownDescCounterInit.includes('/ 68 全形') ||
+        zoneAndLayoutLimitsCheck.upDown60Len !== 60 ||
+        !zoneAndLayoutLimitsCheck.leftRightCounter.includes('/ 72 全形') ||
+        !zoneAndLayoutLimitsCheck.leftRightHint.includes('72 個全形') ||
+        !zoneAndLayoutLimitsCheck.leftRightHint.includes('4 行') ||
+        zoneAndLayoutLimitsCheck.leftRightClampedLen !== 72 ||
+        !zoneAndLayoutLimitsCheck.landscapeCounterOver.includes('/ 54 全形') ||
+        !zoneAndLayoutLimitsCheck.landscapeDefaultLocCounter.includes('/ 15 全形') ||
+        zoneAndLayoutLimitsCheck.landscapeKeptLen !== 72 ||
+        zoneAndLayoutLimitsCheck.landscapeOverAudit !== 1 ||
+        zoneAndLayoutLimitsCheck.landscapeFreshCapLen !== 54 ||
+        zoneAndLayoutLimitsCheck.landscapeLocCapLen !== 15 ||
+        zoneAndLayoutLimitsCheck.dirLabelAfterBind !== '匯出區：案件匯出區' ||
+        !zoneAndLayoutLimitsCheck.clearBtnVisible ||
+        !zoneAndLayoutLimitsCheck.syncWrapVisible ||
+        !zoneAndLayoutLimitsCheck.filesAfterDocx.includes('1151102_某A_詐欺案/1151102_某A_詐欺案_現場照片清冊.docx') ||
+        !zoneAndLayoutLimitsCheck.filesAfterDocx.includes('1151102_某A_詐欺案/某A_詐欺案.prp') ||
+        zoneAndLayoutLimitsCheck.unsavedAfterAutoSync ||
+        !zoneAndLayoutLimitsCheck.reminderHiddenAfterAutoSync ||
+        zoneAndLayoutLimitsCheck.wordHasSubjectLeak ||
+        zoneAndLayoutLimitsCheck.prpSubject !== '某A' ||
+        !zoneAndLayoutLimitsCheck.filesAfterPdf.includes('1151102_某A_詐欺案/1151102_某A_詐欺案_現場照片清冊.pdf') ||
+        !zoneAndLayoutLimitsCheck.reminderVisibleWhenSyncOff ||
+        zoneAndLayoutLimitsCheck.confirmsCount < 1 ||
+        !zoneAndLayoutLimitsCheck.hasSuffixedCopy ||
+        zoneAndLayoutLimitsCheck.dirLabelAfterClear !== '匯出區：下載'
+    ) {
+        throw new Error(`第 [10/5] 節版型動態上限與案件匯出區驗證失敗: ${JSON.stringify(zoneAndLayoutLimitsCheck)}`);
+    }
+    console.log('  ✅ 三種版型動態字數／行數上限、對象／嫌疑人欄位與案件匯出區歸檔／同步 .prp／防呆覆寫全部通過');
 
     assertNoPageErrors();
 

@@ -3,7 +3,7 @@
     else root.PhotoReportMergeReportUi=factory();
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
     'use strict';
-    const LABELS={seq:'照片編號',date:'日期',time:'時間',timeAutoDefaulted:'時間來源',location:'地點',desc:'說明',rotation:'旋轉角度',flipH:'水平翻轉',parentUid:'連動原圖',cropRect:'特寫範圍',sideCrop:'並排特寫',annotations:'標記',caseTitle:'案由',caseDate:'案件日期',defaultLocation:'案件地點',deptName:'製作單位',officerName:'製作人',layoutSelect:'清冊版型'};
+    const LABELS={seq:'照片編號',date:'日期',time:'時間',timeAutoDefaulted:'時間來源',location:'地點',desc:'說明',rotation:'旋轉角度',flipH:'水平翻轉',parentUid:'連動原圖',cropRect:'特寫範圍',sideCrop:'並排特寫',annotations:'標記',caseTitle:'案由',caseSubject:'對象／嫌疑人',caseDate:'案件日期',defaultLocation:'案件地點',deptName:'製作單位',officerName:'製作人',layoutSelect:'清冊版型'};
     const pct=value=>Math.round(Number(value||0)*1000)/10+'%';
     function rect(value){return `左 ${pct(value.x)}、上 ${pct(value.y)}、寬 ${pct(value.w)}、高 ${pct(value.h)}`;}
     function formatValue(field,value){

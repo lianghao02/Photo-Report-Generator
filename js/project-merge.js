@@ -16,7 +16,7 @@
             return !before||changes.length ? [{uid:photo.uid,name:photo.name,seq:photo.seq,kind:before?'updated':'added',changes}] : [];
         });
         return {createdAt,sources:[...sources],beforeCount:beforePhotos.length,afterCount:afterPhotos.length,
-            caseChanges:differences(beforeCase,afterCase,['caseTitle','caseDate','defaultLocation','deptName','officerName','layoutSelect']),photos};
+            caseChanges:differences(beforeCase,afterCase,['caseTitle','caseSubject','caseDate','defaultLocation','deptName','officerName','layoutSelect']),photos};
     }
     return {
     buildReport,

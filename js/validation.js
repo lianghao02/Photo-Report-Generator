@@ -69,6 +69,52 @@
     const DESC_LINE_FULLWIDTH = 34;
     const MAX_DESC_LINES = 2;
 
+    const LAYOUT_TEXT_LIMITS = {
+        up_down_2: {
+            layout: 'up_down_2',
+            label: '上下兩張',
+            locationMaxFullWidth: 17,
+            descMaxFullWidth: 68,
+            descLineFullWidth: 34,
+            descMaxLines: 2
+        },
+        left_right_2: {
+            layout: 'left_right_2',
+            label: '左右兩張',
+            locationMaxFullWidth: 17,
+            descMaxFullWidth: 72,
+            descLineFullWidth: 18,
+            descMaxLines: 4
+        },
+        landscape_3: {
+            layout: 'landscape_3',
+            label: '橫式三張',
+            locationMaxFullWidth: 15,
+            descMaxFullWidth: 54,
+            descLineFullWidth: 18,
+            descMaxLines: 3
+        }
+    };
+
+    /**
+     * 取得指定清冊版型的儲存格容納上限（依據 Word 欄位寬高與字級）
+     * @param {string|Object} [layoutOrOptions='up_down_2']
+     */
+    function getLayoutTextLimits(layoutOrOptions = 'up_down_2') {
+        if (layoutOrOptions && typeof layoutOrOptions === 'object') {
+            const base = LAYOUT_TEXT_LIMITS[layoutOrOptions.layout] || LAYOUT_TEXT_LIMITS.up_down_2;
+            return {
+                layout: layoutOrOptions.layout || base.layout,
+                label: layoutOrOptions.label || base.label,
+                locationMaxFullWidth: Number(layoutOrOptions.locationMaxFullWidth) || base.locationMaxFullWidth,
+                descMaxFullWidth: Number(layoutOrOptions.descMaxFullWidth) || base.descMaxFullWidth,
+                descLineFullWidth: Number(layoutOrOptions.descLineFullWidth) || base.descLineFullWidth,
+                descMaxLines: Number(layoutOrOptions.descMaxLines) || base.descMaxLines
+            };
+        }
+        return { ...(LAYOUT_TEXT_LIMITS[layoutOrOptions] || LAYOUT_TEXT_LIMITS.up_down_2) };
+    }
+
     /**
      * 判斷單一字元（碼位）是否為半形字元（佔 0.5 全形 = 1 半形單位）
      * @param {string} ch
@@ -195,19 +241,21 @@
     }
 
     /**
-     * 檢查單張照片的有效地點與說明是否超過排版建議上限
+     * 檢查單張照片的有效地點與說明是否超過指定版型的排版建議上限
      * @param {string} effectiveLocation
      * @param {string} desc
+     * @param {string|Object} [layoutOrOptions='up_down_2']
      * @returns {{ locationFullWidth: number, descFullWidth: number, descLines: number, locationOver: boolean, descOver: boolean, isOver: boolean }}
      */
-    function inspectTextLimits(effectiveLocation, desc) {
+    function inspectTextLimits(effectiveLocation, desc, layoutOrOptions = 'up_down_2') {
+        const limits = getLayoutTextLimits(layoutOrOptions);
         const locStr = String(effectiveLocation ?? '').trim();
         const descStr = String(desc ?? '').trim();
         const locationFullWidth = getTextFullWidthLength(locStr);
         const descFullWidth = getTextFullWidthLength(descStr);
-        const descLines = estimateDescVisualLines(descStr, DESC_LINE_FULLWIDTH);
-        const locationOver = locationFullWidth > MAX_LOCATION_FULLWIDTH;
-        const descOver = descFullWidth > MAX_DESC_FULLWIDTH || descLines > MAX_DESC_LINES;
+        const descLines = estimateDescVisualLines(descStr, limits.descLineFullWidth);
+        const locationOver = locationFullWidth > limits.locationMaxFullWidth;
+        const descOver = descFullWidth > limits.descMaxFullWidth || descLines > limits.descMaxLines;
         return {
             locationFullWidth,
             descFullWidth,
@@ -223,6 +271,8 @@
         MAX_DESC_FULLWIDTH: MAX_DESC_FULLWIDTH,
         DESC_LINE_FULLWIDTH: DESC_LINE_FULLWIDTH,
         MAX_DESC_LINES: MAX_DESC_LINES,
+        LAYOUT_TEXT_LIMITS: LAYOUT_TEXT_LIMITS,
+        getLayoutTextLimits: getLayoutTextLimits,
         isValidMinguoDate: isValidMinguoDate,
         isValidTimeFormat: isValidTimeFormat,
         isHalfWidthChar: isHalfWidthChar,

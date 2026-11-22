@@ -21,6 +21,7 @@
     async function exportDocx({
         photos = [],
         caseTitle = '現場照片清冊',
+        caseSubject = '',
         caseDate = '',
         defaultLocation = '',
         deptName = '臺南市政府警察局新化分局',
@@ -589,9 +590,16 @@
 
         const blob = await Packer.toBlob(doc);
         const compactDate = String(date || '').replace(/[\\/:*?"<>|\s-]+/g, '');
-        const safeName = `${compactDate ? `${compactDate}_` : ''}${title}_現場照片清冊.docx`.replace(/[\\/:*?"<>|]/g, '_');
+        const cleanSubject = String(caseSubject || '').trim()
+            .replace(/[\\/:*?"<>|\u0000-\u001F\s]+/g, '_')
+            .replace(/_+/g, '_')
+            .replace(/^_+|_+$/g, '');
+        const shortSubject = Array.from(cleanSubject).slice(0, 15).join('').replace(/^_+|_+$/g, '');
+        const cleanFileTitle = String(title || '').replace(/[\\/:*?"<>|\u0000-\u001F]+/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '') || '現場照片清冊';
+        const fileBase = [compactDate, shortSubject, cleanFileTitle].filter(Boolean).join('_') || '現場照片清冊';
+        const safeName = `${fileBase}_現場照片清冊.docx`.replace(/[\\/:*?"<>|]/g, '_');
         if (typeof saveAs === 'function') {
-            saveAs(blob, safeName);
+            await saveAs(blob, safeName);
         }
         clearProgress();
     }

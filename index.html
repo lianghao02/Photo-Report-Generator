@@ -112,10 +112,16 @@
             <p class="case-panel-help">整本清冊共用。照片沒有另外填日期或地點時，就用這裡的資料。</p>
 
             <div class="grid grid-cols-1 gap-2">
-                <div>
-                    <label for="caseTitle" class="block text-[11px] font-bold text-[#6B7280] mb-0.5">案由</label>
-                    <input type="text" id="caseTitle" class="input-field w-full text-xs font-semibold py-1 px-2.5" placeholder="例：詐欺案" value="詐欺案">
-                    <p id="caseTitleLimitHint" class="text-limit-hint hidden">案由較長，上下兩張第一列可能會折成兩行</p>
+                <div class="grid grid-cols-2 gap-1.5">
+                    <div>
+                        <label for="caseTitle" class="block text-[11px] font-bold text-[#6B7280] mb-0.5">案由</label>
+                        <input type="text" id="caseTitle" class="input-field w-full text-xs font-semibold py-1 px-2" placeholder="例：詐欺案" value="詐欺案">
+                    </div>
+                    <div>
+                        <label for="caseSubject" class="block text-[11px] font-bold text-[#6B7280] mb-0.5" title="僅用於案件資料夾與匯出檔名區分（不印進 Word 表格案由）">對象／嫌疑人</label>
+                        <input type="text" id="caseSubject" class="input-field w-full text-xs font-semibold py-1 px-2" placeholder="選填，如：某A" title="僅用於案件資料夾與匯出檔名區分（如 1151102_某A_詐欺案），不影響 Word 內文案由欄位">
+                    </div>
+                    <p id="caseTitleLimitHint" class="text-limit-hint hidden col-span-2">案由較長，上下兩張第一列可能會折成兩行</p>
                 </div>
                 <div>
                     <label for="caseDate" class="block text-[11px] font-bold text-[#6B7280] mb-0.5">採證日期（民國）</label>
@@ -527,7 +533,20 @@
                     </div>
                     <p id="layoutDescription" class="text-[11px] text-[#6B7280]" aria-live="polite">上下兩張・A4 直式・每頁 2 張</p>
                 </div>
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-1.5 flex-wrap justify-end">
+                    <div class="export-dir-group" title="選擇固定「案件匯出區」資料夾（例：F:\套印\案件匯出區），匯出時會自動建立 {日期}_{對象}_{案由} 子資料夾；不指定則走瀏覽器下載區">
+                        <button type="button" id="btnPickExportDir" class="btn-secondary px-2.5 py-1.5 rounded-xl text-[11px] font-bold flex items-center gap-1">
+                            <i class="fa-regular fa-folder-open text-[#5B5CE2]"></i>
+                            <span id="exportDirLabel" class="truncate max-w-[120px]">匯出區：下載</span>
+                        </button>
+                        <button type="button" id="btnClearExportDir" class="hidden export-dir-clear-btn" title="清除固定案件匯出區，改回預設瀏覽器下載" aria-label="改回瀏覽器下載">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                        <label id="exportAutoSavePrpWrap" class="hidden inline-flex items-center gap-1 text-[11px] font-bold text-slate-700 cursor-pointer select-none whitespace-nowrap pl-1" title="寫入案件匯出區時，若有未存變更則同步更新同案件資料夾內的 .prp 進度檔">
+                            <input type="checkbox" id="chkExportAutoSavePrp" checked class="rounded text-[#5B5CE2] cursor-pointer">
+                            <span>同步 .prp</span>
+                        </label>
+                    </div>
                     <span id="exportEmptyHint" class="editor-help">加入照片後即可匯出</span>
                     <button type="button" id="btnExportPdf" class="btn-secondary px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5">
                         <i class="fa-regular fa-file-pdf"></i> 匯出 PDF

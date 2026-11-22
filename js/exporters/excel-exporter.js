@@ -24,6 +24,7 @@
     function exportExcel({
         photos = [],
         caseTitle = '詐欺案',
+        caseSubject = '',
         caseDate = '',
         defaultLocation = '',
         globalOfficer = '巡官梁家豪',
@@ -64,7 +65,14 @@
         xlsxLib.utils.book_append_sheet(wb, ws, '工作表1');
 
         const compactDate = String(date || '').replace(/[\\/:*?"<>|\s-]+/g, '');
-        const safeName = `${compactDate ? `${compactDate}_` : ''}${title}_資料清單.xlsx`.replace(/[\\/:*?"<>|]/g, '_');
+        const cleanSubject = String(caseSubject || '').trim()
+            .replace(/[\\/:*?"<>|\u0000-\u001F\s]+/g, '_')
+            .replace(/_+/g, '_')
+            .replace(/^_+|_+$/g, '');
+        const shortSubject = Array.from(cleanSubject).slice(0, 15).join('').replace(/^_+|_+$/g, '');
+        const cleanFileTitle = String(title || '').replace(/[\\/:*?"<>|\u0000-\u001F]+/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '') || '現場照片清冊';
+        const fileBase = [compactDate, shortSubject, cleanFileTitle].filter(Boolean).join('_') || '現場照片清冊';
+        const safeName = `${fileBase}_資料清單.xlsx`.replace(/[\\/:*?"<>|]/g, '_');
         xlsxLib.writeFile(wb, safeName);
     }
 

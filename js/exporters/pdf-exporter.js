@@ -63,6 +63,7 @@
     async function exportPdf({
         photos = [],
         caseTitle = '現場照片清冊',
+        caseSubject = '',
         caseDate = '',
         defaultLocation = '',
         globalOfficer = '巡官梁家豪',
@@ -73,7 +74,8 @@
         clearProgress = () => {},
         throwIfCancelled = () => {},
         yieldToBrowser = () => Promise.resolve(),
-        jspdfLib = (typeof window !== 'undefined' && window.jspdf ? window.jspdf : (typeof jspdf !== 'undefined' ? jspdf : null))
+        jspdfLib = (typeof window !== 'undefined' && window.jspdf ? window.jspdf : (typeof jspdf !== 'undefined' ? jspdf : null)),
+        saveAs = null
     } = {}) {
         if (!photos.length) {
             if (typeof alert === 'function') alert('請先載入照片再匯出！');
@@ -560,8 +562,19 @@
         }
 
         const compactDate = String(date || '').replace(/[\\/:*?"<>|\s-]+/g, '');
-        const safeName = `${compactDate ? `${compactDate}_` : ''}${title}_現場照片清冊.pdf`.replace(/[\\/:*?"<>|]/g, '_');
-        pdf.save(safeName);
+        const cleanSubject = String(caseSubject || '').trim()
+            .replace(/[\\/:*?"<>|\u0000-\u001F\s]+/g, '_')
+            .replace(/_+/g, '_')
+            .replace(/^_+|_+$/g, '');
+        const shortSubject = Array.from(cleanSubject).slice(0, 15).join('').replace(/^_+|_+$/g, '');
+        const cleanFileTitle = String(title || '').replace(/[\\/:*?"<>|\u0000-\u001F]+/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '') || '現場照片清冊';
+        const fileBase = [compactDate, shortSubject, cleanFileTitle].filter(Boolean).join('_') || '現場照片清冊';
+        const safeName = `${fileBase}_現場照片清冊.pdf`.replace(/[\\/:*?"<>|]/g, '_');
+        if (typeof saveAs === 'function') {
+            await saveAs(pdf.output('blob'), safeName);
+        } else {
+            pdf.save(safeName);
+        }
         clearProgress();
     }
 

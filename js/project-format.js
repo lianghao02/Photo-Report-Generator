@@ -4,7 +4,7 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(model){
     'use strict';
     const FORMAT='photo-report-project', VERSION=1;
-    const CASE_FIELDS=['caseTitle','caseDate','defaultLocation','deptName','officerName','layoutSelect'];
+    const CASE_FIELDS=['caseTitle','caseSubject','caseDate','defaultLocation','deptName','officerName','layoutSelect'];
     const TEXT_FIELDS=['name','uid','type','visualFingerprint','parentUid','date','time','location','desc'];
     function object(value){return value&&typeof value==='object'&&!Array.isArray(value);}
     function validateManifest(value,{draft=false}={}){

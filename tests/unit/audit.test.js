@@ -176,4 +176,13 @@ const overAuditWithLongDefaultApp = app.auditPhotosCompleteness();
 assert.strictEqual(overAuditWithLongDefaultModule.overTextLimit, 4, '預設地點超 17 全形時，繼承照片也應計入 overTextLimit（4 張）');
 assert.deepStrictEqual(overAuditWithLongDefaultApp, overAuditWithLongDefaultModule, '含超標預設地點時 App 與獨立模組結果應完全一致');
 
+// 4. 依版型區分稽核標準（左右兩張 72/4行、橫式三張 54/3行＋地點15）
+const layoutSpecificPhotos = [
+    { uid: 'l1', name: 'A.jpg', date: '115/11/02', time: '09:00', location: '甲'.repeat(16), desc: '字'.repeat(60) },
+    { uid: 'l2', name: 'B.jpg', date: '115/11/02', time: '09:01', location: '甲'.repeat(15), desc: '字'.repeat(72) }
+];
+assert.strictEqual(auditPhotosCompleteness(layoutSpecificPhotos, '', { layout: 'left_right_2' }).overTextLimit, 0, '左右兩張下 60 與 72 全形（4行）皆應通過');
+assert.strictEqual(auditPhotosCompleteness(layoutSpecificPhotos, '', { layout: 'landscape_3' }).overTextLimit, 2, '橫式三張下地點16／說明60、說明72皆應判超標');
+assert.strictEqual(auditPhotosCompleteness(layoutSpecificPhotos, '', { layout: 'up_down_2' }).overTextLimit, 1, '上下兩張下僅 72 全形超標');
+
 console.log('✅ audit.test.js 全部斷言通過！');

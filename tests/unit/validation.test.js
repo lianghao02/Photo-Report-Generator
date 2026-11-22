@@ -191,4 +191,25 @@ assert.strictEqual(isHalfWidthChar(')'), true, '半形右括號應為半形字�
 assert.strictEqual(isHalfWidthChar('（'), false, '全形左括號應為全形字元');
 assert.strictEqual(isHalfWidthChar('中'), false, '中文字應為全形字元');
 
+// 7. 依版型動態區分儲存格字數與行數上限
+assert.deepStrictEqual(
+    app.getActiveLayoutTextLimits('up_down_2'),
+    { layout: 'up_down_2', label: '上下兩張', locationMaxFullWidth: 17, descMaxFullWidth: 68, descLineFullWidth: 34, descMaxLines: 2 },
+    '上下兩張應為地點 17 全形、說明 68 全形／2 行'
+);
+assert.deepStrictEqual(
+    app.getActiveLayoutTextLimits('left_right_2'),
+    { layout: 'left_right_2', label: '左右兩張', locationMaxFullWidth: 17, descMaxFullWidth: 72, descLineFullWidth: 18, descMaxLines: 4 },
+    '左右兩張應為地點 17 全形、說明 72 全形／4 行（單行 18）'
+);
+assert.deepStrictEqual(
+    app.getActiveLayoutTextLimits('landscape_3'),
+    { layout: 'landscape_3', label: '橫式三張', locationMaxFullWidth: 15, descMaxFullWidth: 54, descLineFullWidth: 18, descMaxLines: 3 },
+    '橫式三張應為地點 15 全形、說明 54 全形／3 行（單行 18）'
+);
+assert.strictEqual(inspectTextLimits('甲'.repeat(16), '字'.repeat(55), 'up_down_2').isOver, false, '上下兩張可容納 16 地點＋55 說明');
+assert.strictEqual(inspectTextLimits('甲'.repeat(16), '字'.repeat(55), 'landscape_3').isOver, true, '橫式三張超過 15 地點或 54 說明應判超標');
+assert.strictEqual(inspectTextLimits('甲'.repeat(15), '字'.repeat(54), 'landscape_3').isOver, false, '橫式三張剛好 15 地點＋54 說明（3 行）應通過');
+assert.strictEqual(inspectTextLimits('甲'.repeat(17), '字'.repeat(72), 'left_right_2').isOver, false, '左右兩張剛好 17 地點＋72 說明（4 行）應通過');
+
 console.log('✅ validation.test.js 全部斷言通過！');

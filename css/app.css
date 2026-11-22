@@ -1453,3 +1453,38 @@ input[readonly].seq-locked {
     font-size: 13px;
     flex-shrink: 0;
 }
+.export-bar {
+    gap: 8px;
+    padding: 8px 11px;
+}
+.export-dir-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+.export-dir-group.is-bound #btnPickExportDir {
+    background: #EEF2FF;
+    border-color: #6366F1;
+    color: #312E81;
+}
+.export-dir-clear-btn {
+    width: 24px;
+    height: 24px;
+    border-radius: 999px;
+    border: 1.5px solid var(--border);
+    background: #FFFFFF;
+    color: #475569;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    cursor: pointer;
+}
+.export-dir-clear-btn:hover {
+    background: #FEE2E2;
+    color: #B91C1C;
+}
+.export-dir-clear-btn.hidden {
+    display: none !important;
+}

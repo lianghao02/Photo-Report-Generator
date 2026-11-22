@@ -59,9 +59,11 @@
      * 稽核照片資料完整度
      * @param {Array<Object>} photos - 照片物件陣列
      * @param {string} [defaultLocation=''] - 全域預設地點
+     * @param {Object} [options={}] - 稽核選項（含目前清冊版型 layout）
      * @returns {Object} 稽核統計結果物件
      */
-    function auditPhotosCompleteness(photos, defaultLocation = '') {
+    function auditPhotosCompleteness(photos, defaultLocation = '', options = {}) {
+        const layout = options?.layout || 'up_down_2';
         if (!Array.isArray(photos)) {
             return {
                 total: 0,
@@ -99,7 +101,7 @@
 
             if (dupSet.has(photo.name)) duplicatePhotos++;
 
-            if (inspectTextLimits(effectiveLoc, photo.desc?.trim() || '').isOver) {
+            if (inspectTextLimits(effectiveLoc, photo.desc?.trim() || '', layout).isOver) {
                 overTextLimit++;
             }
         });

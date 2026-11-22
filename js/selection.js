@@ -43,12 +43,13 @@
      * @param {Set<string>} [cachedDupSet=null] - 預先計算好的重複檔名集合（可選）
      * @returns {Array<{photo: Object, index: number}>}
      */
-    function getVisiblePhotoIndices(photos, activeFilter = 'all', defaultLocation = '', cachedDupSet = null) {
+    function getVisiblePhotoIndices(photos, activeFilter = 'all', defaultLocation = '', cachedDupSet = null, options = {}) {
         if (!Array.isArray(photos)) return [];
         const all = photos.map((photo, index) => ({ photo, index }));
         if (activeFilter === 'all') return all;
 
         const globalLocation = String(defaultLocation || '').trim();
+        const layout = options?.layout || 'up_down_2';
         let dupSet = cachedDupSet;
 
         return all.filter(({ photo }) => {
@@ -71,7 +72,7 @@
                 }
                 case 'overTextLimit': {
                     const effectiveLoc = photo.location?.trim() || globalLocation;
-                    return inspectTextLimits(effectiveLoc, photo.desc?.trim() || '').isOver;
+                    return inspectTextLimits(effectiveLoc, photo.desc?.trim() || '', layout).isOver;
                 }
                 default:
                     return true;

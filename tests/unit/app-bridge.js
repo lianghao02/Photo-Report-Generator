@@ -42,6 +42,7 @@ function loadAppMethods() {
         ${extractMethod('formatFullWidthCount')}
         ${extractMethod('estimateDescVisualLines')}
         ${extractMethod('truncateToFullWidth')}
+        ${extractMethod('getActiveLayoutTextLimits')}
         ${extractMethod('inspectPhotoTextLimits')}
         ${extractMethod('_buildDupSet')}
         ${extractMethod('auditPhotosCompleteness')}

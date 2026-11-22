@@ -68,17 +68,23 @@
                 this.pendingSequenceExport = null;
                 this.textLimitInputStates = new WeakMap();
                 this.textLimitFeedbackTimers = new WeakMap();
+                this.exportDirectoryHandle = null;
+                this.exportAutoSavePrp = this.loadWorkspacePreference('exportAutoSavePrp', true);
+                this.sessionKnownExportPaths = new Set();
+                this.settingsStoreName = 'settings';
                 this.initElements();
                 this.initEvents();
                 this.applyWorkspaceLayout();
                 this.setDefaultTodayDate();
                 this.updateLayoutDescription();
+                this.updateExportDirectoryUi();
                 this.loadAppVersion();
                 this.render();
                 this.refreshAllTextLimitUi();
                 this.recordHistory('初始狀態');
                 this.markProjectSaved();
                 this.checkAndOfferAutoDraft();
+                this.loadPersistedExportDirectoryHandle();
             }
 
             initElements() {
@@ -133,6 +139,13 @@
                 this.exportSaveReminderText = document.getElementById('exportSaveReminderText');
                 this.btnSaveAfterExport = document.getElementById('btnSaveAfterExport');
                 this.btnDismissSaveAfterExport = document.getElementById('btnDismissSaveAfterExport');
+                this.caseSubjectInput = document.getElementById('caseSubject');
+                this.btnPickExportDir = document.getElementById('btnPickExportDir');
+                this.btnClearExportDir = document.getElementById('btnClearExportDir');
+                this.exportDirLabel = document.getElementById('exportDirLabel');
+                this.exportAutoSavePrpWrap = document.getElementById('exportAutoSavePrpWrap');
+                this.chkExportAutoSavePrp = document.getElementById('chkExportAutoSavePrp');
+                this.exportDirGroup = this.btnPickExportDir?.closest('.export-dir-group') || null;
 
                 // 右側編輯器元件
                 this.editorCard = document.getElementById('editorCard');
@@ -344,9 +357,22 @@
                 document.getElementById('btnUndo').addEventListener('click', () => this.undo());
                 document.getElementById('btnRedo').addEventListener('click', () => this.redo());
                 document.getElementById('btnExportPdf').addEventListener('click', () => this.confirmExportWithAudit(() => this.exportPdf().catch(e => this.handleExportError(e)), 'PDF 清冊'));
+                this.btnPickExportDir?.addEventListener('click', () => this.pickExportDirectory().catch(e => this.handleExportError(e)));
+                this.btnClearExportDir?.addEventListener('click', () => this.clearExportDirectory());
+                if (this.chkExportAutoSavePrp) {
+                    this.chkExportAutoSavePrp.checked = Boolean(this.exportAutoSavePrp);
+                    this.chkExportAutoSavePrp.addEventListener('change', () => {
+                        this.exportAutoSavePrp = Boolean(this.chkExportAutoSavePrp.checked);
+                        this.saveWorkspacePreference('exportAutoSavePrp', this.exportAutoSavePrp);
+                    });
+                }
                 this.layoutSelect.addEventListener('change', () => {
                     this.updateLayoutDescription();
                     this.updatePageEstimate();
+                    this.refreshAllTextLimitUi();
+                    this.photos.forEach((_, idx) => this.refreshThumbCardStatusBadge(idx));
+                    this.updateAuditBarUi();
+                    this.render();
                     if (this.isLightboxOpen()) this.syncLightboxAnnotationLayerBounds();
                     this.scheduleHistory('變更清冊版型');
                 });
@@ -358,15 +384,15 @@
                     event.preventDefault();
                     event.returnValue = '';
                 });
-                ['caseTitle', 'caseDate', 'deptName', 'officerName'].forEach(id => {
-                    document.getElementById(id).addEventListener('input', () => {
+                ['caseTitle', 'caseSubject', 'caseDate', 'deptName', 'officerName'].forEach(id => {
+                    document.getElementById(id)?.addEventListener('input', () => {
                         if (id === 'caseTitle') this.refreshCaseTitleLimitUi();
                         if (id === 'caseDate') this.refreshInheritedDateLocationHints();
                         this.scheduleHistory('修改案件基本資料');
                     });
                 });
-                this.bindLimitedTextControl(this.defaultLocationInput, {
-                    maxFullWidth: 17,
+                this.bindLimitedTextControl(this.defaultLocationInput, () => ({
+                    maxFullWidth: this.getActiveLayoutTextLimits().locationMaxFullWidth,
                     singleLine: true,
                     onAccept: () => {
                         this.refreshAllTextLimitUi();
@@ -376,7 +402,7 @@
                         this.scheduleHistory('修改案件基本資料');
                     },
                     onFeedback: () => this.refreshDefaultLocationLimitUi()
-                });
+                }));
                 this.defaultLocationInput?.addEventListener('blur', () => this.render());
 
                 const caseDateInput = document.getElementById('caseDate');
@@ -429,19 +455,22 @@
                     e.target.value = masked;
                     this.updateCurrentPhoto('date', masked);
                 });
-                this.bindLimitedTextControl(this.editLocation, {
-                    maxFullWidth: 17,
+                this.bindLimitedTextControl(this.editLocation, () => ({
+                    maxFullWidth: this.getActiveLayoutTextLimits().locationMaxFullWidth,
                     singleLine: true,
                     onAccept: (val) => this.updateCurrentPhoto('location', val),
                     onFeedback: (draft) => this.refreshEditLocationLimitUi(draft)
-                });
-                this.bindLimitedTextControl(this.editDesc, {
-                    maxFullWidth: 68,
-                    singleLine: false,
-                    maxLines: 2,
-                    lineFullWidth: 34,
-                    onAccept: (val) => this.updateCurrentPhoto('desc', val),
-                    onFeedback: (draft) => this.refreshEditDescLimitUi(draft)
+                }));
+                this.bindLimitedTextControl(this.editDesc, () => {
+                    const limits = this.getActiveLayoutTextLimits();
+                    return {
+                        maxFullWidth: limits.descMaxFullWidth,
+                        singleLine: false,
+                        maxLines: limits.descMaxLines,
+                        lineFullWidth: limits.descLineFullWidth,
+                        onAccept: (val) => this.updateCurrentPhoto('desc', val),
+                        onFeedback: (draft) => this.refreshEditDescLimitUi(draft)
+                    };
                 });
                 this.bindGridTextLimitEvents();
 
@@ -663,7 +692,9 @@
                 if (typeof PhotoReportSelection !== 'undefined') {
                     const globalLocation = document.getElementById('defaultLocation')?.value?.trim() || '';
                     if (!this._dupSet && this.activeFilter === 'duplicatePhotos') this._buildDupSet();
-                    return PhotoReportSelection.getVisiblePhotoIndices(this.photos, this.activeFilter, globalLocation, this._dupSet);
+                    return PhotoReportSelection.getVisiblePhotoIndices(this.photos, this.activeFilter, globalLocation, this._dupSet, {
+                        layout: this.layoutSelect?.value || 'up_down_2'
+                    });
                 }
                 const all = this.photos.map((photo, index) => ({ photo, index }));
                 if (this.activeFilter === 'all') return all;
@@ -1480,17 +1511,19 @@
             }
 
             getCaseData() {
-                return Object.fromEntries(['caseTitle', 'caseDate', 'defaultLocation', 'deptName', 'officerName', 'layoutSelect']
-                    .map(id => [id, document.getElementById(id).value]));
+                return Object.fromEntries(['caseTitle', 'caseSubject', 'caseDate', 'defaultLocation', 'deptName', 'officerName', 'layoutSelect']
+                    .map(id => [id, document.getElementById(id)?.value ?? '']));
             }
 
             applyCaseData(data = {}) {
-                ['caseTitle', 'caseDate', 'defaultLocation', 'deptName', 'officerName', 'layoutSelect'].forEach(id => {
-                    if (typeof data[id] === 'string') document.getElementById(id).value = data[id];
+                ['caseTitle', 'caseSubject', 'caseDate', 'defaultLocation', 'deptName', 'officerName', 'layoutSelect'].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (!el) return;
+                    if (typeof data[id] === 'string') el.value = data[id];
+                    else if (id === 'caseSubject') el.value = '';
                 });
                 this.syncTextLimitInputState(this.defaultLocationInput, this.defaultLocationInput?.value || '');
-                this.refreshCaseTitleLimitUi();
-                this.refreshDefaultLocationLimitUi();
+                this.refreshAllTextLimitUi();
                 this.refreshInheritedDateLocationHints();
                 this.updateLayoutDescription();
                 if (this.isLightboxOpen()) this.syncLightboxAnnotationLayerBounds();
@@ -1583,17 +1616,30 @@
                 };
             }
 
-            inspectPhotoTextLimits(effectiveLocation, desc) {
-                if (typeof PhotoReportValidation !== 'undefined' && typeof PhotoReportValidation.inspectTextLimits === 'function') {
-                    return PhotoReportValidation.inspectTextLimits(effectiveLocation, desc);
+            getActiveLayoutTextLimits(layout = this.layoutSelect?.value || 'up_down_2') {
+                if (typeof PhotoReportValidation !== 'undefined' && typeof PhotoReportValidation.getLayoutTextLimits === 'function') {
+                    return PhotoReportValidation.getLayoutTextLimits(layout);
                 }
+                const table = {
+                    up_down_2: { layout: 'up_down_2', label: '上下兩張', locationMaxFullWidth: 17, descMaxFullWidth: 68, descLineFullWidth: 34, descMaxLines: 2 },
+                    left_right_2: { layout: 'left_right_2', label: '左右兩張', locationMaxFullWidth: 17, descMaxFullWidth: 72, descLineFullWidth: 18, descMaxLines: 4 },
+                    landscape_3: { layout: 'landscape_3', label: '橫式三張', locationMaxFullWidth: 15, descMaxFullWidth: 54, descLineFullWidth: 18, descMaxLines: 3 }
+                };
+                return { ...(table[layout] || table.up_down_2) };
+            }
+
+            inspectPhotoTextLimits(effectiveLocation, desc, layout = this.layoutSelect?.value || 'up_down_2') {
+                if (typeof PhotoReportValidation !== 'undefined' && typeof PhotoReportValidation.inspectTextLimits === 'function') {
+                    return PhotoReportValidation.inspectTextLimits(effectiveLocation, desc, layout);
+                }
+                const limits = this.getActiveLayoutTextLimits(layout);
                 const locStr = String(effectiveLocation ?? '').trim();
                 const descStr = String(desc ?? '').trim();
                 const locationFullWidth = this.getTextFullWidthLength(locStr);
                 const descFullWidth = this.getTextFullWidthLength(descStr);
-                const descLines = this.estimateDescVisualLines(descStr, 34);
-                const locationOver = locationFullWidth > 17;
-                const descOver = descFullWidth > 68 || descLines > 2;
+                const descLines = this.estimateDescVisualLines(descStr, limits.descLineFullWidth);
+                const locationOver = locationFullWidth > limits.locationMaxFullWidth;
+                const descOver = descFullWidth > limits.descMaxFullWidth || descLines > limits.descMaxLines;
                 return {
                     locationFullWidth,
                     descFullWidth,
@@ -1700,23 +1746,25 @@
                 return { finalValue, blockedOrTruncated };
             }
 
-            bindLimitedTextControl(input, options) {
+            bindLimitedTextControl(input, optionsOrGetter) {
                 if (!input) return;
                 this.syncTextLimitInputState(input, input.value || '');
+                const getOpts = () => (typeof optionsOrGetter === 'function' ? optionsOrGetter() : (optionsOrGetter || {}));
                 const commit = (forceAccept = false) => {
+                    const opts = getOpts();
                     const state = this.getTextLimitInputState(input);
                     if (!forceAccept && state.lastCommittedValue === String(input.value ?? '') && !state.truncatedFlash) {
-                        options.onFeedback?.(input.value);
+                        opts.onFeedback?.(input.value);
                         return;
                     }
-                    const { finalValue, blockedOrTruncated } = this.resolveLimitedTextInput(input, options);
+                    const { finalValue, blockedOrTruncated } = this.resolveLimitedTextInput(input, opts);
                     if (blockedOrTruncated) {
-                        this.triggerTextLimitTruncatedFlash(input, () => options.onFeedback?.(input.value));
+                        this.triggerTextLimitTruncatedFlash(input, () => getOpts().onFeedback?.(input.value));
                     } else if (state) {
                         state.truncatedFlash = false;
                     }
-                    options.onAccept?.(finalValue);
-                    options.onFeedback?.(finalValue);
+                    opts.onAccept?.(finalValue);
+                    opts.onFeedback?.(finalValue);
                 };
 
                 input.addEventListener('compositionstart', () => {
@@ -1731,7 +1779,7 @@
                 input.addEventListener('input', (event) => {
                     const state = this.getTextLimitInputState(input);
                     if (event?.isComposing || state?.isComposing) {
-                        options.onFeedback?.(input.value);
+                        getOpts().onFeedback?.(input.value);
                         return;
                     }
                     commit(true);
@@ -1745,38 +1793,40 @@
                     const field = target.dataset.gridField;
                     const idx = Number(target.dataset.gridIndex);
                     if ((field !== 'location' && field !== 'desc') || !Number.isInteger(idx) || !this.photos[idx]) return null;
+                    const limits = this.getActiveLayoutTextLimits();
                     return {
                         input: target,
                         field,
                         idx,
+                        limits,
                         options: field === 'location'
-                            ? { maxFullWidth: 17, singleLine: true }
-                            : { maxFullWidth: 68, singleLine: false, maxLines: 2, lineFullWidth: 34 }
+                            ? { maxFullWidth: limits.locationMaxFullWidth, singleLine: true }
+                            : { maxFullWidth: limits.descMaxFullWidth, singleLine: false, maxLines: limits.descMaxLines, lineFullWidth: limits.descLineFullWidth }
                     };
                 };
 
                 const commitGridInput = (meta) => {
-                    const { input, field, idx, options } = meta;
+                    const { input, field, idx, limits, options } = meta;
                     const { finalValue, blockedOrTruncated } = this.resolveLimitedTextInput(input, options);
                     const state = this.getTextLimitInputState(input);
                     if (blockedOrTruncated) {
                         this.triggerTextLimitTruncatedFlash(input, () => {
                             input.title = field === 'location'
-                                ? '地點最多 17 個全形（2 半形＝1 全形）'
-                                : '說明最多 68 個全形・最多 2 行（2 半形＝1 全形）';
+                                ? `地點最多 ${limits.locationMaxFullWidth} 個全形（2 半形＝1 全形）`
+                                : `說明最多 ${limits.descMaxFullWidth} 個全形・最多 ${limits.descMaxLines} 行（單行約 ${limits.descLineFullWidth} 全形，2 半形＝1 全形）`;
                         });
                         input.title = field === 'location'
-                            ? '已達上限：地點最多 17 個全形（2 半形＝1 全形）'
-                            : '已達上限：說明最多 68 個全形（2 半形＝1 全形），避免變成 3 行';
+                            ? `已達上限：地點最多 ${limits.locationMaxFullWidth} 個全形（2 半形＝1 全形）`
+                            : `已達上限：說明最多 ${limits.descMaxFullWidth} 個全形／${limits.descMaxLines} 行`;
                     } else if (state) {
                         state.truncatedFlash = false;
                     }
 
                     const fullLen = this.getTextFullWidthLength(finalValue);
-                    const lines = field === 'desc' ? this.estimateDescVisualLines(finalValue, 34) : 1;
+                    const lines = field === 'desc' ? this.estimateDescVisualLines(finalValue, limits.descLineFullWidth) : 1;
                     const isOver = field === 'location'
-                        ? fullLen > 17
-                        : (fullLen > 68 || lines > 2);
+                        ? fullLen > limits.locationMaxFullWidth
+                        : (fullLen > limits.descMaxFullWidth || lines > limits.descMaxLines);
                     input.classList.toggle('input-over-limit', isOver || Boolean(state?.truncatedFlash));
                     this.updatePhotoField(idx, field, finalValue);
                 };
@@ -1808,14 +1858,16 @@
                 const counter = this.defaultLocationCounter;
                 const hint = this.defaultLocationLimitHint;
                 if (!input || !counter || !hint) return;
+                const limits = this.getActiveLayoutTextLimits();
+                const maxLoc = limits.locationMaxFullWidth;
                 const value = draftValue !== undefined ? String(draftValue) : String(input.value || '');
                 const fullLen = this.getTextFullWidthLength(value);
                 const state = this.getTextLimitInputState(input);
-                const isOver = fullLen > 17;
+                const isOver = fullLen > maxLoc;
                 const isFlash = Boolean(state?.truncatedFlash);
-                const isNear = !isOver && !isFlash && fullLen >= 15;
+                const isNear = !isOver && !isFlash && fullLen >= Math.max(1, maxLoc - 2);
 
-                counter.textContent = `${this.formatFullWidthCount(fullLen)} / 17 全形`;
+                counter.textContent = `${this.formatFullWidthCount(fullLen)} / ${maxLoc} 全形`;
                 counter.classList.toggle('is-over-limit', isOver || isFlash);
                 counter.classList.toggle('is-near-limit', isNear);
                 input.classList.toggle('input-over-limit', isOver);
@@ -1823,13 +1875,13 @@
                 hint.classList.toggle('is-over-limit', isOver || isFlash);
                 hint.classList.toggle('is-near-limit', isNear);
                 if (isOver) {
-                    hint.textContent = `目前 ${this.formatFullWidthCount(fullLen)} 全形，已超出 17 全形上限（建議精簡）`;
+                    hint.textContent = `目前 ${this.formatFullWidthCount(fullLen)} 全形，已超出「${limits.label}」${maxLoc} 全形上限（建議精簡）`;
                 } else if (isFlash) {
-                    hint.textContent = '已達上限：地點最多 17 個全形（超出部分未寫入）';
+                    hint.textContent = `已達上限：${limits.label}地點最多 ${maxLoc} 個全形（超出部分未寫入）`;
                 } else if (isNear) {
-                    hint.textContent = `剩餘 ${this.formatFullWidthCount(17 - fullLen)} 全形（2 半形＝1 全形）`;
+                    hint.textContent = `剩餘 ${this.formatFullWidthCount(maxLoc - fullLen)} 全形（2 半形＝1 全形）`;
                 } else {
-                    hint.textContent = '最多 17 個全形（2 半形＝1 全形）';
+                    hint.textContent = `最多 ${maxLoc} 個全形（2 半形＝1 全形）`;
                 }
             }
 
@@ -1838,17 +1890,19 @@
                 const counter = this.editLocationCounter;
                 const hint = this.editLocationLimitHint;
                 if (!input || !counter || !hint) return;
+                const limits = this.getActiveLayoutTextLimits();
+                const maxLoc = limits.locationMaxFullWidth;
                 const value = draftValue !== undefined ? String(draftValue) : String(input.value || '');
                 const fullLen = this.getTextFullWidthLength(value);
                 const defaultLoc = String(this.defaultLocationInput?.value || '').trim();
                 const inheritedLen = !value.trim() ? this.getTextFullWidthLength(defaultLoc) : 0;
                 const state = this.getTextLimitInputState(input);
-                const isOver = fullLen > 17;
-                const isInheritedOver = !value.trim() && inheritedLen > 17;
+                const isOver = fullLen > maxLoc;
+                const isInheritedOver = !value.trim() && inheritedLen > maxLoc;
                 const isFlash = Boolean(state?.truncatedFlash);
-                const isNear = !isOver && !isFlash && fullLen >= 15;
+                const isNear = !isOver && !isFlash && fullLen >= Math.max(1, maxLoc - 2);
 
-                counter.textContent = `${this.formatFullWidthCount(fullLen)} / 17 全形`;
+                counter.textContent = `${this.formatFullWidthCount(fullLen)} / ${maxLoc} 全形`;
                 counter.classList.toggle('is-over-limit', isOver || isFlash || isInheritedOver);
                 counter.classList.toggle('is-near-limit', isNear);
                 input.classList.toggle('input-over-limit', isOver || isInheritedOver);
@@ -1856,15 +1910,15 @@
                 hint.classList.toggle('is-over-limit', isOver || isFlash || isInheritedOver);
                 hint.classList.toggle('is-near-limit', isNear);
                 if (isOver) {
-                    hint.textContent = `目前 ${this.formatFullWidthCount(fullLen)} 全形，已超出 17 全形上限（請精簡）`;
+                    hint.textContent = `目前 ${this.formatFullWidthCount(fullLen)} 全形，已超出「${limits.label}」${maxLoc} 全形上限（請精簡）`;
                 } else if (isInheritedOver) {
-                    hint.textContent = `繼承的案件地點有 ${this.formatFullWidthCount(inheritedLen)} 全形，已超出 17 全形上限`;
+                    hint.textContent = `繼承的案件地點有 ${this.formatFullWidthCount(inheritedLen)} 全形，已超出「${limits.label}」${maxLoc} 全形上限`;
                 } else if (isFlash) {
-                    hint.textContent = '已達上限：地點最多 17 個全形（超出部分未寫入）';
+                    hint.textContent = `已達上限：${limits.label}地點最多 ${maxLoc} 個全形（超出部分未寫入）`;
                 } else if (isNear) {
-                    hint.textContent = `剩餘 ${this.formatFullWidthCount(17 - fullLen)} 全形（2 半形＝1 全形）`;
+                    hint.textContent = `剩餘 ${this.formatFullWidthCount(maxLoc - fullLen)} 全形（2 半形＝1 全形）`;
                 } else {
-                    hint.textContent = '最多 17 個全形（2 半形＝1 全形）';
+                    hint.textContent = `最多 ${maxLoc} 個全形（2 半形＝1 全形）`;
                 }
             }
 
@@ -1901,15 +1955,19 @@
                 const counter = this.editDescCounter;
                 const hint = this.editDescLimitHint;
                 if (!input || !counter || !hint) return;
+                const limits = this.getActiveLayoutTextLimits();
+                const maxDesc = limits.descMaxFullWidth;
+                const maxLines = limits.descMaxLines;
+                const lineFullWidth = limits.descLineFullWidth;
                 const value = draftValue !== undefined ? String(draftValue) : String(input.value || '');
                 const fullLen = this.getTextFullWidthLength(value);
-                const visualLines = this.estimateDescVisualLines(value, 34);
+                const visualLines = this.estimateDescVisualLines(value, lineFullWidth);
                 const state = this.getTextLimitInputState(input);
-                const isOver = fullLen > 68 || visualLines > 2;
+                const isOver = fullLen > maxDesc || visualLines > maxLines;
                 const isFlash = Boolean(state?.truncatedFlash);
-                const isNear = !isOver && !isFlash && (fullLen >= 62 || (visualLines === 2 && fullLen >= 55));
+                const isNear = !isOver && !isFlash && (fullLen >= Math.max(1, maxDesc - 6) || (visualLines === maxLines && fullLen >= Math.max(1, maxDesc - Math.floor(lineFullWidth * 0.4))));
 
-                counter.textContent = `${this.formatFullWidthCount(fullLen)} / 68 全形`;
+                counter.textContent = `${this.formatFullWidthCount(fullLen)} / ${maxDesc} 全形`;
                 counter.classList.toggle('is-over-limit', isOver || isFlash);
                 counter.classList.toggle('is-near-limit', isNear);
                 input.classList.toggle('input-over-limit', isOver);
@@ -1917,18 +1975,15 @@
                 hint.classList.toggle('is-over-limit', isOver || isFlash);
                 hint.classList.toggle('is-near-limit', isNear);
                 if (isOver) {
-                    hint.textContent = fullLen > 68
-                        ? `目前 ${this.formatFullWidthCount(fullLen)} 全形（預估 ${visualLines} 行），超過 68 全形恐變 3 行影響整頁排版`
-                        : `目前預估 ${visualLines} 行，超過 2 行恐影響整頁排版（上限 68 全形・最多 2 行）`;
+                    hint.textContent = fullLen > maxDesc
+                        ? `目前 ${this.formatFullWidthCount(fullLen)} 全形（預估 ${visualLines} 行），超過「${limits.label}」上限 ${maxDesc} 全形恐影響排版`
+                        : `目前預估 ${visualLines} 行，超過「${limits.label}」最多 ${maxLines} 行恐影響整頁排版`;
                 } else if (isFlash) {
-                    hint.textContent = '已達上限（最多 68 全形／2 行），避免變 3 行影響排版';
+                    hint.textContent = `已達「${limits.label}」上限（最多 ${maxDesc} 全形／${maxLines} 行），避免換頁破版`;
                 } else if (isNear) {
-                    hint.textContent = `剩餘 ${this.formatFullWidthCount(68 - fullLen)} 全形（第 ${visualLines || 1}／2 行）`;
+                    hint.textContent = `剩餘 ${this.formatFullWidthCount(maxDesc - fullLen)} 全形（第 ${visualLines || 1}／${maxLines} 行）`;
                 } else {
-                    const layout = this.layoutSelect?.value || 'up_down_2';
-                    hint.textContent = (layout === 'left_right_2' || layout === 'landscape_3')
-                        ? '上限 68 全形（左右／橫式較窄，實際約折 3～4 行）'
-                        : '最多 68 個全形・最多 2 行（2 半形＝1 全形）';
+                    hint.textContent = `最多 ${maxDesc} 個全形・最多 ${maxLines} 行（單行約 ${lineFullWidth} 全形，2 半形＝1 全形）`;
                 }
             }
 
@@ -2272,14 +2327,205 @@
                 return /\.(?:prp|photo-report)$/i.test(String(filename || '').trim());
             }
 
-            buildProjectSuggestedFilename(caseTitle, now = new Date()) {
-                const rawTitle = this.sanitizeFilename(caseTitle, '現場照片清冊');
-                const cleanTitle = rawTitle.replace(/_+/g, '_').replace(/^_+|_+$/g, '') || '現場照片清冊';
+            cleanFilenameSegment(rawValue, fallback = '', maxChars = 0) {
+                let cleaned = String(rawValue ?? '')
+                    .replace(/[\\/:*?"<>|\u0000-\u001F\s]+/g, '_')
+                    .replace(/_+/g, '_')
+                    .replace(/^_+|_+$/g, '');
+                if (maxChars > 0 && cleaned) {
+                    cleaned = Array.from(cleaned).slice(0, maxChars).join('').replace(/^_+|_+$/g, '');
+                }
+                return cleaned || fallback;
+            }
+
+            buildCaseFolderName(caseData = this.getCaseData()) {
+                const compactDate = String(caseData?.caseDate || '').replace(/[\\/:*?"<>|\s-]+/g, '');
+                const cleanSubject = this.cleanFilenameSegment(caseData?.caseSubject, '', 15);
+                const cleanTitle = this.cleanFilenameSegment(caseData?.caseTitle, '現場照片清冊');
+                return [compactDate, cleanSubject, cleanTitle].filter(Boolean).join('_') || '現場照片清冊';
+            }
+
+            buildProjectSuggestedFilename(caseDataOrTitle, now = new Date(), options = {}) {
+                const caseTitle = typeof caseDataOrTitle === 'object' && caseDataOrTitle !== null
+                    ? caseDataOrTitle.caseTitle
+                    : caseDataOrTitle;
+                const caseSubject = typeof caseDataOrTitle === 'object' && caseDataOrTitle !== null
+                    ? caseDataOrTitle.caseSubject
+                    : '';
+                const cleanSubject = this.cleanFilenameSegment(caseSubject, '', 15);
+                const cleanTitle = this.cleanFilenameSegment(caseTitle, '現場照片清冊');
+                const baseName = [cleanSubject, cleanTitle].filter(Boolean).join('_') || '現場照片清冊';
+                if (options?.fixedForFolder) {
+                    return `${baseName}.prp`;
+                }
                 const month = String(now.getMonth() + 1).padStart(2, '0');
                 const day = String(now.getDate()).padStart(2, '0');
                 const hours = String(now.getHours()).padStart(2, '0');
                 const minutes = String(now.getMinutes()).padStart(2, '0');
-                return `${cleanTitle}_${month}${day}_${hours}${minutes}.prp`;
+                return `${baseName}_${month}${day}_${hours}${minutes}.prp`;
+            }
+
+            updateExportDirectoryUi() {
+                const isBound = Boolean(this.exportDirectoryHandle);
+                if (this.exportDirLabel) {
+                    this.exportDirLabel.textContent = isBound
+                        ? `匯出區：${this.exportDirectoryHandle.name || '已選資料夾'}`
+                        : '匯出區：下載';
+                }
+                this.exportDirGroup?.classList.toggle('is-bound', isBound);
+                this.btnClearExportDir?.classList.toggle('hidden', !isBound);
+                this.exportAutoSavePrpWrap?.classList.toggle('hidden', !isBound);
+                if (this.chkExportAutoSavePrp) {
+                    this.chkExportAutoSavePrp.checked = Boolean(this.exportAutoSavePrp);
+                }
+            }
+
+            async setExportDirectoryHandle(handle, { persist = true } = {}) {
+                this.exportDirectoryHandle = handle || null;
+                this.updateExportDirectoryUi();
+                if (!persist || typeof indexedDB === 'undefined') return;
+                try {
+                    const db = await this.openAutoDraftDb();
+                    try {
+                        await new Promise((resolve, reject) => {
+                            const tx = db.transaction(this.settingsStoreName, 'readwrite');
+                            const store = tx.objectStore(this.settingsStoreName);
+                            if (handle) store.put(handle, 'exportDirectoryHandle');
+                            else store.delete('exportDirectoryHandle');
+                            tx.oncomplete = () => resolve();
+                            tx.onerror = () => reject(tx.error);
+                        });
+                    } finally {
+                        db.close();
+                    }
+                } catch {
+                    // 測試模擬物件或無 IndexedDB 權限時維持工作階段記憶體狀態
+                }
+            }
+
+            async loadPersistedExportDirectoryHandle() {
+                if (typeof indexedDB === 'undefined' || !window.isSecureContext) return null;
+                try {
+                    const db = await this.openAutoDraftDb();
+                    try {
+                        const saved = await new Promise((resolve, reject) => {
+                            const tx = db.transaction(this.settingsStoreName, 'readonly');
+                            const req = tx.objectStore(this.settingsStoreName).get('exportDirectoryHandle');
+                            req.onsuccess = () => resolve(req.result || null);
+                            req.onerror = () => reject(req.error);
+                        });
+                        if (saved && typeof saved.getDirectoryHandle === 'function') {
+                            this.exportDirectoryHandle = saved;
+                            this.updateExportDirectoryUi();
+                        }
+                        return saved;
+                    } finally {
+                        db.close();
+                    }
+                } catch {
+                    return null;
+                }
+            }
+
+            async pickExportDirectory() {
+                if (!(window.isSecureContext && typeof window.showDirectoryPicker === 'function')) {
+                    alert('直接以本機檔案（file://）或目前瀏覽器開啟時不支援固定資料夾寫入。\n請用 Chrome／Edge 開啟線上版設定固定案件匯出區，或維持預設下載區。');
+                    return false;
+                }
+                try {
+                    const handle = await window.showDirectoryPicker({
+                        mode: 'readwrite',
+                        id: 'photo-report-export-zone'
+                    });
+                    if (!handle) return false;
+                    await this.setExportDirectoryHandle(handle, { persist: true });
+                    return true;
+                } catch (error) {
+                    if (error?.name === 'AbortError') return false;
+                    throw error;
+                }
+            }
+
+            async clearExportDirectory() {
+                await this.setExportDirectoryHandle(null, { persist: true });
+            }
+
+            async ensureExportDirectoryWritable() {
+                const handle = this.exportDirectoryHandle;
+                if (!handle) return false;
+                if (typeof handle.queryPermission === 'function') {
+                    let status = await handle.queryPermission({ mode: 'readwrite' });
+                    if (status !== 'granted' && typeof handle.requestPermission === 'function') {
+                        status = await handle.requestPermission({ mode: 'readwrite' });
+                    }
+                    return status === 'granted';
+                }
+                return true;
+            }
+
+            buildTimeSuffixedFilename(filename) {
+                const now = new Date();
+                const stamp = [
+                    String(now.getHours()).padStart(2, '0'),
+                    String(now.getMinutes()).padStart(2, '0'),
+                    String(now.getSeconds()).padStart(2, '0')
+                ].join('');
+                const dotIdx = filename.lastIndexOf('.');
+                return dotIdx > 0
+                    ? `${filename.slice(0, dotIdx)}_${stamp}${filename.slice(dotIdx)}`
+                    : `${filename}_${stamp}`;
+            }
+
+            async writeBlobToCaseExportDirectory(filename, blob) {
+                if (!this.exportDirectoryHandle) return { written: false };
+                let granted = false;
+                try {
+                    granted = await this.ensureExportDirectoryWritable();
+                } catch {
+                    granted = false;
+                }
+                if (!granted) {
+                    const fallbackConfirm = typeof confirm === 'function'
+                        ? confirm('尚未取得案件匯出區資料夾的寫入權限，要改用瀏覽器下載區儲存嗎？')
+                        : true;
+                    return { written: false, fallbackToDownload: fallbackConfirm };
+                }
+
+                const folderName = this.buildCaseFolderName();
+                const caseDirHandle = await this.exportDirectoryHandle.getDirectoryHandle(folderName, { create: true });
+                let finalName = filename;
+                const initialPathKey = `${folderName}/${finalName}`;
+                if (!this.sessionKnownExportPaths.has(initialPathKey)) {
+                    let exists = false;
+                    try {
+                        await caseDirHandle.getFileHandle(finalName, { create: false });
+                        exists = true;
+                    } catch (err) {
+                        if (err?.name !== 'NotFoundError') exists = false;
+                    }
+                    if (exists) {
+                        const overwrite = typeof confirm === 'function'
+                            ? confirm(`資料夾「${folderName}」內已有同名檔案「${finalName}」，是否覆寫為最新版？\n（按「取消」會加上時間尾碼另存新檔，不會覆寫舊檔）`)
+                            : true;
+                        if (!overwrite) {
+                            finalName = this.buildTimeSuffixedFilename(finalName);
+                        }
+                    }
+                }
+
+                const fileHandle = await caseDirHandle.getFileHandle(finalName, { create: true });
+                const writable = await fileHandle.createWritable();
+                try {
+                    await writable.write(blob);
+                    await writable.close();
+                } catch (error) {
+                    if (typeof writable.abort === 'function') {
+                        try { await writable.abort(); } catch {}
+                    }
+                    throw error;
+                }
+                this.sessionKnownExportPaths.add(`${folderName}/${finalName}`);
+                return { written: true, folderName, fileName: finalName, fileHandle };
             }
 
             showExportSaveReminder(formatLabel = '報表') {
@@ -2404,22 +2650,24 @@
                 const lite = options?.lite !== undefined ? Boolean(options.lite) : true;
                 const saveAsNew = Boolean(options?.saveAsNew);
                 const fromUserPicker = Boolean(options?.fromUserPicker);
+                const toExportDir = Boolean(options?.toExportDir);
 
                 this.finalizeActiveInputsBeforeSave();
                 this.processingCancelled = false;
 
                 const caseData = this.getCaseData();
                 const savingPhotos = this.photos.map(photo => PhotoReportPhotoModel.cloneForHistory(photo));
+                const useExportDir = Boolean(this.exportDirectoryHandle) && (toExportDir || (!saveAsNew && !this.currentProjectFileHandle));
                 const suggestedName = (!saveAsNew && this.currentProjectFileHandle && this.currentProjectFileName)
                     ? this.currentProjectFileName
-                    : this.buildProjectSuggestedFilename(caseData.caseTitle);
+                    : this.buildProjectSuggestedFilename(caseData, new Date(), { fixedForFolder: useExportDir });
 
                 const isDefaultSaveAs = !this.initialSaveAs || window.saveAs === this.initialSaveAs;
-                let targetHandle = (!saveAsNew && isDefaultSaveAs && this.currentProjectFileHandle)
+                let targetHandle = (!saveAsNew && !toExportDir && isDefaultSaveAs && this.currentProjectFileHandle)
                     ? this.currentProjectFileHandle
                     : null;
 
-                if (!targetHandle && fromUserPicker && isDefaultSaveAs && window.isSecureContext && typeof window.showSaveFilePicker === 'function' && !navigator.webdriver) {
+                if (!useExportDir && !targetHandle && fromUserPicker && isDefaultSaveAs && window.isSecureContext && typeof window.showSaveFilePicker === 'function' && !navigator.webdriver) {
                     try {
                         targetHandle = await window.showSaveFilePicker({
                             suggestedName,
@@ -2497,7 +2745,24 @@
                         }
                         this.currentProjectFileHandle = targetHandle;
                         this.currentProjectFileName = targetHandle.name || suggestedName;
+                        if (this.exportDirectoryHandle) {
+                            this.sessionKnownExportPaths.add(`${this.buildCaseFolderName(caseData)}/${this.currentProjectFileName}`);
+                        }
                         this.currentProjectSaveMode = 'written';
+                    } else if (useExportDir) {
+                        const dirWrite = await this.writeBlobToCaseExportDirectory(suggestedName, content);
+                        if (dirWrite.written) {
+                            this.currentProjectFileHandle = dirWrite.fileHandle || null;
+                            this.currentProjectFileName = dirWrite.fileName || suggestedName;
+                            this.currentProjectSaveMode = 'written';
+                        } else if (dirWrite.fallbackToDownload) {
+                            const fallbackName = this.buildProjectSuggestedFilename(caseData, new Date(), { fixedForFolder: false });
+                            saveAs(content, fallbackName);
+                            this.currentProjectFileName = fallbackName;
+                            this.currentProjectSaveMode = 'download';
+                        } else {
+                            return false;
+                        }
                     } else {
                         saveAs(content, suggestedName);
                         this.currentProjectFileName = suggestedName;
@@ -3108,11 +3373,14 @@
                     if (typeof indexedDB === 'undefined') {
                         return reject(new Error('瀏覽器不支援 IndexedDB'));
                     }
-                    const request = indexedDB.open(this.autoDraftDbName, 1);
+                    const request = indexedDB.open(this.autoDraftDbName, 2);
                     request.onupgradeneeded = () => {
                         const db = request.result;
                         if (!db.objectStoreNames.contains(this.autoDraftStoreName)) {
                             db.createObjectStore(this.autoDraftStoreName);
+                        }
+                        if (!db.objectStoreNames.contains(this.settingsStoreName)) {
+                            db.createObjectStore(this.settingsStoreName);
                         }
                     };
                     request.onsuccess = () => resolve(request.result);
@@ -4007,6 +4275,7 @@
                     this.currentProjectSavedAt = null;
                     this.lastLocalEditAt = null;
                     this.savedPhotosByUid = new Map();
+                    this.sessionKnownExportPaths?.clear();
                     this.clearAutoDraftDb();
                     this.render();
                     this.recordHistory('清空照片');
@@ -4773,9 +5042,10 @@
             // 完整度稽核：委派至 PhotoReportAudit 模組，純讀取不修改 photos
             auditPhotosCompleteness() {
                 const globalLocation = document.getElementById('defaultLocation')?.value?.trim() || '';
+                const layout = this.layoutSelect?.value || 'up_down_2';
                 this._buildDupSet();
                 if (typeof PhotoReportAudit !== 'undefined') {
-                    return PhotoReportAudit.auditPhotosCompleteness(this.photos, globalLocation);
+                    return PhotoReportAudit.auditPhotosCompleteness(this.photos, globalLocation, { layout });
                 }
                 const calcFullWidth = (str) => {
                     let units = 0;
@@ -4804,7 +5074,7 @@
                     const timeInvalid = !this.isValidTimeFormat(t);
                     if (dateInvalid || timeInvalid) invalidDateTime++;
                     if (this._dupSet.has(photo.name)) duplicatePhotos++;
-                    if (calcFullWidth(effectiveLoc) > 17 || calcFullWidth(descStr) > 68 || calcLines(descStr) > 2) overTextLimit++;
+                    if (this.inspectPhotoTextLimits(effectiveLoc, descStr, layout).isOver) overTextLimit++;
                 });
                 const issuesCount = missingLocation + missingDesc + invalidDateTime + duplicatePhotos + overTextLimit;
                 let firstIssueFilter = null;
@@ -5067,7 +5337,7 @@
                     if (audit.missingLocation > 0) items.push(`未填地點：${audit.missingLocation} 張`);
                     if (audit.invalidDateTime > 0) items.push(`時間異常：${audit.invalidDateTime} 張`);
                     if (audit.duplicatePhotos > 0) items.push(`同名照片：${audit.duplicatePhotos} 張`);
-                    if (audit.overTextLimit > 0) items.push(`地點或說明過長（恐影響排版）：${audit.overTextLimit} 張`);
+                    if (audit.overTextLimit > 0) items.push(`地點或說明過長（恐影響當前版型排版）：${audit.overTextLimit} 張`);
                     layoutWarnings.forEach(msg => items.push(msg));
                     const frag = document.createDocumentFragment();
                     items.forEach(t => {
@@ -5237,6 +5507,7 @@
                 this.thumbGrid.style.removeProperty('min-height');
 
                 // 渲染試算表視圖 (DataGrid)
+                const gridLimits = this.getActiveLayoutTextLimits();
                 this.gridTbody.innerHTML = this.photos.map((p, idx) => {
                     const locCheck = this.inspectPhotoTextLimits(String(p.location || '').trim(), '');
                     const descCheck = this.inspectPhotoTextLimits('', String(p.desc || '').trim());
@@ -5264,10 +5535,10 @@
                             <input type="text" value="${escapeHtml(p.time)}" onpointerdown="window.app.handleMaskedPointerDown(event, this)" onfocus="window.app.beginMaskedEntry(this)" oninput="this.value = window.app.sanitizeMaskedEntry(this, 6); window.app.markMaskedEntryChanged(this); window.app.updatePhotoField(${idx}, 'time', this.value)" onblur="this.value = window.app.finishMaskedEntry(this, window.app.formatTimeMask); window.app.updatePhotoField(${idx}, 'time', this.value)" class="input-field w-full text-xs font-mono" placeholder="輸入 4 或 6 碼">
                         </td>
                         <td class="p-2">
-                            <input type="text" data-grid-index="${idx}" data-grid-field="location" value="${escapeHtml(p.location)}" class="input-field w-full text-xs ${locCheck.locationOver ? 'input-over-limit' : ''}" placeholder="留空＝清冊預設" title="地點最多 17 個全形（2 半形＝1 全形）">
+                            <input type="text" data-grid-index="${idx}" data-grid-field="location" value="${escapeHtml(p.location)}" class="input-field w-full text-xs ${locCheck.locationOver ? 'input-over-limit' : ''}" placeholder="留空＝清冊預設" title="地點最多 ${gridLimits.locationMaxFullWidth} 個全形（2 半形＝1 全形）">
                         </td>
                         <td class="p-2">
-                            <input type="text" data-grid-index="${idx}" data-grid-field="desc" value="${escapeHtml(p.desc)}" class="input-field w-full text-xs ${descCheck.descOver ? 'input-over-limit' : ''}" placeholder="請填寫現場跡證或狀況說明" title="說明最多 68 個全形・最多 2 行（2 半形＝1 全形）">
+                            <input type="text" data-grid-index="${idx}" data-grid-field="desc" value="${escapeHtml(p.desc)}" class="input-field w-full text-xs ${descCheck.descOver ? 'input-over-limit' : ''}" placeholder="請填寫現場跡證或狀況說明" title="說明最多 ${gridLimits.descMaxFullWidth} 個全形・最多 ${gridLimits.descMaxLines} 行（單行約 ${gridLimits.descLineFullWidth} 全形，2 半形＝1 全形）">
                         </td>
                         <td class="p-2 text-[#6B7280] truncate max-w-[110px]" title="${escapeHtml(p.name)}">
                             ${escapeHtml(p.name)}
@@ -7791,11 +8062,25 @@
             // ============================================================
             // 📑 報表匯出委派引擎 (Phase 4 模組化抽離：Word / PDF / Excel)
             // ============================================================
-            getExportContext() {
+            getExportContext(options = {}) {
                 const caseData = this.getCaseData();
+                const useExportDir = Boolean(this.exportDirectoryHandle);
+                const dirSaveAs = useExportDir
+                    ? async (blob, safeName) => {
+                        const res = await this.writeBlobToCaseExportDirectory(safeName, blob);
+                        if (res.written) return true;
+                        if (res.fallbackToDownload) {
+                            const fallbackSave = typeof saveAs === 'function' ? saveAs : (window.saveAs || null);
+                            if (typeof fallbackSave === 'function') fallbackSave(blob, safeName);
+                            return false;
+                        }
+                        throw new Error('使用者已取消處理。');
+                    }
+                    : null;
                 return {
                     photos: this.photos,
                     caseTitle: caseData.caseTitle || '',
+                    caseSubject: caseData.caseSubject || '',
                     caseDate: caseData.caseDate || '',
                     defaultLocation: caseData.defaultLocation || '',
                     deptName: caseData.deptName || '臺南市政府警察局新化分局',
@@ -7806,17 +8091,27 @@
                     clearProgress: () => this.clearProgress(),
                     throwIfCancelled: () => this.throwIfProcessingCancelled(),
                     yieldToBrowser: () => this.yieldToBrowser(),
-                    saveAs: typeof saveAs === 'function' ? saveAs : (window.saveAs || null)
+                    saveAs: dirSaveAs || (options.forPdf ? null : (typeof saveAs === 'function' ? saveAs : (window.saveAs || null)))
                 };
+            }
+
+            async handleAfterReportExport(formatLabel) {
+                if (!(this.photos.length > 0 && this.hasUnsavedProjectChanges())) return;
+                if (this.exportDirectoryHandle && this.chkExportAutoSavePrp?.checked) {
+                    const saved = await this.saveProject({ toExportDir: true });
+                    if (saved) {
+                        this.hideExportSaveReminder();
+                        return;
+                    }
+                }
+                this.showExportSaveReminder(formatLabel);
             }
 
             async exportDocx() {
                 if (typeof PhotoReportDocxExporter !== 'undefined') {
                     this.processingCancelled = false;
                     const exported = await PhotoReportDocxExporter.exportDocx(this.getExportContext());
-                    if (this.photos.length > 0 && this.hasUnsavedProjectChanges()) {
-                        this.showExportSaveReminder('Word');
-                    }
+                    await this.handleAfterReportExport('Word');
                     return exported;
                 }
                 alert('Word 匯出模組尚未載入！');
@@ -7837,10 +8132,8 @@
             async exportPdf() {
                 if (typeof PhotoReportPdfExporter !== 'undefined') {
                     this.processingCancelled = false;
-                    const exported = await PhotoReportPdfExporter.exportPdf(this.getExportContext());
-                    if (this.photos.length > 0 && this.hasUnsavedProjectChanges()) {
-                        this.showExportSaveReminder('PDF');
-                    }
+                    const exported = await PhotoReportPdfExporter.exportPdf(this.getExportContext({ forPdf: true }));
+                    await this.handleAfterReportExport('PDF');
                     return exported;
                 }
                 alert('PDF 匯出模組尚未載入！');
@@ -7852,6 +8145,7 @@
                     return PhotoReportExcelExporter.exportExcel({
                         photos: this.photos,
                         caseTitle: caseData.caseTitle || '',
+                        caseSubject: caseData.caseSubject || '',
                         caseDate: caseData.caseDate || '',
                         defaultLocation: caseData.defaultLocation || '',
                         globalOfficer: caseData.officerName || '巡官梁家豪'
@@ -7926,8 +8220,9 @@
                 this.processingCancelled = false;
 
                 const zip = new JSZip();
-                const rawTitle = this.sanitizeFilename(document.getElementById('caseTitle').value, '現場照片');
-                const cleanTitle = rawTitle.replace(/_+/g, '_').replace(/^_+|_+$/g, '') || '現場照片';
+                const cleanSubject = this.cleanFilenameSegment(document.getElementById('caseSubject')?.value, '', 15);
+                const cleanTitle = this.cleanFilenameSegment(document.getElementById('caseTitle')?.value, '現場照片');
+                const zipBase = [cleanSubject, cleanTitle].filter(Boolean).join('_') || '現場照片';
 
                 try {
                     this.setProgress('正在壓縮照片並建立 ZIP…', 0, this.photos.length);
@@ -7947,7 +8242,7 @@
                     this.setProgress('正在封裝 ZIP 檔案…', this.photos.length, this.photos.length);
                     const content = await zip.generateAsync({ type: 'blob' });
                     this.throwIfProcessingCancelled();
-                    saveAs(content, `${cleanTitle}_最佳化照片包.zip`);
+                    saveAs(content, `${zipBase}_最佳化照片包.zip`);
                 } finally {
                     this.clearProgress();
                 }
