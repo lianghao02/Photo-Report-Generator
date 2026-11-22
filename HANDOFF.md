@@ -3,85 +3,66 @@
 ## 核心元資料 (Metadata)
 - **Repository**：lianghao02/Photo-Report-Generator
 - **Branch**：main
-- **Commit SHA**：程式81859616bba196a960ca257651b6bbc00994b1cd；部署紀錄隨後續文件提交（實際HEAD見git log -1）
+- **Commit SHA**：未提交（前次遠端基線 `119186d`，v2.5.0）
 - **Skill Version**：v1.0.0
-- **Task Type**：HANDOFF
+- **Task Type**：FIX
 - **Local Path Hint**：04_Photo-Report-Generator
 
 ---
 
 ## 目前狀態
-可交付；程式提交8185961已推送main，GitHub Pages部署成功並通過線上實測。五階段計畫、完整測試、Portable原生流程與自我檢查均完成，停止擴大修改。
+可交付（本機待使用者確認是否提交並推送 `origin/main`）；全套單元測試、Playwright E2E、Golden Baseline 與共用 QA 皆已通過，依使用者指示未建立桌面打包檔。
 
 ## 本輪目標
-依IMPLEMENTATION_PLAN.md保存現有修復與UI基準、補強測試失敗判定、抽出照片／進度格式／彙整邏輯，完成存檔狀態、開檔檢查及彙整明細。使用D:\PicPick照片副本實測，原始資料保持不變。使用者先授權「開始修正提交」，再授權「推送部署push」；已完成main推送、GitHub Pages部署及線上驗證，不升版、不建立桌面Release。
+承接 `v2.5.0` 上線與 AUDIT 檢視成果，修訂實碼與文件邊界問題：案件更名與「案件匯出區」`.prp` 控制代碼一致化、`exportAuditModal` 關閉時清除殘留權限狀態、資料夾存在檢查錯誤提示、Word／PDF 英文整字折行視覺行數對齊、`prepare-assets.ps1` 自動快取雜湊、導引文字補充 Chrome 控管提醒，以及 `CHANGELOG.md`／`HANDOFF.md` 同步。
 
 ## 基準與已確認事實 (Baseline & Confirmed Facts)
-- 開始本計畫時main已有前輪桌面修復、UI與計畫等未提交修改；不得覆寫、reset或只以HEAD當作回復點。
-- 已保存99個正式來源／新增檔案、baseline.patch、baseline-status.txt與前輪Portable產物，均位於被忽略的build/plan-implementation/baseline及baseline-artifacts。
-- 進度格式維持version 1。相容樣本為修改前程式實際產生的v1檔案，另外合成省略版本與錯誤案例；未取得更早正式發行版的真實進度檔，不宣稱全部歷史發行版皆已實測。
-- 原有彙整判定以50組修改前規則輸出及完整既有E2E比對；既有非空案件資料等合併行為保持。
-- 使用者提供的4張照片只複製至被忽略的測試區；來源路徑／雜湊紀錄不加入版本庫。
+- 版本號一致為 `v2.5.0`（`version.txt`、`package.json`、`src-tauri/tauri.conf.json`、`README.md`、`CHANGELOG.md`）。
+- 實機交叉比對確認：本機 `HKLM:\SOFTWARE\Policies\Google\Chrome` 設有 `DefaultCookiesSetting = 4` 等機關原則，致使 Chrome 呼叫 `showDirectoryPicker` 時被靜默中止而不跳允許編輯提示；Edge（無 `DefaultCookiesSetting` 原則）實測可正常綁定並記住 `F:\套印\案件匯出區`。
+- 專案三大公務版型（`up_down_2`、`left_right_2`、`landscape_3`）之字數與視覺行數上限已依 OpenXML 實測寬高獨立區分，並於匯出端維持不變。
 
 ## 已完成 (Completed)
-- 繼承前輪CSP、加入照片按鈕、拖放設定與六尺寸UI修訂；保存穩定基準。
-- 照片資料統一至js/photo-model.js，區分可保存欄位與File／Object URL執行期資源；歷程副本隔離可變資料。
-- js/project-format.js統一進度與草稿格式、支援版本、欄位結構、ZIP CRC、圖片清單及解碼檢查。開啟／彙整先驗證；異常、取消保留目前工作，釋放臨時URL。保留舊超標文字。
-- js/project-merge.js集中純資料彙整規則與固定前後差異；App保留工作流程、圖片資源與畫面協調。
-- 新增最近成功彙整明細，由js/ui/merge-report-ui.js安全呈現文字／旋轉／標記／特寫與案件欄位前後值；支援Esc、焦點與刪除快捷鍵防護。失敗不覆蓋前次成功紀錄，開啟另一進度／關閉程式不保留，Undo不改寫歷史快照。
-- 存檔狀態明確區分「已產生下載檔」、「已寫入檔案」、「已載入工作進度」及最新自動草稿。實際寫入須等write與close完成，失敗嘗試abort。
-- 修正非同步儲存／草稿期間繼續編輯的狀態誤判：固定開始時資料快照，後續修改仍標未存，舊草稿不顯示為新內容已暫存；補足競態測試。
-- 主要E2E遇pageerror真正失敗；以刻意拋錯／缺模組反例驗證。新增直接測模組的單元測試與進度檔完整性E2E。
-- 已更新README、AGENTS、Tailwind掃描來源及完成計畫。
-- 提交前核對分支main與origin、25個檔案的完整範圍、既有測試與原生驗證證據；不擴大產品修改。
-- 已將8185961推送origin/main；Pages工作流程43245056838成功，線上8個關鍵資源與提交逐位元組一致，合成素材完成開檔／彙整／明細／下載／重開。README與計畫同步更新部署狀態。
+- **案件匯出區控制代碼與更名保護（P2 #1）**：於 `js/app.js` 新增 `currentProjectFolderKey`，在案件「案由／對象／日期」異動使子資料夾改變時自動解除舊案 `currentProjectFileHandle` 綁定，確保後續 `Ctrl+S`／自動同步寫入新案件資料夾；同步修正開啟與清除時的狀態重置。
+- **匯出授權暫存清除（P2 #2）**：`btnExportDocx` / `btnExportPdf` 改以閉包保存當次 `permMode`，`closeModal('exportAuditModal')` 與 `btnAuditViewIssues` 一併清空 `pendingExportAction` 與 `pendingExportPermissionMode`。
+- **資料夾寫入檢查異常透明化（P2 #3）**：`writeBlobToCaseExportDirectory` 對 `getFileHandle(..., { create: false })` 非 `NotFoundError` 例外明確拋出中文權限／占用診斷訊息。
+- **中英混排整字折行視覺行數對齊（P2 #4）**：於 `js/validation.js` 與 `js/app.js` 之 `estimateDescVisualLines` 納入單行內連續英數單字整字折行計算，對齊 Word／PDF 實際排版並維持 `validation.test.js` 全數相容。
+- **Chrome 控管導引與自動快取雜湊（P3 #1 / #2）**：更新 `index.html` `#exportDirGuideModal` 說明（提示公司 Chrome 受控管時可改用 Edge 或維持下載區）；於 `scripts/prepare-assets.ps1` 新增基於靜態資源內容之 8 碼 SHA-256 雜湊冪等更新 `index.html` `?v=` 參數。
+- **治理文件與回歸測試補充（P3 #3）**：修正 `CHANGELOG.md` `v2.5.0` 日期為 `2026-11-22`、更新本 `HANDOFF.md`，並於 `tests/unit/validation.test.js` 與 `tests/e2e/photo-report.spec.js` 補齊整字折行、更名存新案及權限狀態清除驗證。
 
 ## 異動檔案 (Changed Files)
-- 累計既有與本輪修改：AGENTS.md、HANDOFF.md、README.md、IMPLEMENTATION_PLAN.md、index.html、css/app.css、js/app.js、package.json、scripts/prepare-assets.ps1、src-tauri/tauri.conf.json、vendor/tailwind.css。
-- 新模組：js/photo-model.js、js/project-format.js、js/project-merge.js、js/ui/merge-report-ui.js。
-- 測試：tests/e2e/photo-report.spec.js、desktop-policy.spec.js、layout.spec.js、project-integrity.spec.js；tests/helpers/page-errors.js、tests/run-all-unit.js、tests/unit/project-core.test.js；tests/fixtures/project-v1.photo-report、merge-compatibility.json、project-fixtures.md。
-- build、web、target及真實照片副本均屬被忽略的本機產物，不應加入Git。
+- `js/app.js`、`js/validation.js`、`index.html`、`scripts/prepare-assets.ps1`、`CHANGELOG.md`、`HANDOFF.md`
+- `tests/unit/validation.test.js`、`tests/e2e/photo-report.spec.js`
 
 ## 刻意未修改 (Do Not Do / Deliberately Omitted)
-使用者排除輸出前預覽，大量照片效能暫緩；不拆影像／燈箱、不新增範本、不新增桌面原生另存API、不更換框架。不修改三種匯出版型尺寸、不升級套件；版本維持2.4.1。
+- 依使用者明確指示**未建立 Tauri 桌面版打包產物**，亦未升級第三方 `vendor/` 套件或更改三大 Word／PDF 版型尺寸結構。
+- 未硬編碼任何使用者個人磁碟路徑於原始碼中。
 
 ## 尚未完成 (Remaining Work)
 - **P1 (阻斷/必須)**：無。
 - **P2 (重要/當次)**：無。
-- **P3 (改善建議/暫緩)**：Windows 10、其他電腦、125%／150%系統DPI與安裝版實際安裝驗證，正式發布時另安排。
+- **P3 (改善建議/暫緩)**：Tauri 桌面安裝版／Portable 與 GitHub Release 待下次正式發版授權時再統一打包。
 
 ## 驗證結果 (Validation)
 ### 已執行測試與結果
-- 最終npm run test:all通過：單元5/5（含50組彙整相容規則）、完整既有E2E、桌面CSP、六尺寸排版、進度完整性／失敗保護／非同步競態、Word／Excel／PDF Golden Baseline及三種版型。
-- 測試使用既有Node Playwright；同時驗證file://直接開啟，未新增測試相依套件。刻意觸發pageerror與必要模組缺少，防線確實拒絕。
-- 以PHOTO_REPORT_TEST_DIR指向D槽照片副本完成4張匯入、保存、重開與文字內容比對，並實際輸出DOCX／PDF。
-- 最新原始碼已重建release EXE、Setup及Portable ZIP，未正式發布。原始碼與web的8個關鍵資源逐位元組一致。
-- 最終Portable解壓至本輪C槽工作區outputs/photo-report-plan-complete/中文 Portable，跨磁碟及含中文、空白路徑正常啟動。
-- 原生視窗完成：開啟4張進度、彙整另1份（去重4張、較新更新1張）、查看說明前後明細及Esc關閉、Ctrl+S正確顯示下載模式、匯出Word與PDF。
-- 原生視窗另以檔案選擇器加入1張照片副本並修改說明、儲存、關閉重啟、開啟下載檔；確認共5張照片與「桌面原生編輯與重開驗證」說明完整還原。
-- 原生下載產物實際解壓與內容檢查：4／5張進度檔CRC及圖片均完整；DOCX含案件名稱、彙整後說明與4張圖片；PDF標頭正確且2頁。
-- D:\PicPick的4張來源SHA-256與開始時紀錄全部一致，原始檔未變更。
-- 解壓EXE與建置EXE逐位元組一致，SHA-256：d4106cf2079c29ca025a22b13759ecf35fab6e2cf18123da81d37290e841fcf5。
-- node --check、git diff --check及scripts/qa.ps1通過。最後文件更新後再核對Git與QA；無敏感資料警訊。
-- 本輪證據位於被忽略的build/plan-implementation/results：網頁產物／截圖、native實際產物與verification.json、SELF_REVIEW.md。含使用者照片的產物不加入版本庫。
-- GitHub Pages：https://lianghao02.github.io/Photo-Report-Generator/ 。工作流程https://github.com/lianghao02/Photo-Report-Generator/actions/runs/43245056838已完成且success，對應8185961。
-- 線上Playwright驗證：8個資源HTTP 200且與提交一致；2張合成照片進度開啟、較新版彙整、明細顯示／Esc、Ctrl+S下載狀態、下載檔CRC與說明內容、重開全部通過；pageerror／console error／requestfailed均0。證據位於results/online，沒有使用或上傳真實照片。
+- `powershell -ExecutionPolicy Bypass -File scripts\prepare-web.ps1`：通過，已重建 Tailwind 並自動同步 `index.html` `?v=` 快取標籤與 `web/`。
+- `npm run test:all`：通過（單元測試 `5/5`、Playwright 4 份 E2E `photo-report.spec.js`／`desktop-policy.spec.js`／`layout.spec.js`／`project-integrity.spec.js`、Word／Excel／PDF Golden Baseline 及三種版型皆通過）。
+- `powershell -ExecutionPolicy Bypass -File scripts\qa.ps1`：通過（Git 差異格式與敏感字串檢查零異常）。
 ### 尚未驗證項目
-Windows 10、其他電腦、125%／150%系統DPI、檔案總管原生拖入及安裝版實際安裝未另實測。原生測試使用本機預設視窗，六尺寸是瀏覽器可視區測試；不混稱為多DPI實機驗證。原生直接寫入分支使用瀏覽器測試控制代碼驗證，Portable實際採下載流程。
+- 本輪修正尚未重新建置 Tauri `.exe` / Portable ZIP（依使用者指示略過），亦未提交／推送至 `origin/main`。
 ### 已知風險 (Known Risks)
-下載流程只能確認交付瀏覽器，無法可靠確認使用者最終磁碟存檔；介面已明白提示檢查下載資料夾。彙整明細只保留當次工作階段最近成功紀錄，不是永久修改歷程。沒有本輪已知阻斷或重要問題。
+- 受機關原則（`DefaultCookiesSetting = 4`）控管之 Chrome 仍受瀏覽器安全性政策限制無法使用 File System Access 寫入本機指定資料夾，網頁端已提示改用 Edge 或維持瀏覽器下載區。
 
 ## Git 狀態
-- Commit：程式8185961與後續部署紀錄文件提交（實際HEAD見git log -1）
-- Push：是，origin/main
-- Working Tree：Clean（本輪文件提交後於交付前核對git status及遠端HEAD）
+- Commit：本輪待提交（遠端基線 `119186d`）
+- Push：否（待使用者確認）
+- Working Tree：Modified
 - Branch：main
 
 ## 下一步建議動作 (Next Recommended Action)
-程式與文件推送完成，等待最後文件部署成功並核對遠端HEAD後結案；不擴大產品修改。後續桌面Release需依使用者授權與Release Gate另行辦理。
+請使用者確認後執行 `git commit` 與 `git push origin main` 更新 GitHub Pages 線上版；若日後需發布新版桌面板，再執行 `scripts\build-portable.ps1`。
 
 ## 發布狀態 (Release Status)
-網頁版已推送並部署GitHub Pages，線上功能驗證通過。維持v2.4.1；本機Setup與Portable已重新建置驗證，未建立或更新桌面遠端Release。
+線上網頁版待本輪提交推送後生效；桌面版暫不建立。
 
 ---
 

@@ -56,4 +56,42 @@ if (Test-Path $tailwind) {
     throw '找不到必要的 Tailwind CSS 資源。'
 }
 
+# 自動依靜態資源內容產生 8 碼雜湊並更新 index.html 的 ?v= 快取參數（冪等寫入）
+$indexPath = Join-Path $root 'index.html'
+if (Test-Path $indexPath) {
+    $verTag = if (Test-Path (Join-Path $root 'version.txt')) {
+        (Get-Content (Join-Path $root 'version.txt') -Raw -Encoding UTF8).Trim() -replace '[^A-Za-z0-9._-]', ''
+    } else { 'v0' }
+    $hashInputs = @()
+    foreach ($candidate in @((Join-Path $root 'css\app.css'), (Join-Path $vendor 'tailwind.css'))) {
+        if (Test-Path $candidate) { $hashInputs += Get-Item $candidate }
+    }
+    if (Test-Path (Join-Path $root 'js')) {
+        $hashInputs += Get-ChildItem (Join-Path $root 'js') -Recurse -File -Filter '*.js' | Sort-Object FullName
+    }
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        foreach ($item in $hashInputs) {
+            $relBytes = [System.Text.Encoding]::UTF8.GetBytes($item.FullName.Substring($root.Length) + "`n")
+            [void]$sha.TransformBlock($relBytes, 0, $relBytes.Length, $relBytes, 0)
+            $fileBytes = [System.IO.File]::ReadAllBytes($item.FullName)
+            [void]$sha.TransformBlock($fileBytes, 0, $fileBytes.Length, $fileBytes, 0)
+        }
+        [void]$sha.TransformFinalBlock([byte[]]::new(0), 0, 0)
+        $shortHash = ([System.BitConverter]::ToString($sha.Hash) -replace '-', '').Substring(0, 8).ToLowerInvariant()
+    } finally {
+        $sha.Dispose()
+    }
+    $cacheTag = "$verTag-$shortHash"
+    $rawHtml = [System.IO.File]::ReadAllText($indexPath, [System.Text.UTF8Encoding]::new($false))
+    $updatedHtml = [regex]::Replace(
+        $rawHtml,
+        '((?:vendor/tailwind\.css|css/app\.css|js/[^"'']+?\.js))\?v=[^"'' >]+',
+        ('${1}?v=' + $cacheTag)
+    )
+    if ($updatedHtml -ne $rawHtml) {
+        [System.IO.File]::WriteAllText($indexPath, $updatedHtml, [System.Text.UTF8Encoding]::new($false))
+    }
+}
+
 Write-Output 'Local frontend assets updated.'

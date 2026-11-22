@@ -211,5 +211,8 @@ assert.strictEqual(inspectTextLimits('甲'.repeat(16), '字'.repeat(55), 'up_dow
 assert.strictEqual(inspectTextLimits('甲'.repeat(16), '字'.repeat(55), 'landscape_3').isOver, true, '橫式三張超過 15 地點或 54 說明應判超標');
 assert.strictEqual(inspectTextLimits('甲'.repeat(15), '字'.repeat(54), 'landscape_3').isOver, false, '橫式三張剛好 15 地點＋54 說明（3 行）應通過');
 assert.strictEqual(inspectTextLimits('甲'.repeat(17), '字'.repeat(72), 'left_right_2').isOver, false, '左右兩張剛好 17 地點＋72 說明（4 行）應通過');
+assert.strictEqual(app.estimateDescVisualLines('中'.repeat(16) + 'Facebook', 18), 2, '中英混排時未滿單行寬的英文單字應隨整字折入第 2 行');
+assert.strictEqual(estimateDescVisualLines('中'.repeat(16) + 'Facebook', 18), 2, '獨立模組與 App 視覺行數折行結果應一致');
+assert.strictEqual(estimateDescVisualLines('中'.repeat(16) + 'Facebook', 18) === 2 && estimateDescVisualLines('甲'.repeat(17) + ' ' + 'abcd'.repeat(2), 18) === 2, true, '跨行英文單字整字換行應算為 2 行');
 
 console.log('✅ validation.test.js 全部斷言通過！');

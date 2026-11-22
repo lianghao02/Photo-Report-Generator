@@ -3028,6 +3028,19 @@ async function runE2eTests() {
             await window.app.exportDocx();
             const filesAfterConflictCancel = Array.from(mockFs.keys());
 
+            // 修正驗證 1：在案件匯出區存過一次後更改案由，Ctrl+S / saveProject 不得覆寫回舊案資料夾
+            document.getElementById('caseTitle').value = '竊盜案';
+            document.getElementById('caseTitle').dispatchEvent(new Event('input', { bubbles: true }));
+            const handleClearedOnRename = window.app.currentProjectFileHandle === null && window.app.currentProjectFolderKey === '';
+            await window.app.saveProject();
+            const filesAfterRenameSave = Array.from(mockFs.keys());
+
+            // 修正驗證 2：exportAuditModal 關閉後應清空殘留 pendingExportPermissionMode
+            window.app.pendingExportPermissionMode = 'fallback';
+            window.app.openModal('exportAuditModal');
+            window.app.closeModal('exportAuditModal');
+            const pendingModeAfterClose = window.app.pendingExportPermissionMode;
+
             await window.app.clearExportDirectory();
             const dirLabelAfterClear = document.getElementById('exportDirLabel')?.textContent?.trim();
 
@@ -3059,6 +3072,9 @@ async function runE2eTests() {
                 reminderVisibleWhenSyncOff,
                 confirmsCount: confirms.length,
                 hasSuffixedCopy: filesAfterConflictCancel.some(k => /1151102_某A_詐欺案\/1151102_某A_詐欺案_現場照片清冊_\d{6}\.docx$/.test(k)),
+                handleClearedOnRename,
+                hasRenamedPrp: filesAfterRenameSave.includes('1151102_某A_竊盜案/某A_竊盜案.prp'),
+                pendingModeAfterClose,
                 dirLabelAfterClear
             };
         } finally {
@@ -3101,6 +3117,9 @@ async function runE2eTests() {
         !zoneAndLayoutLimitsCheck.reminderVisibleWhenSyncOff ||
         zoneAndLayoutLimitsCheck.confirmsCount < 1 ||
         !zoneAndLayoutLimitsCheck.hasSuffixedCopy ||
+        !zoneAndLayoutLimitsCheck.handleClearedOnRename ||
+        !zoneAndLayoutLimitsCheck.hasRenamedPrp ||
+        zoneAndLayoutLimitsCheck.pendingModeAfterClose !== null ||
         zoneAndLayoutLimitsCheck.dirLabelAfterClear !== '存到：下載（改存指定資料夾…）'
     ) {
         throw new Error(`第 [10/5] 節版型動態上限與案件匯出區驗證失敗: ${JSON.stringify(zoneAndLayoutLimitsCheck)}`);

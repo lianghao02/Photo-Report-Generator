@@ -48,6 +48,7 @@
                 this.savedProjectSignature = '';
                 this.savedPhotosByUid = new Map();
                 this.currentProjectFileHandle = null;
+                this.currentProjectFolderKey = '';
                 this.currentProjectFileName = '';
                 this.currentProjectSaveMode = '';
                 this.lastMergeReport = null;
@@ -349,12 +350,13 @@
                 document.getElementById('btnOpenShortcutsModal')?.addEventListener('click', () => this.openModal('shortcutsModal'));
                 document.getElementById('btnExportDocx').addEventListener('click', async () => {
                     this.pendingExportPermissionMode = null;
+                    let permMode = null;
                     if (this.exportDirectoryHandle) {
-                        const perm = await this.prepareExportDirectoryPermission();
-                        if (perm === 'cancel') return;
-                        this.pendingExportPermissionMode = perm;
+                        permMode = await this.prepareExportDirectoryPermission();
+                        if (permMode === 'cancel') return;
+                        this.pendingExportPermissionMode = permMode;
                     }
-                    this.confirmExportWithAudit(() => this.exportDocx({ permissionMode: this.pendingExportPermissionMode }).catch(e => this.handleExportError(e)), 'Word 清冊');
+                    this.confirmExportWithAudit(() => this.exportDocx({ permissionMode: permMode }).catch(e => this.handleExportError(e)), 'Word 清冊');
                 });
                 document.getElementById('btnSaveProject').addEventListener('click', () => this.saveProject({ fromUserPicker: true }).catch(error => this.handleProjectError(error, 'save')));
                 this.btnSaveProjectAs?.addEventListener('click', () => this.saveProject({ saveAsNew: true, fromUserPicker: true }).catch(error => this.handleProjectError(error, 'save')));
@@ -369,12 +371,13 @@
                 document.getElementById('btnRedo').addEventListener('click', () => this.redo());
                 document.getElementById('btnExportPdf').addEventListener('click', async () => {
                     this.pendingExportPermissionMode = null;
+                    let permMode = null;
                     if (this.exportDirectoryHandle) {
-                        const perm = await this.prepareExportDirectoryPermission();
-                        if (perm === 'cancel') return;
-                        this.pendingExportPermissionMode = perm;
+                        permMode = await this.prepareExportDirectoryPermission();
+                        if (permMode === 'cancel') return;
+                        this.pendingExportPermissionMode = permMode;
                     }
-                    this.confirmExportWithAudit(() => this.exportPdf({ permissionMode: this.pendingExportPermissionMode }).catch(e => this.handleExportError(e)), 'PDF 清冊');
+                    this.confirmExportWithAudit(() => this.exportPdf({ permissionMode: permMode }).catch(e => this.handleExportError(e)), 'PDF 清冊');
                 });
                 this.btnPickExportDir?.addEventListener('click', () => this.pickExportDirectory().catch(e => this.handleExportError(e)));
                 this.btnConfirmPickExportDir?.addEventListener('click', () => {
@@ -690,7 +693,7 @@
                     this.openModal('sequenceModal');
                 });
                 this.btnAuditViewIssues.addEventListener('click', () => {
-                    this.exportAuditModal.classList.add('hidden');
+                    this.closeModal('exportAuditModal');
                     const audit = this.auditPhotosCompleteness();
                     const firstFilter = audit.firstIssueFilter || 'all';
                     this.setActiveFilter(firstFilter);
@@ -1592,10 +1595,41 @@
                 }
                 const normalized = String(text ?? '').replace(/\r\n?/g, '\n');
                 if (!normalized.length) return 0;
+                const lineMaxUnits = Math.max(2, Math.round((Number(lineFullWidth) || 34) * 2));
                 const segments = normalized.split('\n');
                 let totalLines = 0;
                 for (let i = 0; i < segments.length; i++) {
-                    totalLines += Math.max(1, Math.ceil(this.getTextHalfWidthUnits(segments[i]) / (lineFullWidth * 2)));
+                    const seg = segments[i];
+                    if (!seg.length) {
+                        totalLines += 1;
+                        continue;
+                    }
+                    const tokens = seg.match(/[A-Za-z0-9]+|./gu) || [];
+                    let segLines = 1;
+                    let currentLineUnits = 0;
+                    for (let t = 0; t < tokens.length; t++) {
+                        const tok = tokens[t];
+                        const tokUnits = this.getTextHalfWidthUnits(tok);
+                        if (/^[A-Za-z0-9]+$/.test(tok) && tokUnits <= lineMaxUnits) {
+                            if (currentLineUnits > 0 && currentLineUnits + tokUnits > lineMaxUnits) {
+                                segLines += 1;
+                                currentLineUnits = tokUnits;
+                            } else {
+                                currentLineUnits += tokUnits;
+                            }
+                            continue;
+                        }
+                        for (const ch of tok) {
+                            const charUnits = this.getTextHalfWidthUnits(ch);
+                            if (currentLineUnits > 0 && currentLineUnits + charUnits > lineMaxUnits) {
+                                segLines += 1;
+                                currentLineUnits = charUnits;
+                            } else {
+                                currentLineUnits += charUnits;
+                            }
+                        }
+                    }
+                    totalLines += segLines;
                 }
                 return totalLines;
             }
@@ -2398,6 +2432,11 @@
             updateExportDirectoryUi() {
                 const isBound = Boolean(this.exportDirectoryHandle);
                 const folderName = this.buildCaseFolderName();
+                if (isBound && this.currentProjectFileHandle && this.currentProjectFolderKey && this.currentProjectFolderKey !== folderName) {
+                    this.currentProjectFileHandle = null;
+                    this.currentProjectFolderKey = '';
+                    this.updateProjectSaveStatusUi?.();
+                }
                 if (this.exportDirLabel) {
                     this.exportDirLabel.textContent = isBound
                         ? `存到：${this.exportDirectoryHandle.name || '已選資料夾'} \\ ${folderName}`
@@ -2439,6 +2478,7 @@
             async setExportDirectoryHandle(handle, { persist = true } = {}) {
                 this.exportDirectoryHandle = handle || null;
                 this.pendingExportPermissionMode = null;
+                this.currentProjectFolderKey = '';
                 if (handle) {
                     // 指定了案件匯出區時，解除先前的下載區／舊檔控制代碼，讓 Ctrl+S 也改寫進案件匯出區
                     this.currentProjectFileHandle = null;
@@ -2615,7 +2655,9 @@
                         await caseDirHandle.getFileHandle(finalName, { create: false });
                         exists = true;
                     } catch (err) {
-                        if (err?.name !== 'NotFoundError') exists = false;
+                        if (err?.name !== 'NotFoundError') {
+                            throw new Error(`無法檢查資料夾「${folderName}」內的「${finalName}」，可能權限不足或檔案正在被其他程式開啟（${err?.message || err?.name || '讀取異常'}）`);
+                        }
                     }
                     if (exists) {
                         const overwrite = typeof confirm === 'function'
@@ -2865,14 +2907,15 @@
                         }
                         this.currentProjectFileHandle = targetHandle;
                         this.currentProjectFileName = targetHandle.name || suggestedName;
-                        if (this.exportDirectoryHandle) {
-                            this.sessionKnownExportPaths.add(`${this.buildCaseFolderName(caseData)}/${this.currentProjectFileName}`);
+                        if (this.exportDirectoryHandle && this.currentProjectFolderKey) {
+                            this.sessionKnownExportPaths.add(`${this.currentProjectFolderKey}/${this.currentProjectFileName}`);
                         }
                         this.currentProjectSaveMode = 'written';
                     } else if (useExportDir) {
                         const dirWrite = await this.writeBlobToCaseExportDirectory(suggestedName, content);
                         if (dirWrite.written) {
                             this.currentProjectFileHandle = dirWrite.fileHandle || null;
+                            this.currentProjectFolderKey = dirWrite.folderName || this.buildCaseFolderName(caseData);
                             this.currentProjectFileName = dirWrite.fileName || suggestedName;
                             this.currentProjectSaveMode = 'written';
                         } else if (dirWrite.fallbackToDownload) {
@@ -2971,6 +3014,7 @@
                         this.placeUnpositionedPhotos();
                     }
                     this.currentProjectFileHandle = fileHandle || null;
+                    this.currentProjectFolderKey = '';
                     this.currentProjectFileName = file.name || '';
                     this.currentProjectSaveMode = 'opened';
                     this.setMergeReport(null);
@@ -3426,6 +3470,7 @@
 
                     // 合併後的整合清冊不再綁定原本單一小檔控制代碼，避免 Ctrl+S 誤覆寫來源檔案
                     this.currentProjectFileHandle = null;
+                    this.currentProjectFolderKey = '';
                     this.currentProjectFileName = '';
                     this.currentProjectSavedAt = null;
                     this.lastLocalEditAt = Date.now();
@@ -3675,6 +3720,7 @@
                         this.placeUnpositionedPhotos();
                     }
                     this.currentProjectFileHandle = null;
+                    this.currentProjectFolderKey = '';
                     this.currentProjectFileName = '';
                     this.currentProjectSaveMode = 'draft';
                     this.setMergeReport(null);
@@ -4389,6 +4435,7 @@
                     this.activeFilter = 'all';
                     this._dupSet = null;
                     this.currentProjectFileHandle = null;
+                    this.currentProjectFolderKey = '';
                     this.currentProjectFileName = '';
                     this.currentProjectSaveMode = '';
                     this.setMergeReport(null);
@@ -7729,7 +7776,10 @@
             closeModal(id) {
                 if (id === 'mergeReportModal' && !document.getElementById(id).classList.contains('hidden')) this.btnQuickSaveStatus?.focus();
                 if (id === 'sequenceModal') this.pendingSequenceExport = null;
-                if (id === 'exportAuditModal') this.pendingExportAction = null;
+                if (id === 'exportAuditModal') {
+                    this.pendingExportAction = null;
+                    this.pendingExportPermissionMode = null;
+                }
                 if (id === 'imageLightboxModal') {
                     this.lightboxCropDraft = null;
                     this.cancelLightboxInteractions();

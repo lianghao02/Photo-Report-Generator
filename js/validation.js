@@ -164,7 +164,7 @@
     }
 
     /**
-     * 預估說明文字在報表儲存格內的視覺行數（單行約 34 全形 = 68 半形單位）
+     * 預估說明文字在報表儲存格內的視覺行數（單行約 34 全形 = 68 半形單位；未滿單行之連續英數單字整字折行）
      * @param {string} text
      * @param {number} [lineFullWidth=34]
      * @returns {number}
@@ -176,8 +176,37 @@
         const segments = normalized.split('\n');
         let totalLines = 0;
         for (let i = 0; i < segments.length; i++) {
-            const segUnits = getTextHalfWidthUnits(segments[i]);
-            totalLines += Math.max(1, Math.ceil(segUnits / lineMaxUnits));
+            const seg = segments[i];
+            if (!seg.length) {
+                totalLines += 1;
+                continue;
+            }
+            const tokens = seg.match(/[A-Za-z0-9]+|./gu) || [];
+            let segLines = 1;
+            let currentLineUnits = 0;
+            for (let t = 0; t < tokens.length; t++) {
+                const tok = tokens[t];
+                const tokUnits = getTextHalfWidthUnits(tok);
+                if (/^[A-Za-z0-9]+$/.test(tok) && tokUnits <= lineMaxUnits) {
+                    if (currentLineUnits > 0 && currentLineUnits + tokUnits > lineMaxUnits) {
+                        segLines += 1;
+                        currentLineUnits = tokUnits;
+                    } else {
+                        currentLineUnits += tokUnits;
+                    }
+                    continue;
+                }
+                for (const ch of tok) {
+                    const charUnits = isHalfWidthChar(ch) ? 1 : 2;
+                    if (currentLineUnits > 0 && currentLineUnits + charUnits > lineMaxUnits) {
+                        segLines += 1;
+                        currentLineUnits = charUnits;
+                    } else {
+                        currentLineUnits += charUnits;
+                    }
+                }
+            }
+            totalLines += segLines;
         }
         return totalLines;
     }

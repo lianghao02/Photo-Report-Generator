@@ -7,7 +7,7 @@
     <title>現場照片清冊生成工具 v2.5.0</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📷</text></svg>">
 
-    <link rel="stylesheet" href="vendor/tailwind.css?v=20261122e">
+    <link rel="stylesheet" href="vendor/tailwind.css?v=v2.5.0-1b55d26e">
     <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css">
     <script src="vendor/docx.umd.js"></script>
     <script src="vendor/FileSaver.min.js"></script>
@@ -15,7 +15,7 @@
     <script src="vendor/jszip.min.js"></script>
     <script src="vendor/jspdf.umd.min.js"></script>
 
-    <link rel="stylesheet" href="css/app.css?v=20261122e">
+    <link rel="stylesheet" href="css/app.css?v=v2.5.0-1b55d26e">
 </head>
 <body class="p-2 md:p-3.5 flex flex-col items-center">
 
@@ -954,7 +954,7 @@
                 <div class="p-2.5 rounded-xl bg-indigo-50/70 border border-indigo-200 font-mono text-xs font-bold text-indigo-950 break-all">
                     您選的資料夾 \ <span id="exportDirGuidePreview" class="text-[#5B5CE2]">詐欺案</span> \
                 </div>
-                <p class="text-[11px] text-[#6B7280]">選完如果瀏覽器跳出「允許編輯檔案」，請記得按允許；若沒跳出提示又沒變更，請點網址列左側設定圖示檢查「檔案編輯」權限。之後想改回存到「下載」，按旁邊的「×」就好。</p>
+                <p class="text-[11px] text-[#6B7280]">選完如果瀏覽器跳出「允許編輯檔案」，請記得按允許；若沒跳出提示又沒變更，請點網址列左側設定圖示檢查「檔案編輯」權限（若公司電腦 Chrome 受控管無法授權，可改用 Edge 開啟或維持預設下載）。之後想改回存到「下載」，按旁邊的「×」就好。</p>
             </div>
             <div class="flex items-center justify-end gap-2 pt-2 border-t border-[#C7CBD3]/20">
                 <button type="button" onclick="window.app.closeModal('exportDirGuideModal')" class="btn-secondary px-3.5 py-1.5 rounded-lg text-xs font-bold">
@@ -979,23 +979,23 @@
     </div>
 
     <!-- 模組化純邏輯與 UI 控制器抽離 (Phase 1 ~ Phase 3) -->
-    <script src="js/validation.js?v=20261122e"></script>
-    <script src="js/audit.js?v=20261122e"></script>
-    <script src="js/selection.js?v=20261122e"></script>
-    <script src="js/history.js?v=20261122e"></script>
-    <script src="js/photo-model.js?v=20261122e"></script>
-    <script src="js/project-format.js?v=20261122e"></script>
-    <script src="js/project-merge.js?v=20261122e"></script>
-    <script src="js/ui/audit-ui.js?v=20261122e"></script>
-    <script src="js/ui/modal-ui.js?v=20261122e"></script>
-    <script src="js/ui/merge-report-ui.js?v=20261122e"></script>
+    <script src="js/validation.js?v=v2.5.0-1b55d26e"></script>
+    <script src="js/audit.js?v=v2.5.0-1b55d26e"></script>
+    <script src="js/selection.js?v=v2.5.0-1b55d26e"></script>
+    <script src="js/history.js?v=v2.5.0-1b55d26e"></script>
+    <script src="js/photo-model.js?v=v2.5.0-1b55d26e"></script>
+    <script src="js/project-format.js?v=v2.5.0-1b55d26e"></script>
+    <script src="js/project-merge.js?v=v2.5.0-1b55d26e"></script>
+    <script src="js/ui/audit-ui.js?v=v2.5.0-1b55d26e"></script>
+    <script src="js/ui/modal-ui.js?v=v2.5.0-1b55d26e"></script>
+    <script src="js/ui/merge-report-ui.js?v=v2.5.0-1b55d26e"></script>
 
     <!-- 模組化匯出引擎抽離 (Phase 4) -->
-    <script src="js/exporters/excel-exporter.js?v=20261122e"></script>
-    <script src="js/exporters/docx-exporter.js?v=20261122e"></script>
-    <script src="js/exporters/pdf-exporter.js?v=20261122e"></script>
+    <script src="js/exporters/excel-exporter.js?v=v2.5.0-1b55d26e"></script>
+    <script src="js/exporters/docx-exporter.js?v=v2.5.0-1b55d26e"></script>
+    <script src="js/exporters/pdf-exporter.js?v=v2.5.0-1b55d26e"></script>
 
     <!-- 核心應用程式邏輯 -->
-    <script src="js/app.js?v=20261122e"></script>
+    <script src="js/app.js?v=v2.5.0-1b55d26e"></script>
 </body>
 </html>
