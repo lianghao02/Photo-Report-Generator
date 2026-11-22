@@ -148,6 +148,7 @@
                 this.exportDirGroup = this.btnPickExportDir?.closest('.export-dir-group') || null;
                 this.btnConfirmPickExportDir = document.getElementById('btnConfirmPickExportDir');
                 this.exportDirGuidePreview = document.getElementById('exportDirGuidePreview');
+                this.exportDirSavedNotice = document.getElementById('exportDirSavedNotice');
 
                 // 右側編輯器元件
                 this.editorCard = document.getElementById('editorCard');
@@ -346,7 +347,15 @@
                 document.getElementById('btnApplySequence').addEventListener('click', () => this.applySequence());
                 document.getElementById('btnParseFilenameTime').addEventListener('click', () => this.parseFilenameTime());
                 document.getElementById('btnOpenShortcutsModal')?.addEventListener('click', () => this.openModal('shortcutsModal'));
-                document.getElementById('btnExportDocx').addEventListener('click', () => this.confirmExportWithAudit(() => this.exportDocx().catch(e => this.handleExportError(e)), 'Word 清冊'));
+                document.getElementById('btnExportDocx').addEventListener('click', async () => {
+                    this.pendingExportPermissionMode = null;
+                    if (this.exportDirectoryHandle) {
+                        const perm = await this.prepareExportDirectoryPermission();
+                        if (perm === 'cancel') return;
+                        this.pendingExportPermissionMode = perm;
+                    }
+                    this.confirmExportWithAudit(() => this.exportDocx({ permissionMode: this.pendingExportPermissionMode }).catch(e => this.handleExportError(e)), 'Word 清冊');
+                });
                 document.getElementById('btnSaveProject').addEventListener('click', () => this.saveProject({ fromUserPicker: true }).catch(error => this.handleProjectError(error, 'save')));
                 this.btnSaveProjectAs?.addEventListener('click', () => this.saveProject({ saveAsNew: true, fromUserPicker: true }).catch(error => this.handleProjectError(error, 'save')));
                 this.btnQuickSaveStatus?.addEventListener('click', () => this.saveProject({ fromUserPicker: true }).catch(error => this.handleProjectError(error, 'save')));
@@ -358,7 +367,15 @@
                 document.getElementById('mergeProjectInput')?.addEventListener('change', (e) => this.mergeProjects(e));
                 document.getElementById('btnUndo').addEventListener('click', () => this.undo());
                 document.getElementById('btnRedo').addEventListener('click', () => this.redo());
-                document.getElementById('btnExportPdf').addEventListener('click', () => this.confirmExportWithAudit(() => this.exportPdf().catch(e => this.handleExportError(e)), 'PDF 清冊'));
+                document.getElementById('btnExportPdf').addEventListener('click', async () => {
+                    this.pendingExportPermissionMode = null;
+                    if (this.exportDirectoryHandle) {
+                        const perm = await this.prepareExportDirectoryPermission();
+                        if (perm === 'cancel') return;
+                        this.pendingExportPermissionMode = perm;
+                    }
+                    this.confirmExportWithAudit(() => this.exportPdf({ permissionMode: this.pendingExportPermissionMode }).catch(e => this.handleExportError(e)), 'PDF 清冊');
+                });
                 this.btnPickExportDir?.addEventListener('click', () => this.pickExportDirectory().catch(e => this.handleExportError(e)));
                 this.btnConfirmPickExportDir?.addEventListener('click', () => {
                     this.closeModal('exportDirGuideModal');
@@ -2384,15 +2401,19 @@
                 if (this.exportDirLabel) {
                     this.exportDirLabel.textContent = isBound
                         ? `存到：${this.exportDirectoryHandle.name || '已選資料夾'} \\ ${folderName}`
-                        : '存到：下載（指定案件區…）';
+                        : '存到：下載（改存指定資料夾…）';
                 }
                 if (this.btnPickExportDir) {
                     this.btnPickExportDir.title = isBound
-                        ? `點此更換案件總資料夾；目前匯出會自動建並存進「${this.exportDirectoryHandle.name || '已選資料夾'}\\${folderName}\\」`
-                        : '目前匯出會存進瀏覽器「下載」資料夾；點此指定固定總資料夾（如 案件匯出區），之後會自動依 {日期}_{對象}_{案由} 建子資料夾';
+                        ? `點此更換案件資料夾；目前匯出會自動建並存進「${this.exportDirectoryHandle.name || '已選資料夾'}\\${folderName}\\」`
+                        : '目前匯出會存進瀏覽器「下載」資料夾；點此指定固定資料夾（如 案件匯出區），之後匯出會自動建子資料夾收好';
                 }
                 if (this.exportDirGuidePreview) {
                     this.exportDirGuidePreview.textContent = folderName;
+                }
+                if (!isBound && this.exportDirSavedNotice) {
+                    this.exportDirSavedNotice.classList.add('hidden');
+                    this.exportDirSavedNotice.textContent = '';
                 }
                 this.exportDirGroup?.classList.toggle('is-bound', isBound);
                 this.btnClearExportDir?.classList.toggle('hidden', !isBound);
@@ -2402,8 +2423,19 @@
                 }
             }
 
+            showExportDirSavedNotice(folderName) {
+                if (!this.exportDirSavedNotice) return;
+                this.exportDirSavedNotice.textContent = `已存進「${folderName}」`;
+                this.exportDirSavedNotice.classList.remove('hidden');
+            }
+
             async setExportDirectoryHandle(handle, { persist = true } = {}) {
                 this.exportDirectoryHandle = handle || null;
+                this.pendingExportPermissionMode = null;
+                if (handle) {
+                    // 指定了案件匯出區時，解除先前的下載區／舊檔控制代碼，讓 Ctrl+S 也改寫進案件匯出區
+                    this.currentProjectFileHandle = null;
+                }
                 this.updateExportDirectoryUi();
                 if (!persist || typeof indexedDB === 'undefined') return;
                 try {
@@ -2465,6 +2497,25 @@
                         id: 'photo-report-export-zone'
                     });
                     if (!handle) return false;
+                    if (typeof handle.queryPermission === 'function') {
+                        const status = await handle.queryPermission({ mode: 'readwrite' });
+                        if (status === 'denied') {
+                            alert('瀏覽器已封鎖寫入這個資料夾，請改選其他資料夾或檢查瀏覽器權限。');
+                            return false;
+                        }
+                        if (status === 'prompt' && typeof handle.requestPermission === 'function') {
+                            try {
+                                const reqStatus = await handle.requestPermission({ mode: 'readwrite' });
+                                if (reqStatus === 'denied') {
+                                    alert('瀏覽器尚未允許寫入這個資料夾；若跳出「允許編輯檔案」提示請按允許，或改選其他資料夾。');
+                                    return false;
+                                }
+                            } catch (permErr) {
+                                // 若使用者在資料夾視窗瀏覽較久導致時效過期，先綁定資料夾；實際點匯出當下會再喚起授權
+                                if (permErr?.name !== 'NotAllowedError') throw permErr;
+                            }
+                        }
+                    }
                     await this.setExportDirectoryHandle(handle, { persist: true });
                     return true;
                 } catch (error) {
@@ -2477,8 +2528,8 @@
                 await this.setExportDirectoryHandle(null, { persist: true });
             }
 
-            async ensureExportDirectoryWritable() {
-                const handle = this.exportDirectoryHandle;
+            async ensureExportDirectoryWritable(targetHandle = this.exportDirectoryHandle) {
+                const handle = targetHandle;
                 if (!handle) return false;
                 if (typeof handle.queryPermission === 'function') {
                     let status = await handle.queryPermission({ mode: 'readwrite' });
@@ -2488,6 +2539,22 @@
                     return status === 'granted';
                 }
                 return true;
+            }
+
+            async prepareExportDirectoryPermission() {
+                if (!this.exportDirectoryHandle) return 'download';
+                let granted = false;
+                try {
+                    granted = await this.ensureExportDirectoryWritable(this.exportDirectoryHandle);
+                } catch {
+                    granted = false;
+                }
+                if (granted) return 'directory';
+                const folderLabel = this.exportDirectoryHandle.name || '已選資料夾';
+                const fallbackConfirm = typeof confirm === 'function'
+                    ? confirm(`瀏覽器目前沒有「${folderLabel}」的寫入權限（若剛重新開啟網頁，請按「取消」並點一下底部「存到：...」重新選取授權）。\n\n按「確定」＝本次先存進瀏覽器「下載」資料夾\n按「取消」＝先不匯出，去重新授權資料夾`)
+                    : false;
+                return fallbackConfirm ? 'fallback' : 'cancel';
             }
 
             buildTimeSuffixedFilename(filename) {
@@ -2552,6 +2619,7 @@
                     throw error;
                 }
                 this.sessionKnownExportPaths.add(`${folderName}/${finalName}`);
+                this.showExportDirSavedNotice(folderName);
                 return { written: true, folderName, fileName: finalName, fileHandle };
             }
 
@@ -2684,7 +2752,12 @@
 
                 const caseData = this.getCaseData();
                 const savingPhotos = this.photos.map(photo => PhotoReportPhotoModel.cloneForHistory(photo));
-                const useExportDir = Boolean(this.exportDirectoryHandle) && (toExportDir || (!saveAsNew && !this.currentProjectFileHandle));
+                let useExportDir = Boolean(this.exportDirectoryHandle) && (toExportDir || (!saveAsNew && !this.currentProjectFileHandle));
+                if (useExportDir) {
+                    const permMode = options?.permissionMode || await this.prepareExportDirectoryPermission();
+                    if (permMode === 'cancel') return false;
+                    if (permMode === 'fallback') useExportDir = false;
+                }
                 const suggestedName = (!saveAsNew && this.currentProjectFileHandle && this.currentProjectFileName)
                     ? this.currentProjectFileName
                     : this.buildProjectSuggestedFilename(caseData, new Date(), { fixedForFolder: useExportDir });
@@ -8091,7 +8164,9 @@
             // ============================================================
             getExportContext(options = {}) {
                 const caseData = this.getCaseData();
-                const useExportDir = Boolean(this.exportDirectoryHandle);
+                const useExportDir = options.useExportDir !== undefined
+                    ? Boolean(options.useExportDir && this.exportDirectoryHandle)
+                    : Boolean(this.exportDirectoryHandle);
                 const dirSaveAs = useExportDir
                     ? async (blob, safeName) => {
                         const res = await this.writeBlobToCaseExportDirectory(safeName, blob);
@@ -8122,10 +8197,10 @@
                 };
             }
 
-            async handleAfterReportExport(formatLabel) {
+            async handleAfterReportExport(formatLabel, permissionMode = 'directory') {
                 if (!(this.photos.length > 0 && this.hasUnsavedProjectChanges())) return;
-                if (this.exportDirectoryHandle && this.chkExportAutoSavePrp?.checked) {
-                    const saved = await this.saveProject({ toExportDir: true });
+                if (this.exportDirectoryHandle && permissionMode === 'directory' && this.chkExportAutoSavePrp?.checked) {
+                    const saved = await this.saveProject({ toExportDir: true, permissionMode: 'directory' });
                     if (saved) {
                         this.hideExportSaveReminder();
                         return;
@@ -8134,11 +8209,18 @@
                 this.showExportSaveReminder(formatLabel);
             }
 
-            async exportDocx() {
+            async exportDocx(options = {}) {
                 if (typeof PhotoReportDocxExporter !== 'undefined') {
                     this.processingCancelled = false;
-                    const exported = await PhotoReportDocxExporter.exportDocx(this.getExportContext());
-                    await this.handleAfterReportExport('Word');
+                    let permMode = options?.permissionMode || this.pendingExportPermissionMode || '';
+                    this.pendingExportPermissionMode = null;
+                    if (this.exportDirectoryHandle && !permMode) {
+                        permMode = await this.prepareExportDirectoryPermission();
+                    }
+                    if (permMode === 'cancel') return false;
+                    const useExportDir = Boolean(this.exportDirectoryHandle) && permMode !== 'fallback';
+                    const exported = await PhotoReportDocxExporter.exportDocx(this.getExportContext({ useExportDir }));
+                    await this.handleAfterReportExport('Word', useExportDir ? 'directory' : 'fallback');
                     return exported;
                 }
                 alert('Word 匯出模組尚未載入！');
@@ -8156,26 +8238,48 @@
                 });
             }
 
-            async exportPdf() {
+            async exportPdf(options = {}) {
                 if (typeof PhotoReportPdfExporter !== 'undefined') {
                     this.processingCancelled = false;
-                    const exported = await PhotoReportPdfExporter.exportPdf(this.getExportContext({ forPdf: true }));
-                    await this.handleAfterReportExport('PDF');
+                    let permMode = options?.permissionMode || this.pendingExportPermissionMode || '';
+                    this.pendingExportPermissionMode = null;
+                    if (this.exportDirectoryHandle && !permMode) {
+                        permMode = await this.prepareExportDirectoryPermission();
+                    }
+                    if (permMode === 'cancel') return false;
+                    const useExportDir = Boolean(this.exportDirectoryHandle) && permMode !== 'fallback';
+                    const exported = await PhotoReportPdfExporter.exportPdf(this.getExportContext({ forPdf: true, useExportDir }));
+                    await this.handleAfterReportExport('PDF', useExportDir ? 'directory' : 'fallback');
                     return exported;
                 }
                 alert('PDF 匯出模組尚未載入！');
             }
 
-            exportExcel() {
+            async exportExcel() {
                 if (typeof PhotoReportExcelExporter !== 'undefined') {
                     const caseData = this.getCaseData();
+                    let permMode = 'download';
+                    if (this.exportDirectoryHandle) {
+                        permMode = await this.prepareExportDirectoryPermission();
+                        if (permMode === 'cancel') return false;
+                    }
+                    const useExportDir = Boolean(this.exportDirectoryHandle) && permMode === 'directory';
                     return PhotoReportExcelExporter.exportExcel({
                         photos: this.photos,
                         caseTitle: caseData.caseTitle || '',
                         caseSubject: caseData.caseSubject || '',
                         caseDate: caseData.caseDate || '',
                         defaultLocation: caseData.defaultLocation || '',
-                        globalOfficer: caseData.officerName || '巡官梁家豪'
+                        globalOfficer: caseData.officerName || '巡官梁家豪',
+                        saveAs: useExportDir
+                            ? async (blob, safeName) => {
+                                const res = await this.writeBlobToCaseExportDirectory(safeName, blob);
+                                if (!res.written && res.fallbackToDownload) {
+                                    const fallbackSave = typeof saveAs === 'function' ? saveAs : (window.saveAs || null);
+                                    if (typeof fallbackSave === 'function') fallbackSave(blob, safeName);
+                                }
+                            }
+                            : null
                     });
                 }
                 alert('Excel 匯出模組尚未載入！');
@@ -8246,10 +8350,18 @@
                 if (typeof JSZip === 'undefined') return alert('JSZip 尚未載入！');
                 this.processingCancelled = false;
 
+                let permMode = 'download';
+                if (this.exportDirectoryHandle) {
+                    permMode = await this.prepareExportDirectoryPermission();
+                    if (permMode === 'cancel') return false;
+                }
+                const useExportDir = Boolean(this.exportDirectoryHandle) && permMode === 'directory';
+
                 const zip = new JSZip();
                 const cleanSubject = this.cleanFilenameSegment(document.getElementById('caseSubject')?.value, '', 15);
                 const cleanTitle = this.cleanFilenameSegment(document.getElementById('caseTitle')?.value, '現場照片');
                 const zipBase = [cleanSubject, cleanTitle].filter(Boolean).join('_') || '現場照片';
+                const zipName = `${zipBase}_最佳化照片包.zip`;
 
                 try {
                     this.setProgress('正在壓縮照片並建立 ZIP…', 0, this.photos.length);
@@ -8269,7 +8381,14 @@
                     this.setProgress('正在封裝 ZIP 檔案…', this.photos.length, this.photos.length);
                     const content = await zip.generateAsync({ type: 'blob' });
                     this.throwIfProcessingCancelled();
-                    saveAs(content, `${zipBase}_最佳化照片包.zip`);
+                    if (useExportDir) {
+                        const res = await this.writeBlobToCaseExportDirectory(zipName, content);
+                        if (!res.written && res.fallbackToDownload) {
+                            saveAs(content, zipName);
+                        }
+                    } else {
+                        saveAs(content, zipName);
+                    }
                 } finally {
                     this.clearProgress();
                 }

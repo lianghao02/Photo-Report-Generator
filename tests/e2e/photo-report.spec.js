@@ -3001,6 +3001,9 @@ async function runE2eTests() {
             const unsavedAfterAutoSync = window.app.hasUnsavedProjectChanges();
             const reminderHiddenAfterAutoSync = document.getElementById('exportSaveReminderBanner').classList.contains('hidden');
 
+            const savedNoticeText = document.getElementById('exportDirSavedNotice')?.textContent?.trim() || '';
+            const savedNoticeVisible = !document.getElementById('exportDirSavedNotice')?.classList.contains('hidden');
+
             // 檢查 Word 內文未混入對象欄位，只用原本案由；且產出的 .prp 確實含 caseSubject
             const docxBlob = mockFs.get('1151102_某A_詐欺案/1151102_某A_詐欺案_現場照片清冊.docx');
             const docxZip = await window.JSZip.loadAsync(await docxBlob.arrayBuffer());
@@ -3046,6 +3049,8 @@ async function runE2eTests() {
                 clearBtnVisible,
                 syncWrapVisible,
                 filesAfterDocx,
+                savedNoticeText,
+                savedNoticeVisible,
                 unsavedAfterAutoSync,
                 reminderHiddenAfterAutoSync,
                 wordHasSubjectLeak,
@@ -3086,6 +3091,8 @@ async function runE2eTests() {
         !zoneAndLayoutLimitsCheck.syncWrapVisible ||
         !zoneAndLayoutLimitsCheck.filesAfterDocx.includes('1151102_某A_詐欺案/1151102_某A_詐欺案_現場照片清冊.docx') ||
         !zoneAndLayoutLimitsCheck.filesAfterDocx.includes('1151102_某A_詐欺案/某A_詐欺案.prp') ||
+        zoneAndLayoutLimitsCheck.savedNoticeText !== '已存進「1151102_某A_詐欺案」' ||
+        !zoneAndLayoutLimitsCheck.savedNoticeVisible ||
         zoneAndLayoutLimitsCheck.unsavedAfterAutoSync ||
         !zoneAndLayoutLimitsCheck.reminderHiddenAfterAutoSync ||
         zoneAndLayoutLimitsCheck.wordHasSubjectLeak ||
@@ -3094,7 +3101,7 @@ async function runE2eTests() {
         !zoneAndLayoutLimitsCheck.reminderVisibleWhenSyncOff ||
         zoneAndLayoutLimitsCheck.confirmsCount < 1 ||
         !zoneAndLayoutLimitsCheck.hasSuffixedCopy ||
-        zoneAndLayoutLimitsCheck.dirLabelAfterClear !== '存到：下載（指定案件區…）'
+        zoneAndLayoutLimitsCheck.dirLabelAfterClear !== '存到：下載（改存指定資料夾…）'
     ) {
         throw new Error(`第 [10/5] 節版型動態上限與案件匯出區驗證失敗: ${JSON.stringify(zoneAndLayoutLimitsCheck)}`);
     }

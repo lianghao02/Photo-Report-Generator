@@ -21,14 +21,15 @@
      * @param {string} options.globalOfficer - 製作人姓名
      * @param {Object} [options.xlsxLib] - SheetJS XLSX 物件（預設自動讀取全域 XLSX）
      */
-    function exportExcel({
+    async function exportExcel({
         photos = [],
         caseTitle = '詐欺案',
         caseSubject = '',
         caseDate = '',
         defaultLocation = '',
         globalOfficer = '巡官梁家豪',
-        xlsxLib = (typeof XLSX !== 'undefined' ? XLSX : (typeof window !== 'undefined' ? window.XLSX : null))
+        xlsxLib = (typeof XLSX !== 'undefined' ? XLSX : (typeof window !== 'undefined' ? window.XLSX : null)),
+        saveAs = null
     } = {}) {
         if (!photos.length) {
             if (typeof alert === 'function') alert('請先載入照片！');
@@ -73,7 +74,15 @@
         const cleanFileTitle = String(title || '').replace(/[\\/:*?"<>|\u0000-\u001F]+/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '') || '現場照片清冊';
         const fileBase = [compactDate, shortSubject, cleanFileTitle].filter(Boolean).join('_') || '現場照片清冊';
         const safeName = `${fileBase}_資料清單.xlsx`.replace(/[\\/:*?"<>|]/g, '_');
-        xlsxLib.writeFile(wb, safeName);
+        if (typeof saveAs === 'function') {
+            const wbOut = xlsxLib.write(wb, { bookType: 'xlsx', type: 'array' });
+            await saveAs(
+                new Blob([wbOut], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+                safeName
+            );
+        } else {
+            xlsxLib.writeFile(wb, safeName);
+        }
     }
 
     return {

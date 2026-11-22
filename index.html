@@ -534,18 +534,19 @@
                     <p id="layoutDescription" class="text-[11px] text-[#6B7280]" aria-live="polite">上下兩張・A4 直式・每頁 2 張</p>
                 </div>
                 <div class="flex items-center gap-1.5 flex-wrap justify-end">
-                    <div class="export-dir-group" title="目前匯出會存進瀏覽器「下載」資料夾；點此指定固定總資料夾（如 案件匯出區），之後會自動依 {日期}_{對象}_{案由} 建子資料夾">
+                    <div class="export-dir-group" title="目前匯出會存進瀏覽器「下載」資料夾；點此指定固定資料夾（如 案件匯出區），之後匯出會自動建子資料夾收好">
                         <button type="button" id="btnPickExportDir" class="btn-secondary px-2.5 py-1.5 rounded-xl text-[11px] font-bold flex items-center gap-1">
                             <i class="fa-regular fa-folder-open text-[#5B5CE2]"></i>
-                            <span id="exportDirLabel" class="truncate max-w-[230px]">存到：下載（指定案件區…）</span>
+                            <span id="exportDirLabel" class="truncate max-w-[230px]">存到：下載（改存指定資料夾…）</span>
                         </button>
-                        <button type="button" id="btnClearExportDir" class="hidden export-dir-clear-btn" title="清除固定案件匯出區，改回預設瀏覽器下載" aria-label="改回瀏覽器下載">
+                        <button type="button" id="btnClearExportDir" class="hidden export-dir-clear-btn" title="清除指定資料夾，改回預設瀏覽器下載" aria-label="改回瀏覽器下載">
                             <i class="fa-solid fa-xmark"></i>
                         </button>
-                        <label id="exportAutoSavePrpWrap" class="hidden inline-flex items-center gap-1 text-[11px] font-bold text-slate-700 cursor-pointer select-none whitespace-nowrap pl-1" title="寫入案件匯出區時，若有未存變更則同步更新同案件資料夾內的 .prp 進度檔">
+                        <label id="exportAutoSavePrpWrap" class="hidden inline-flex items-center gap-1 text-[11px] font-bold text-slate-700 cursor-pointer select-none whitespace-nowrap pl-1" title="匯出時順便把最新的 .prp 進度檔一起放進同個案件資料夾">
                             <input type="checkbox" id="chkExportAutoSavePrp" checked class="rounded text-[#5B5CE2] cursor-pointer">
-                            <span>同步 .prp</span>
+                            <span>一起存進度 (.prp)</span>
                         </label>
+                        <span id="exportDirSavedNotice" class="hidden text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-lg whitespace-nowrap"></span>
                     </div>
                     <span id="exportEmptyHint" class="editor-help">加入照片後即可匯出</span>
                     <button type="button" id="btnExportPdf" class="btn-secondary px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5">
@@ -935,7 +936,7 @@
         </div>
     </div>
 
-    <!-- 指定案件匯出總資料夾導引 Modal -->
+    <!-- 指定案件資料夾白話導引 Modal -->
     <div id="exportDirGuideModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="exportDirGuideTitle" onclick="window.app.closeModal('exportDirGuideModal')">
         <div class="morandi-card w-full max-w-md p-5 bg-white border-2 border-[#5B5CE2]/30 shadow-2xl flex flex-col gap-3 rounded-2xl" onclick="event.stopPropagation()">
             <div class="flex items-start gap-2.5">
@@ -943,24 +944,24 @@
                     <i class="fa-regular fa-folder-open"></i>
                 </div>
                 <div class="flex-1 min-w-0">
-                    <h3 id="exportDirGuideTitle" class="text-sm font-black text-[#20242B]">選擇「案件匯出總資料夾」</h3>
-                    <p class="text-[11px] text-[#6B7280] mt-0.5">選一次最上層總資料夾就好，不用自己先建單件案子的子資料夾。</p>
+                    <h3 id="exportDirGuideTitle" class="text-sm font-black text-[#20242B]">選一個專門放案件的資料夾</h3>
+                    <p class="text-[11px] text-[#6B7280] mt-0.5">不用先幫這件案子建資料夾，匯出時會自己幫您建好。</p>
                 </div>
             </div>
             <div class="text-xs text-[#20242B] leading-relaxed flex flex-col gap-2">
-                <p>1. 請在系統視窗選您統一收案件的總資料夾（例如：<span class="font-bold">案件匯出區</span>）。</p>
-                <p>2. 之後按下「匯出 Word／PDF」，會依目前的日期、對象與案由自動歸檔到：</p>
+                <p>1. 按右下方藍色按鈕後，請選最外層用來收所有案件的資料夾（例如：<span class="font-bold">案件匯出區</span>）。</p>
+                <p>2. 選好以後，每次按匯出就會直接把 Word、PDF 跟進度檔收進這件案子自己的資料夾：</p>
                 <div class="p-2.5 rounded-xl bg-indigo-50/70 border border-indigo-200 font-mono text-xs font-bold text-indigo-950 break-all">
-                    【您選的總資料夾】\ <span id="exportDirGuidePreview" class="text-[#5B5CE2]">詐欺案</span> \
+                    您選的資料夾 \ <span id="exportDirGuidePreview" class="text-[#5B5CE2]">詐欺案</span> \
                 </div>
-                <p class="text-[11px] text-[#6B7280]">裡面會自動放入 Word、PDF 與同步更新的 .prp 進度檔；隨時可點「×」改回瀏覽器下載。</p>
+                <p class="text-[11px] text-[#6B7280]">選完如果瀏覽器跳出「允許編輯檔案」，請記得按允許；之後想改回存到「下載」，按旁邊的「×」就好。</p>
             </div>
             <div class="flex items-center justify-end gap-2 pt-2 border-t border-[#C7CBD3]/20">
                 <button type="button" onclick="window.app.closeModal('exportDirGuideModal')" class="btn-secondary px-3.5 py-1.5 rounded-lg text-xs font-bold">
                     取消
                 </button>
                 <button type="button" id="btnConfirmPickExportDir" class="btn-primary px-4 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow">
-                    <i class="fa-solid fa-folder-open"></i> <span>開啟視窗，選擇總資料夾…</span>
+                    <i class="fa-solid fa-folder-open"></i> <span>好，去選資料夾…</span>
                 </button>
             </div>
         </div>
