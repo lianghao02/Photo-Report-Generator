@@ -146,6 +146,8 @@
                 this.exportAutoSavePrpWrap = document.getElementById('exportAutoSavePrpWrap');
                 this.chkExportAutoSavePrp = document.getElementById('chkExportAutoSavePrp');
                 this.exportDirGroup = this.btnPickExportDir?.closest('.export-dir-group') || null;
+                this.btnConfirmPickExportDir = document.getElementById('btnConfirmPickExportDir');
+                this.exportDirGuidePreview = document.getElementById('exportDirGuidePreview');
 
                 // 右側編輯器元件
                 this.editorCard = document.getElementById('editorCard');
@@ -358,6 +360,10 @@
                 document.getElementById('btnRedo').addEventListener('click', () => this.redo());
                 document.getElementById('btnExportPdf').addEventListener('click', () => this.confirmExportWithAudit(() => this.exportPdf().catch(e => this.handleExportError(e)), 'PDF 清冊'));
                 this.btnPickExportDir?.addEventListener('click', () => this.pickExportDirectory().catch(e => this.handleExportError(e)));
+                this.btnConfirmPickExportDir?.addEventListener('click', () => {
+                    this.closeModal('exportDirGuideModal');
+                    this.pickExportDirectory({ skipGuide: true }).catch(e => this.handleExportError(e));
+                });
                 this.btnClearExportDir?.addEventListener('click', () => this.clearExportDirectory());
                 if (this.chkExportAutoSavePrp) {
                     this.chkExportAutoSavePrp.checked = Boolean(this.exportAutoSavePrp);
@@ -388,6 +394,9 @@
                     document.getElementById(id)?.addEventListener('input', () => {
                         if (id === 'caseTitle') this.refreshCaseTitleLimitUi();
                         if (id === 'caseDate') this.refreshInheritedDateLocationHints();
+                        if (id === 'caseTitle' || id === 'caseSubject' || id === 'caseDate') {
+                            this.updateExportDirectoryUi();
+                        }
                         this.scheduleHistory('修改案件基本資料');
                     });
                 });
@@ -412,12 +421,14 @@
                     // 輸入途中不可改寫成含 / 的字串；Windows 觸控鍵盤會把下一鍵插回舊格式位置。
                     this.sanitizeMaskedEntry(e.target, 7);
                     this.markMaskedEntryChanged(e.target);
+                    this.updateExportDirectoryUi();
                 });
                 caseDateInput.addEventListener('blur', (e) => {
                     const beforeBlur = e.target.value;
                     const nextValue = this.finishMaskedEntry(e.target, this.formatDateMask);
                     e.target.value = nextValue;
                     this.refreshInheritedDateLocationHints();
+                    this.updateExportDirectoryUi();
                     if (nextValue !== beforeBlur || this.historyTimer) {
                         this.flushPendingHistory();
                         this.recordHistory('修改案件基本資料');
@@ -519,7 +530,7 @@
                             e.preventDefault();
                             return;
                         }
-                        ['shortcutsModal', 'sequenceModal', 'updateModal', 'upToDateModal', 'updateErrorModal', 'exportAuditModal', 'mergeReportModal', 'imageLightboxModal'].forEach(id => {
+                        ['shortcutsModal', 'sequenceModal', 'updateModal', 'upToDateModal', 'updateErrorModal', 'exportAuditModal', 'exportDirGuideModal', 'mergeReportModal', 'imageLightboxModal'].forEach(id => {
                             this.closeModal(id);
                         });
                     }
@@ -685,6 +696,7 @@
                 document.getElementById('caseDate').value = `${mYear}${String(mMonth).padStart(2, '0')}${String(mDay).padStart(2, '0')}`;
                 document.getElementById('caseDate').value = this.formatDateMask(document.getElementById('caseDate').value, true);
                 this.refreshInheritedDateLocationHints();
+                this.updateExportDirectoryUi();
                 this.scheduleHistory('填入今天日期');
             }
 
@@ -1526,6 +1538,7 @@
                 this.refreshAllTextLimitUi();
                 this.refreshInheritedDateLocationHints();
                 this.updateLayoutDescription();
+                this.updateExportDirectoryUi();
                 if (this.isLightboxOpen()) this.syncLightboxAnnotationLayerBounds();
             }
 
@@ -2367,10 +2380,19 @@
 
             updateExportDirectoryUi() {
                 const isBound = Boolean(this.exportDirectoryHandle);
+                const folderName = this.buildCaseFolderName();
                 if (this.exportDirLabel) {
                     this.exportDirLabel.textContent = isBound
-                        ? `匯出區：${this.exportDirectoryHandle.name || '已選資料夾'}`
-                        : '匯出區：下載';
+                        ? `存到：${this.exportDirectoryHandle.name || '已選資料夾'} \\ ${folderName}`
+                        : '存到：下載（指定案件區…）';
+                }
+                if (this.btnPickExportDir) {
+                    this.btnPickExportDir.title = isBound
+                        ? `點此更換案件總資料夾；目前匯出會自動建並存進「${this.exportDirectoryHandle.name || '已選資料夾'}\\${folderName}\\」`
+                        : '目前匯出會存進瀏覽器「下載」資料夾；點此指定固定總資料夾（如 案件匯出區），之後會自動依 {日期}_{對象}_{案由} 建子資料夾';
+                }
+                if (this.exportDirGuidePreview) {
+                    this.exportDirGuidePreview.textContent = folderName;
                 }
                 this.exportDirGroup?.classList.toggle('is-bound', isBound);
                 this.btnClearExportDir?.classList.toggle('hidden', !isBound);
@@ -2427,9 +2449,14 @@
                 }
             }
 
-            async pickExportDirectory() {
+            async pickExportDirectory(options = {}) {
                 if (!(window.isSecureContext && typeof window.showDirectoryPicker === 'function')) {
                     alert('直接以本機檔案（file://）或目前瀏覽器開啟時不支援固定資料夾寫入。\n請用 Chrome／Edge 開啟線上版設定固定案件匯出區，或維持預設下載區。');
+                    return false;
+                }
+                if (!options?.skipGuide && !this.exportDirectoryHandle && document.getElementById('exportDirGuideModal')) {
+                    this.updateExportDirectoryUi();
+                    this.openModal('exportDirGuideModal');
                     return false;
                 }
                 try {
@@ -4167,7 +4194,7 @@
             }
 
             hasBlockingModalOpen() {
-                return ['shortcutsModal', 'sequenceModal', 'updateModal', 'upToDateModal', 'updateErrorModal', 'exportAuditModal', 'mergeReportModal']
+                return ['shortcutsModal', 'sequenceModal', 'updateModal', 'upToDateModal', 'updateErrorModal', 'exportAuditModal', 'exportDirGuideModal', 'mergeReportModal']
                     .some(id => {
                         const el = document.getElementById(id);
                         return Boolean(el && !el.classList.contains('hidden'));

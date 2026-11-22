@@ -2992,6 +2992,9 @@ async function runE2eTests() {
             document.getElementById('caseDate').value = '115/11/02';
             document.getElementById('caseSubject').value = '某A';
             document.getElementById('caseTitle').value = '詐欺案';
+            document.getElementById('caseSubject').dispatchEvent(new Event('input', { bubbles: true }));
+            const dirLabelAfterLiveCaseEdit = document.getElementById('exportDirLabel')?.textContent?.trim();
+            const guidePreviewText = document.getElementById('exportDirGuidePreview')?.textContent?.trim();
 
             await window.app.exportDocx();
             const filesAfterDocx = Array.from(mockFs.keys());
@@ -3038,6 +3041,8 @@ async function runE2eTests() {
                 landscapeFreshCapLen,
                 landscapeLocCapLen,
                 dirLabelAfterBind,
+                dirLabelAfterLiveCaseEdit,
+                guidePreviewText,
                 clearBtnVisible,
                 syncWrapVisible,
                 filesAfterDocx,
@@ -3074,7 +3079,9 @@ async function runE2eTests() {
         zoneAndLayoutLimitsCheck.landscapeOverAudit !== 1 ||
         zoneAndLayoutLimitsCheck.landscapeFreshCapLen !== 54 ||
         zoneAndLayoutLimitsCheck.landscapeLocCapLen !== 15 ||
-        zoneAndLayoutLimitsCheck.dirLabelAfterBind !== '匯出區：案件匯出區' ||
+        !zoneAndLayoutLimitsCheck.dirLabelAfterBind.startsWith('存到：案件匯出區 \\ ') ||
+        zoneAndLayoutLimitsCheck.dirLabelAfterLiveCaseEdit !== '存到：案件匯出區 \\ 1151102_某A_詐欺案' ||
+        zoneAndLayoutLimitsCheck.guidePreviewText !== '1151102_某A_詐欺案' ||
         !zoneAndLayoutLimitsCheck.clearBtnVisible ||
         !zoneAndLayoutLimitsCheck.syncWrapVisible ||
         !zoneAndLayoutLimitsCheck.filesAfterDocx.includes('1151102_某A_詐欺案/1151102_某A_詐欺案_現場照片清冊.docx') ||
@@ -3087,7 +3094,7 @@ async function runE2eTests() {
         !zoneAndLayoutLimitsCheck.reminderVisibleWhenSyncOff ||
         zoneAndLayoutLimitsCheck.confirmsCount < 1 ||
         !zoneAndLayoutLimitsCheck.hasSuffixedCopy ||
-        zoneAndLayoutLimitsCheck.dirLabelAfterClear !== '匯出區：下載'
+        zoneAndLayoutLimitsCheck.dirLabelAfterClear !== '存到：下載（指定案件區…）'
     ) {
         throw new Error(`第 [10/5] 節版型動態上限與案件匯出區驗證失敗: ${JSON.stringify(zoneAndLayoutLimitsCheck)}`);
     }
