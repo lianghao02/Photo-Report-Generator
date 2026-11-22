@@ -111,7 +111,9 @@ v2.0/v2.1/v2.2 版本迎來重大架構革新：**徹底淘汰舊有 VBA 巨集�
 ├── CHANGELOG.md             # 版本更新歷程紀錄
 ├── README.md                # 專案說明文件
 ├── version.txt              # 核心版本標記檔 (提供建置檢核與非同步檢查更新)
-├── index.html               # 核心應用程式 (v2.5.0 純前端 SPA 工作台)
+├── index.html               # 應用程式入口 (v2.5.0 純前端 SPA 工作台)
+├── css/app.css              # 應用程式樣式表
+├── js/                      # 模組化前端邏輯 (app.js, photo-model.js, project-format.js, project-merge.js, validation.js, exporters/, ui/)
 ├── vendor/                  # 100% 離線第三方函式庫 (Tailwind CSS, FontAwesome, docx.js, jsPDF, JSZip 等)
 ├── tests/fixtures/          # 現行合成照片與測試案例；Golden Baseline 另存 tests/baseline
 ├── src-tauri/               # Tauri v2 輕量桌面應用程式設定與 Rust 核心

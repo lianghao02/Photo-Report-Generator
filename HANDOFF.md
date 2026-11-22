@@ -3,7 +3,7 @@
 ## 核心元資料 (Metadata)
 - **Repository**：lianghao02/Photo-Report-Generator
 - **Branch**：main
-- **Commit SHA**：未提交（前次遠端基線 `119186d`，v2.5.0）
+- **Commit SHA**：`5381a35`（v2.5.0 與本輪 P2/P3 修訂已提交至 `main`）
 - **Skill Version**：v1.0.0
 - **Task Type**：FIX
 - **Local Path Hint**：04_Photo-Report-Generator
@@ -11,7 +11,7 @@
 ---
 
 ## 目前狀態
-可交付（本機待使用者確認是否提交並推送 `origin/main`）；全套單元測試、Playwright E2E、Golden Baseline 與共用 QA 皆已通過，依使用者指示未建立桌面打包檔。
+可交付（`v2.5.0` 與本輪修訂已提交至 `main`）；全套單元測試、Playwright E2E、Golden Baseline 與共用 QA 皆已通過，依使用者指示未重建桌面打包檔（詳見 `IMPROVEMENTS.md` 維護態邊界）。
 
 ## 本輪目標
 承接 `v2.5.0` 上線與 AUDIT 檢視成果，修訂實碼與文件邊界問題：案件更名與「案件匯出區」`.prp` 控制代碼一致化、`exportAuditModal` 關閉時清除殘留權限狀態、資料夾存在檢查錯誤提示、Word／PDF 英文整字折行視覺行數對齊、`prepare-assets.ps1` 自動快取雜湊、導引文字補充 Chrome 控管提醒，以及 `CHANGELOG.md`／`HANDOFF.md` 同步。
