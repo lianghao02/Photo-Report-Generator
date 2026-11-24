@@ -1,13 +1,33 @@
 ﻿# build-portable.ps1
-# Usage: .\scripts\build-portable.ps1
+# Usage: .\scripts\build-portable.ps1 [-Target x86_64-pc-windows-gnu|x86_64-pc-windows-msvc]
+
+[CmdletBinding()]
+param(
+    [string]$Target = ''
+)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-$env:PATH = "$env:USERPROFILE\.cargo\bin;$env:USERPROFILE\scoop\apps\mingw\current\bin;$env:USERPROFILE\scoop\shims;" + $env:PATH
+# 僅在路徑存在時動態加入 Cargo 與本機 MinGW，避免寫死單一工具鏈環境
+$extraBins = @(
+    (Join-Path $env:USERPROFILE '.cargo\bin'),
+    (Join-Path $env:USERPROFILE 'scoop\apps\mingw\current\bin'),
+    (Join-Path $env:USERPROFILE 'scoop\shims')
+) | Where-Object { Test-Path -LiteralPath $_ }
+if ($extraBins.Count -gt 0) {
+    $env:PATH = ($extraBins -join ';') + ';' + $env:PATH
+}
+
+if (-not $Target) {
+    if (Get-Command gcc -ErrorAction SilentlyContinue) {
+        $Target = 'x86_64-pc-windows-gnu'
+    } else {
+        $Target = 'x86_64-pc-windows-msvc'
+    }
+}
 
 $Root        = Split-Path $PSScriptRoot -Parent
-$Target      = "x86_64-pc-windows-gnu"
 $ReleaseDir  = Join-Path $Root "src-tauri\target\$Target\release"
 $BundleDir   = Join-Path $ReleaseDir "bundle\nsis"
 $RawExe      = Join-Path $ReleaseDir "photo-report-generator.exe"
@@ -17,11 +37,23 @@ Set-Location $Root
 
 $versionFile = Join-Path $Root 'version.txt'
 $tauriConfigPath = Join-Path $Root 'src-tauri\tauri.conf.json'
+$packageJsonPath = Join-Path $Root 'package.json'
+$cargoTomlPath = Join-Path $Root 'src-tauri\Cargo.toml'
 if (-not (Test-Path -LiteralPath $versionFile)) { throw '找不到 version.txt，已取消建置。' }
 $declaredVersion = (Get-Content -LiteralPath $versionFile -Raw -Encoding UTF8).Trim().TrimStart('v')
 $tauriVersion = (Get-Content -LiteralPath $tauriConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json).version
-if (-not $declaredVersion -or $declaredVersion -ne $tauriVersion) {
-    throw "版本不一致：version.txt 為 v$declaredVersion，tauri.conf.json 為 v$tauriVersion。請先統一版本後再建置。"
+$packageVersion = (Get-Content -LiteralPath $packageJsonPath -Raw -Encoding UTF8 | ConvertFrom-Json).version
+$cargoMatch = [regex]::Match((Get-Content -LiteralPath $cargoTomlPath -Raw -Encoding UTF8), '(?m)^\s*version\s*=\s*"([^"]+)"')
+$cargoVersion = if ($cargoMatch.Success) { $cargoMatch.Groups[1].Value.Trim() } else { '' }
+$versionMap = @{
+    'src-tauri/tauri.conf.json' = $tauriVersion
+    'package.json'              = $packageVersion
+    'src-tauri/Cargo.toml'      = $cargoVersion
+}
+$mismatches = @($versionMap.GetEnumerator() | Where-Object { -not $declaredVersion -or $_.Value -ne $declaredVersion })
+if ($mismatches.Count -gt 0) {
+    $detail = ($mismatches | ForEach-Object { "$($_.Key)=v$($_.Value)" }) -join '、'
+    throw "版本不一致：version.txt 為 v$declaredVersion，不符項目：$detail。請先統一四檔版本後再建置。"
 }
 
 Write-Host ">> Step 1: sync web assets" -ForegroundColor Cyan

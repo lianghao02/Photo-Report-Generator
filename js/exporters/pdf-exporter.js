@@ -66,8 +66,8 @@
         caseSubject = '',
         caseDate = '',
         defaultLocation = '',
-        globalOfficer = '巡官梁家豪',
-        deptName = '臺南市政府警察局新化分局',
+        globalOfficer,
+        deptName,
         layout = 'up_down_2',
         processImageToBlob,
         setProgress = () => {},
@@ -87,6 +87,7 @@
         }
 
         const { jsPDF } = jspdfLib;
+        const cfg = (typeof PhotoReportConfig !== 'undefined' && PhotoReportConfig) ? PhotoReportConfig : {};
         const isLandscape = layout === 'landscape_3';
         const perPage = layout === 'landscape_3' ? 3 : 2;
         const totalPages = Math.ceil(photos.length / perPage);
@@ -98,11 +99,11 @@
         });
         const pageWidth = pdf.internal.pageSize.getWidth();
         const pageHeight = pdf.internal.pageSize.getHeight();
-        const title = (caseTitle || '').trim() || '現場照片清冊';
+        const title = (caseTitle || '').trim() || cfg.DEFAULT_REPORT_FALLBACK_TITLE || '現場照片清冊';
         const date = (caseDate || '').trim() || '';
         const loc = (defaultLocation || '').trim() || '';
-        const officer = (globalOfficer || '').trim() || '巡官梁家豪';
-        const dept = (deptName || '').trim() || '臺南市政府警察局新化分局';
+        const officer = globalOfficer !== undefined ? String(globalOfficer ?? '').trim() : (cfg.DEFAULT_OFFICER_NAME || '巡官梁家豪');
+        const dept = deptName !== undefined ? String(deptName ?? '').trim() : (cfg.DEFAULT_DEPT_NAME || '臺南市政府警察局新化分局');
 
         const pxPerMm = 4.2 * 3.78;
         const measureCanvas = document.createElement('canvas');
@@ -350,21 +351,24 @@
             return curY - startY;
         };
 
-        // 預先壓縮並轉換所有照片為 Data URL
-        const preparedPhotos = [];
+        // 逐頁壓縮、轉檔並直接寫入 PDF，避免一次把數百張 Base64 圖片常駐於記憶體
         setProgress('正在壓縮照片並建立 PDF 清冊…', 0, photos.length);
-        for (let index = 0; index < photos.length; index++) {
-            const photo = photos[index];
-            const processed = await processImageToBlob(photo, 1600, 0.88);
-            const dataUrl = await blobToDataUrl(processed.blob);
-            throwIfCancelled();
-            preparedPhotos.push({ item: photo, dataUrl });
-            setProgress('正在壓縮照片並建立 PDF 清冊…', index + 1, photos.length);
-            if ((index + 1) % 3 === 0) await yieldToBrowser();
-        }
+        let processedCount = 0;
+        try {
+        for (let start = 0; start < photos.length; start += perPage) {
+            const pageBatch = [];
+            const end = Math.min(photos.length, start + perPage);
+            for (let idx = start; idx < end; idx++) {
+                const photo = photos[idx];
+                const processed = await processImageToBlob(photo, 1600, 0.88);
+                const dataUrl = await blobToDataUrl(processed.blob);
+                throwIfCancelled();
+                pageBatch.push({ item: photo, dataUrl });
+                processedCount++;
+                setProgress('正在壓縮照片並建立 PDF 清冊…', processedCount, photos.length);
+            }
+            await yieldToBrowser();
 
-        // 依三大版型分頁渲染
-        for (let start = 0; start < preparedPhotos.length; start += perPage) {
             if (start > 0) pdf.addPage();
             const pageIndex = Math.floor(start / perPage) + 1;
 
@@ -383,7 +387,7 @@
 
                 let curY = marginTop;
                 for (let slot = 0; slot < 2; slot++) {
-                    const p = preparedPhotos[start + slot];
+                    const p = pageBatch[slot];
                     if (!p) break;
                     const tableH = renderTable(marginLeft, curY, cols, [
                         {
@@ -435,8 +439,8 @@
                 const cols = [1000, 3932, 1000, 3932].map(d => d * DXA_TO_MM);
                 const maxImgW = 315 * PX_TO_MM;
                 const maxImgH = 690 * PX_TO_MM;
-                const p1 = preparedPhotos[start];
-                const p2 = preparedPhotos[start + 1] || null;
+                const p1 = pageBatch[0];
+                const p2 = pageBatch[1] || null;
                 const maxTableH = pageHeight - marginTop - marginBottom - 4;
 
                 drawHeaderFooterText(`${dept}蒐證照片`, marginLeft, 9.5, tableW, 18, true);
@@ -505,9 +509,9 @@
                 const cols = [1266, 3950, 1295, 3921, 1182, 4034].map(d => d * DXA_TO_MM);
                 const maxImgW = 335 * PX_TO_MM;
                 const maxImgH = 535 * PX_TO_MM;
-                const p1 = preparedPhotos[start];
-                const p2 = preparedPhotos[start + 1] || null;
-                const p3 = preparedPhotos[start + 2] || null;
+                const p1 = pageBatch[0];
+                const p2 = pageBatch[1] || null;
+                const p3 = pageBatch[2] || null;
                 const maxTableH = pageHeight - tableTop - marginBottom - 2;
 
                 drawHeaderFooterText(`${dept}${title}蒐證照片`, marginLeft, 4.5, tableW, 18, true);
@@ -575,7 +579,9 @@
         } else {
             pdf.save(safeName);
         }
-        clearProgress();
+        } finally {
+            clearProgress();
+        }
     }
 
     return {

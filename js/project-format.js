@@ -21,7 +21,11 @@
             if(!object(photo))throw new Error(`${label}資料不完整。`);
             for(const key of TEXT_FIELDS)if(photo[key]!=null&&typeof photo[key]!=='string')throw new Error(`${label}的「${key}」必須為文字。`);
             if(photo.seq!=null&&!['string','number'].includes(typeof photo.seq))throw new Error(`${label}的編號格式不正確。`);
-            if(photo.uid){if(uids.has(photo.uid))throw new Error(`${label}的照片識別碼重複。`);uids.add(photo.uid);}
+            if(photo.uid){
+                if(/[<>"'`\r\n]/.test(photo.uid))throw new Error(`${label}的照片識別碼包含不合法字元。`);
+                if(uids.has(photo.uid))throw new Error(`${label}的照片識別碼重複。`);
+                uids.add(photo.uid);
+            }
             if(!draft){
                 if(typeof photo.archiveName!=='string'||!photo.archiveName||/[\\/]/.test(photo.archiveName)||photo.archiveName==='..')throw new Error(`${label}的圖片清單路徑不正確。`);
                 if(archiveNames.has(photo.archiveName))throw new Error(`${label}的圖片清單重複。`);

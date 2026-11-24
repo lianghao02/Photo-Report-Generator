@@ -14,7 +14,13 @@ const legacy=structuredClone(manifest);delete legacy.version;assert.doesNotThrow
 assert.throws(()=>Format.validateManifest({...manifest,version:99}),/版本/);
 assert.throws(()=>Format.validateManifest({...manifest,photos:[{...saved,archiveName:'../secret'}]}),/路徑/);
 assert.throws(()=>Format.validateManifest({...manifest,photos:[{...saved,desc:{bad:true}}]}),/必須為文字/);
+assert.throws(()=>Format.validateManifest({...manifest,photos:[{...saved,uid:'bad" onclick="alert(1)'}]}),/不合法字元/);
 assert.throws(()=>Format.validateManifest({...manifest,photos:[saved,saved]}),/重複/);
+const Config=require('../../js/config');
+const ExportDir=require('../../js/storage/export-directory');
+assert.equal(Object.isFrozen(Config),true);
+assert.equal(ExportDir.buildCaseFolderName({caseDate:'115/11/02',caseSubject:'某A',caseTitle:'詐欺案'}),'1151102_某A_詐欺案');
+assert.equal(ExportDir.buildProjectSuggestedFilename({caseSubject:'某A',caseTitle:'詐欺案'},new Date(2026,10,2,9,5),{fixedForFolder:true}),'某A_詐欺案.prp');
 for(const c of cases){const target=structuredClone(c.before);assert.deepEqual(Merge.mergeMatchedPhotoRecord(target,c.incoming,c.timestamp),c.result,c.name);assert.deepEqual(target,c.expected,c.name);}
 const report=Merge.buildReport({beforePhotos:[Model.toRecord(source)],afterPhotos:[{...source,desc:'新說明',rotation:90}],beforeCase:{caseTitle:'舊案'},afterCase:{caseTitle:'新案'},sources:['測試.photo-report'],createdAt:'2026-11-12T00:00:00Z'});
 assert.equal(report.caseChanges[0].field,'caseTitle');assert(report.photos[0].changes.some(c=>c.field==='desc'&&c.before===source.desc&&c.after==='新說明'));assert(report.photos[0].changes.some(c=>c.field==='rotation'));

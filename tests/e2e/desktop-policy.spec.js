@@ -9,6 +9,7 @@ async function main() {
     const root = path.resolve(__dirname, '../..');
     const config = JSON.parse(fs.readFileSync(path.join(root, 'src-tauri/tauri.conf.json'), 'utf8'));
     assert.equal(config.app.windows[0].dragDropEnabled, false, 'Windows 必須將 HTML5 拖放交給前端');
+    assert.equal(config.app.security.csp.includes('script-src-attr'), false, '事件委派完成後 CSP 不應再保留 script-src-attr unsafe-inline');
     const policy = config.app.security.csp.replace(/script-src ([^;]+)/, "$& 'nonce-desktop-regression'");
     const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.woff2': 'font/woff2' };
     const server = http.createServer((req, res) => {
@@ -162,8 +163,26 @@ async function main() {
         assert.equal(abortDiagnostic.noticeVisible, true);
         assert(abortDiagnostic.noticeText.includes('未完成資料夾授權'), 'AbortError 逾時應顯示明確權限診斷提醒');
 
+        // 驗證嚴格 CSP 下零行內 on* 屬性，且靜態／動態事件委派皆正常運作
+        await page.click('#btnViewGrid');
+        const delegationCheck = await page.evaluate(() => {
+            const allInlineHandlers = [];
+            document.querySelectorAll('*').forEach(el => {
+                for (const attr of Array.from(el.attributes)) {
+                    if (/^on/i.test(attr.name)) allInlineHandlers.push(`${el.tagName}.${attr.name}`);
+                }
+            });
+            return {
+                inlineCount: allInlineHandlers.length,
+                gridRows: document.querySelectorAll('#gridTbody tr').length
+            };
+        });
+        assert.equal(delegationCheck.inlineCount, 0, '嚴格 CSP 下 DOM 不得殘留任何行內 on* 屬性');
+        assert.equal(delegationCheck.gridRows, 1, '切換試算表視圖後應正常渲染資料列');
+        await page.click('#btnViewWorkspace');
+
         assert.deepEqual(errors, [], '桌面 CSP 不應產生未捕捉例外');
-        console.log('桌面 CSP：照片／資料夾選擇、載入照片、動態縮圖燈箱、指定案件資料夾匯出及拖放設定通過');
+        console.log('桌面 CSP：照片／資料夾選擇、載入照片、動態縮圖燈箱、指定案件資料夾匯出、零行內事件委派及拖放設定通過');
     } finally {
         if (browser) await browser.close();
         await new Promise(resolve => server.close(resolve));

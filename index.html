@@ -7,7 +7,7 @@
     <title>現場照片清冊生成工具 v2.5.0</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📷</text></svg>">
 
-    <link rel="stylesheet" href="vendor/tailwind.css?v=v2.5.0-1b55d26e">
+    <link rel="stylesheet" href="vendor/tailwind.css?v=v2.5.0-4fdebce8">
     <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css">
     <script src="vendor/docx.umd.js"></script>
     <script src="vendor/FileSaver.min.js"></script>
@@ -15,7 +15,7 @@
     <script src="vendor/jszip.min.js"></script>
     <script src="vendor/jspdf.umd.min.js"></script>
 
-    <link rel="stylesheet" href="css/app.css?v=v2.5.0-1b55d26e">
+    <link rel="stylesheet" href="css/app.css?v=v2.5.0-4fdebce8">
 </head>
 <body class="p-2 md:p-3.5 flex flex-col items-center">
 
@@ -469,25 +469,25 @@
                     <thead class="bg-[#EEF0F3] text-[#20242B] font-bold border-b border-[#C7CBD3]/20 sticky top-0 z-10">
                         <tr>
                             <th class="p-2.5 w-10 text-center">
-                                <input type="checkbox" id="gridSelectAll" onclick="window.app.toggleSelectAll(this.checked)" class="rounded text-[#5B5CE2] cursor-pointer">
+                                <input type="checkbox" id="gridSelectAll" class="rounded text-[#5B5CE2] cursor-pointer">
                             </th>
                             <th class="p-2.5 w-12 text-center">縮圖</th>
                             <th class="p-2.5 w-20">編號</th>
                             <th class="p-2.5 w-32">
                                 採證日期
-                                <button type="button" onclick="window.app.fillDownFirst('date')" title="向下填滿第一筆日期" class="ml-1 text-[#5B5CE2] hover:underline"><i class="fa-solid fa-arrow-down"></i></button>
+                                <button type="button" data-fill-down-first="date" title="向下填滿第一筆日期" class="ml-1 text-[#5B5CE2] hover:underline"><i class="fa-solid fa-arrow-down"></i></button>
                             </th>
                             <th class="p-2.5 w-36">
                                 採證時間
-                                <button type="button" onclick="window.app.fillDownFirst('time')" title="向下填滿第一筆時間" class="ml-1 text-[#5B5CE2] hover:underline"><i class="fa-solid fa-arrow-down"></i></button>
+                                <button type="button" data-fill-down-first="time" title="向下填滿第一筆時間" class="ml-1 text-[#5B5CE2] hover:underline"><i class="fa-solid fa-arrow-down"></i></button>
                             </th>
                             <th class="p-2.5 w-32">
                                 採證地點
-                                <button type="button" onclick="window.app.fillDownFirst('location')" title="向下填滿第一筆地點" class="ml-1 text-[#5B5CE2] hover:underline"><i class="fa-solid fa-arrow-down"></i></button>
+                                <button type="button" data-fill-down-first="location" title="向下填滿第一筆地點" class="ml-1 text-[#5B5CE2] hover:underline"><i class="fa-solid fa-arrow-down"></i></button>
                             </th>
                             <th class="p-2.5 whitespace-nowrap" style="min-width: 16rem;">
                                 說明
-                                <button type="button" onclick="window.app.fillDownFirst('desc')" title="向下填滿第一筆說明" class="ml-1 text-[#5B5CE2] hover:underline"><i class="fa-solid fa-arrow-down"></i> 填滿全部</button>
+                                <button type="button" data-fill-down-first="desc" title="向下填滿第一筆說明" class="ml-1 text-[#5B5CE2] hover:underline"><i class="fa-solid fa-arrow-down"></i> 填滿全部</button>
                             </th>
                             <th class="p-2.5 w-28">原始檔名</th>
                             <th class="p-2.5 w-20 text-center">操作</th>
@@ -569,8 +569,8 @@
     </footer>
 
     <!-- 快捷鍵與操作指南 Modal -->
-    <div id="shortcutsModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop hidden" onclick="window.app.closeModal('shortcutsModal')">
-        <div class="morandi-card w-full max-w-xl p-5 bg-white border-2 border-[#5B5CE2]/30 shadow-2xl flex flex-col gap-4 rounded-2xl" onclick="event.stopPropagation()">
+    <div id="shortcutsModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop hidden" data-modal-backdrop="shortcutsModal">
+        <div class="morandi-card w-full max-w-xl p-5 bg-white border-2 border-[#5B5CE2]/30 shadow-2xl flex flex-col gap-4 rounded-2xl">
             <div class="flex items-center justify-between border-b border-[#C7CBD3]/20 pb-2.5">
                 <div class="flex items-center gap-2.5">
                     <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-[#5B5CE2] to-[#8B8CF7] flex items-center justify-center text-white text-sm shadow">
@@ -581,7 +581,7 @@
                         <p class="text-[11px] text-[#6B7280]">用鍵盤可以更快排序與檢視照片</p>
                     </div>
                 </div>
-                <button type="button" onclick="window.app.closeModal('shortcutsModal')" class="text-[#6B7280] hover:text-[#20242B] p-1 transition" title="關閉 (ESC)">
+                <button type="button" data-close-modal="shortcutsModal" class="text-[#6B7280] hover:text-[#20242B] p-1 transition" title="關閉 (ESC)">
                     <i class="fa-solid fa-xmark text-base"></i>
                 </button>
             </div>
@@ -639,7 +639,7 @@
             </div>
 
             <div class="flex justify-end pt-2 border-t border-[#C7CBD3]/20">
-                <button type="button" onclick="window.app.closeModal('shortcutsModal')" class="btn-primary px-4 py-1.5 rounded-lg text-xs font-bold shadow">
+                <button type="button" data-close-modal="shortcutsModal" class="btn-primary px-4 py-1.5 rounded-lg text-xs font-bold shadow">
                     了解
                 </button>
             </div>
@@ -673,15 +673,15 @@
                 </div>
             </div>
             <div class="flex justify-end gap-2 mt-4">
-                <button type="button" onclick="window.app.closeModal('sequenceModal')" class="btn-secondary px-3 py-1.5 rounded-lg text-xs font-bold">取消</button>
+                <button type="button" data-close-modal="sequenceModal" class="btn-secondary px-3 py-1.5 rounded-lg text-xs font-bold">取消</button>
                 <button type="button" id="btnApplySequence" class="btn-primary px-3 py-1.5 rounded-lg text-xs font-bold">套用</button>
             </div>
         </div>
     </div>
 
     <!-- 鑑識級大圖燈箱 Modal (PaperSwitch 規格：左側大圖舞台 + 右側並排即時編輯欄) -->
-    <div id="imageLightboxModal" class="fixed inset-0 z-50 flex items-center justify-center p-2 md:p-4 modal-backdrop hidden" onpointerdown="window.app.handleLightboxBackdropPointerDown(event)" onclick="window.app.handleLightboxBackdropClick(event)">
-        <div id="lightboxDialog" class="lightbox-shell w-[96vw] max-w-6xl h-[92vh] max-h-[92vh] bg-white rounded-2xl overflow-hidden shadow-2xl p-2.5 flex flex-col" onclick="event.stopPropagation()">
+    <div id="imageLightboxModal" class="fixed inset-0 z-50 flex items-center justify-center p-2 md:p-4 modal-backdrop hidden">
+        <div id="lightboxDialog" class="lightbox-shell w-[96vw] max-w-6xl h-[92vh] max-h-[92vh] bg-white rounded-2xl overflow-hidden shadow-2xl p-2.5 flex flex-col">
             <div class="lightbox-body flex-1 min-h-0 flex gap-3">
                 <div class="lightbox-main-pane flex-1 min-w-0 min-h-0 flex flex-col">
                     <!-- 燈箱頂部資訊與控制列 -->
@@ -692,22 +692,22 @@
                         </div>
                         <div class="flex items-center gap-1.5 flex-shrink-0 flex-wrap">
                             <span id="lightboxZoomBadge" class="px-2 py-1 bg-slate-100 border border-slate-200 text-slate-700 font-mono font-bold rounded-lg text-xs" title="目前縮放比例">100%</span>
-                            <button type="button" id="btnLightboxResetZoom" onclick="window.app.resetLightboxZoom()" class="btn-secondary px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1" title="適合視窗 (快速鍵: 0)">
+                            <button type="button" id="btnLightboxResetZoom" class="btn-secondary px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1" title="適合視窗 (快速鍵: 0)">
                                 <i class="fa-solid fa-compress"></i> 適合視窗
                             </button>
-                            <button type="button" id="btnLightboxRotateCCW" onclick="window.app.rotateLightboxPhoto(-90)" class="btn-secondary px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1" title="逆時針旋轉 90° (Shift + R)">
+                            <button type="button" id="btnLightboxRotateCCW" class="btn-secondary px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1" title="逆時針旋轉 90° (Shift + R)">
                                 <i class="fa-solid fa-rotate-left"></i> 向左轉
                             </button>
-                            <button type="button" id="btnLightboxRotateCW" onclick="window.app.rotateLightboxPhoto(90)" class="btn-secondary px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1" title="順時針旋轉 90° (R)">
+                            <button type="button" id="btnLightboxRotateCW" class="btn-secondary px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1" title="順時針旋轉 90° (R)">
                                 <i class="fa-solid fa-rotate-right"></i> 向右轉
                             </button>
-                            <button type="button" id="btnLightboxFlipH" onclick="window.app.toggleLightboxFlipH()" class="btn-secondary px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1" title="水平鏡像翻轉，修正監視器或前鏡頭左右相反畫面 (快速鍵: H)" aria-pressed="false">
+                            <button type="button" id="btnLightboxFlipH" class="btn-secondary px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1" title="水平鏡像翻轉，修正監視器或前鏡頭左右相反畫面 (快速鍵: H)" aria-pressed="false">
                                 <i class="fa-solid fa-arrows-left-right"></i> 水平翻轉
                             </button>
-                            <button type="button" id="btnLightboxToggleEditor" onclick="window.app.toggleLightboxEditor()" class="btn-single-edit px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1" title="在燈箱右側顯示或隱藏編輯欄" aria-controls="lightboxEditorMount" aria-expanded="true">
+                            <button type="button" id="btnLightboxToggleEditor" class="btn-single-edit px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1" title="在燈箱右側顯示或隱藏編輯欄" aria-controls="lightboxEditorMount" aria-expanded="true">
                                 <i class="fa-solid fa-table-columns"></i> <span id="lightboxToggleEditorText">隱藏編輯欄</span>
                             </button>
-                            <button type="button" id="btnLightboxClose" onclick="window.app.closeModal('imageLightboxModal')" class="btn-secondary px-3 py-1 rounded-lg text-xs font-bold whitespace-nowrap text-red-600 hover:text-red-700 hover:bg-red-50" title="關閉燈箱 (ESC)">
+                            <button type="button" id="btnLightboxClose" data-close-modal="imageLightboxModal" class="btn-secondary px-3 py-1 rounded-lg text-xs font-bold whitespace-nowrap text-red-600 hover:text-red-700 hover:bg-red-50" title="關閉燈箱 (ESC)">
                                 關閉 (ESC)
                             </button>
                         </div>
@@ -716,17 +716,17 @@
                     <!-- 燈箱標記與姓名標籤工具列 (Phase 1：畫黃/紅框 + 姓名標籤) -->
                     <div id="lightboxAnnotationToolbar" class="lightbox-annotation-toolbar flex items-center justify-between gap-2 px-2 py-1.5 mb-1.5 text-xs border-b border-gray-100 flex-shrink-0 flex-wrap bg-[#FFFDF7] rounded-lg">
                         <div class="flex items-center gap-1.5 flex-wrap">
-                            <button type="button" id="btnLightboxToolPan" onclick="window.app.setLightboxTool('pan')" class="lightbox-tool-btn active px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1" title="移動與縮放檢視 (快速鍵: V)">
+                            <button type="button" id="btnLightboxToolPan" data-lightbox-tool="pan" class="lightbox-tool-btn active px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1" title="移動與縮放檢視 (快速鍵: V)">
                                 <i class="fa-solid fa-hand"></i> 移動/縮放
                             </button>
-                            <button type="button" id="btnLightboxToolRectYellow" onclick="window.app.setLightboxTool('rect-yellow')" class="lightbox-tool-btn lightbox-tool-btn--yellow px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1" title="在照片上拖曳畫出黃色標記框 (快速鍵: Y)">
+                            <button type="button" id="btnLightboxToolRectYellow" data-lightbox-tool="rect-yellow" class="lightbox-tool-btn lightbox-tool-btn--yellow px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1" title="在照片上拖曳畫出黃色標記框 (快速鍵: Y)">
                                 <span class="inline-block w-3 h-3 rounded-xs border-2 border-[#0F172A] bg-[#FFD23F]"></span> 畫黃框
                             </button>
-                            <button type="button" id="btnLightboxToolRectRed" onclick="window.app.setLightboxTool('rect-red')" class="lightbox-tool-btn lightbox-tool-btn--red px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1" title="在照片上拖曳畫出紅色標記框 (快速鍵: M)">
+                            <button type="button" id="btnLightboxToolRectRed" data-lightbox-tool="rect-red" class="lightbox-tool-btn lightbox-tool-btn--red px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1" title="在照片上拖曳畫出紅色標記框 (快速鍵: M)">
                                 <span class="inline-block w-3 h-3 rounded-xs border-2 border-[#0F172A] bg-[#EF4444]"></span> 畫紅框
                             </button>
                             <div class="flex items-center gap-1 bg-white border border-[#C7CBD3] rounded-lg px-1.5 py-0.5">
-                                <button type="button" id="btnLightboxToolLabel" onclick="window.app.setLightboxTool('label')" class="lightbox-tool-btn px-2 py-0.5 rounded text-xs font-bold flex items-center gap-1" title="點選照片即可貼上姓名或文字標籤 (快速鍵: T)">
+                                <button type="button" id="btnLightboxToolLabel" data-lightbox-tool="label" class="lightbox-tool-btn px-2 py-0.5 rounded text-xs font-bold flex items-center gap-1" title="點選照片即可貼上姓名或文字標籤 (快速鍵: T)">
                                     <i class="fa-solid fa-tag"></i> 加姓名標籤
                                 </button>
                                 <input type="text" id="lightboxLabelTextInput" class="px-2 py-0.5 text-xs border border-slate-200 rounded w-36 focus:outline-none focus:border-blue-600" placeholder="輸入姓名，點照片貼上">
@@ -735,14 +735,14 @@
                                     <option value="red">紅底白字</option>
                                 </select>
                             </div>
-                            <button type="button" id="btnLightboxToolCrop" onclick="window.app.setLightboxTool('crop')" class="lightbox-tool-btn lightbox-tool-btn--crop px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1" title="框選照片局部，裁切放大成特寫插在此張後方並自動鎖定 #1-1 編號 (快速鍵: C)">
+                            <button type="button" id="btnLightboxToolCrop" data-lightbox-tool="crop" class="lightbox-tool-btn lightbox-tool-btn--crop px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1" title="框選照片局部，裁切放大成特寫插在此張後方並自動鎖定 #1-1 編號 (快速鍵: C)">
                                 <i class="fa-solid fa-crop-simple"></i> 局部裁切
                             </button>
                         </div>
                         <div class="flex items-center gap-1.5 flex-shrink-0">
                             <span id="lightboxAnnotationHint" class="text-[11px] text-[#6B7280] hidden xl:inline">拖曳標記與角落可調位置大小・雙擊標籤改字</span>
                             <span id="lightboxAnnotationCountBadge" class="px-2 py-0.5 bg-slate-100 border border-slate-200 text-slate-700 rounded-full text-[11px] font-bold">無標記</span>
-                            <button type="button" id="btnLightboxClearAnnotations" onclick="window.app.clearCurrentPhotoAnnotations()" class="btn-secondary px-2 py-1 rounded-lg text-xs font-bold text-red-600 hover:text-red-700 hidden" title="清除本張照片的所有標記框與姓名標籤">
+                            <button type="button" id="btnLightboxClearAnnotations" class="btn-secondary px-2 py-1 rounded-lg text-xs font-bold text-red-600 hover:text-red-700 hidden" title="清除本張照片的所有標記框與姓名標籤">
                                 <i class="fa-solid fa-eraser"></i> 清除標記
                             </button>
                         </div>
@@ -754,15 +754,15 @@
                         <div id="lightboxSideLayoutBar" class="lightbox-side-layout-bar hidden">
                             <div class="lightbox-side-layout-group" role="group" aria-label="模擬 Word 清冊照片格版面">
                                 <span class="lightbox-side-layout-title"><i class="fa-solid fa-table-cells-large text-[#5B5CE2]"></i> 模擬表格框：</span>
-                                <button type="button" class="lightbox-layout-btn" data-lightbox-layout="up_down_2" onclick="window.app.setLightboxLayout('up_down_2')" title="模擬 A4 直式「上下兩張」單格比例 (535×365)">上下兩張</button>
-                                <button type="button" class="lightbox-layout-btn" data-lightbox-layout="left_right_2" onclick="window.app.setLightboxLayout('left_right_2')" title="模擬 A4 直式「左右兩張」半欄比例 (315×690)">左右兩張</button>
-                                <button type="button" class="lightbox-layout-btn" data-lightbox-layout="landscape_3" onclick="window.app.setLightboxLayout('landscape_3')" title="模擬 A4 橫式「橫式三張」分欄比例 (335×535)">橫式三張</button>
+                                <button type="button" class="lightbox-layout-btn" data-lightbox-layout="up_down_2" title="模擬 A4 直式「上下兩張」單格比例 (535×365)">上下兩張</button>
+                                <button type="button" class="lightbox-layout-btn" data-lightbox-layout="left_right_2" title="模擬 A4 直式「左右兩張」半欄比例 (315×690)">左右兩張</button>
+                                <button type="button" class="lightbox-layout-btn" data-lightbox-layout="landscape_3" title="模擬 A4 橫式「橫式三張」分欄比例 (335×535)">橫式三張</button>
                             </div>
                             <span id="lightboxSideLayoutStatus" class="lightbox-side-layout-status lightbox-side-layout-status--ok"></span>
                         </div>
 
                         <div class="relative min-h-0 flex-1 flex items-center justify-center overflow-hidden">
-                            <button type="button" id="btnLightboxPrev" onclick="window.app.navigateLightbox(-1)" style="position: absolute; left: 14px; z-index: 30;" class="w-10 h-10 rounded-full bg-white/90 border border-[#C7CBD3]/30 text-[#5B5CE2] shadow-lg hover:bg-white hover:scale-105 active:scale-95 transition disabled:opacity-30 disabled:pointer-events-none flex items-center justify-center" title="上一張（←）">
+                            <button type="button" id="btnLightboxPrev" style="position: absolute; left: 14px; z-index: 30;" class="w-10 h-10 rounded-full bg-white/90 border border-[#C7CBD3]/30 text-[#5B5CE2] shadow-lg hover:bg-white hover:scale-105 active:scale-95 transition disabled:opacity-30 disabled:pointer-events-none flex items-center justify-center" title="上一張（←）">
                                 <i class="fa-solid fa-chevron-left text-sm pointer-events-none"></i>
                             </button>
 
@@ -786,7 +786,7 @@
                                 </div>
                             </div>
 
-                            <button type="button" id="btnLightboxNext" onclick="window.app.navigateLightbox(1)" style="position: absolute; right: 14px; z-index: 30;" class="w-10 h-10 rounded-full bg-white/90 border border-[#C7CBD3]/30 text-[#5B5CE2] shadow-lg hover:bg-white hover:scale-105 active:scale-95 transition disabled:opacity-30 disabled:pointer-events-none flex items-center justify-center" title="下一張（→）">
+                            <button type="button" id="btnLightboxNext" style="position: absolute; right: 14px; z-index: 30;" class="w-10 h-10 rounded-full bg-white/90 border border-[#C7CBD3]/30 text-[#5B5CE2] shadow-lg hover:bg-white hover:scale-105 active:scale-95 transition disabled:opacity-30 disabled:pointer-events-none flex items-center justify-center" title="下一張（→）">
                                 <i class="fa-solid fa-chevron-right text-sm pointer-events-none"></i>
                             </button>
                         </div>
@@ -800,8 +800,8 @@
     </div>
 
     <!-- 發現新版本對話框 Modal -->
-    <div id="updateModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop hidden" onclick="window.app.closeModal('updateModal')">
-        <div class="morandi-card w-full max-w-lg p-5 bg-white border-2 border-[#5B5CE2]/30 shadow-2xl flex flex-col gap-3.5 rounded-2xl" onclick="event.stopPropagation()">
+    <div id="updateModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop hidden" data-modal-backdrop="updateModal">
+        <div class="morandi-card w-full max-w-lg p-5 bg-white border-2 border-[#5B5CE2]/30 shadow-2xl flex flex-col gap-3.5 rounded-2xl">
             <div class="flex items-center justify-between border-b border-[#C7CBD3]/20 pb-2.5">
                 <div class="flex items-center gap-2.5">
                     <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-[#5B5CE2] to-[#8B8CF7] flex items-center justify-center text-white text-sm shadow">
@@ -812,7 +812,7 @@
                         <p class="text-[11px] text-[#6B7280]">建議下載新版，修正與新功能都在裡面。</p>
                     </div>
                 </div>
-                <button type="button" onclick="window.app.closeModal('updateModal')" class="text-[#6B7280] hover:text-[#20242B] p-1 transition" title="關閉">
+                <button type="button" data-close-modal="updateModal" class="text-[#6B7280] hover:text-[#20242B] p-1 transition" title="關閉">
                     <i class="fa-solid fa-xmark text-base"></i>
                 </button>
             </div>
@@ -847,10 +847,10 @@
             </div>
 
             <div class="flex items-center justify-end gap-2 pt-2 border-t border-[#C7CBD3]/20 mt-1">
-                <button type="button" onclick="window.app.closeModal('updateModal')" class="btn-secondary px-3.5 py-2 rounded-lg text-xs font-bold">
+                <button type="button" data-close-modal="updateModal" class="btn-secondary px-3.5 py-2 rounded-lg text-xs font-bold">
                     稍後再說
                 </button>
-                <a id="btnGoToRelease" href="#" target="_blank" class="btn-primary px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow">
+                <a id="btnGoToRelease" href="#" target="_blank" rel="noopener noreferrer" class="btn-primary px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow">
                     <i class="fa-brands fa-github"></i> 前往 GitHub 下載新版
                 </a>
             </div>
@@ -858,8 +858,8 @@
     </div>
 
     <!-- 已是最新版對話框 Modal -->
-    <div id="upToDateModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop hidden" onclick="window.app.closeModal('upToDateModal')">
-        <div class="morandi-card w-full max-w-sm p-6 bg-white border border-[#C7CBD3]/30 shadow-2xl flex flex-col items-center text-center gap-3 rounded-2xl" onclick="event.stopPropagation()">
+    <div id="upToDateModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop hidden" data-modal-backdrop="upToDateModal">
+        <div class="morandi-card w-full max-w-sm p-6 bg-white border border-[#C7CBD3]/30 shadow-2xl flex flex-col items-center text-center gap-3 rounded-2xl">
             <div class="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center text-2xl border border-emerald-200 shadow-sm">
                 <i class="fa-solid fa-circle-check"></i>
             </div>
@@ -869,15 +869,15 @@
                     您目前使用的版本為 <span id="upToDateVer" class="font-bold text-[#5B5CE2]">v2.5.0</span>，不需要更新。
                 </p>
             </div>
-            <button type="button" onclick="window.app.closeModal('upToDateModal')" class="btn-primary w-full py-2 rounded-lg text-xs font-bold mt-2 shadow">
+            <button type="button" data-close-modal="upToDateModal" class="btn-primary w-full py-2 rounded-lg text-xs font-bold mt-2 shadow">
                 確認
             </button>
         </div>
     </div>
 
     <!-- 檢查更新失敗對話框 Modal -->
-    <div id="updateErrorModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop hidden" onclick="window.app.closeModal('updateErrorModal')">
-        <div class="morandi-card w-full max-w-sm p-5 bg-white border border-[#C7CBD3]/30 shadow-2xl flex flex-col items-center text-center gap-3 rounded-2xl" onclick="event.stopPropagation()">
+    <div id="updateErrorModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop hidden" data-modal-backdrop="updateErrorModal">
+        <div class="morandi-card w-full max-w-sm p-5 bg-white border border-[#C7CBD3]/30 shadow-2xl flex flex-col items-center text-center gap-3 rounded-2xl">
             <div class="w-12 h-12 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center text-xl border border-amber-200">
                 <i class="fa-solid fa-triangle-exclamation"></i>
             </div>
@@ -888,10 +888,10 @@
                 </p>
             </div>
             <div class="flex w-full gap-2 mt-2">
-                <button type="button" onclick="window.app.closeModal('updateErrorModal')" class="btn-secondary flex-1 py-1.5 rounded-lg text-xs font-bold">
+                <button type="button" data-close-modal="updateErrorModal" class="btn-secondary flex-1 py-1.5 rounded-lg text-xs font-bold">
                     關閉
                 </button>
-                <a href="https://github.com/lianghao02/Photo-Report-Generator/releases" target="_blank" class="btn-primary flex-1 py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1 shadow">
+                <a href="https://github.com/lianghao02/Photo-Report-Generator/releases" target="_blank" rel="noopener noreferrer" class="btn-primary flex-1 py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1 shadow">
                     <i class="fa-solid fa-arrow-up-right-from-square"></i> 開啟下載頁
                 </a>
             </div>
@@ -899,8 +899,8 @@
     </div>
 
     <!-- 匯出前資料完整度確認對話框 Modal -->
-    <div id="exportAuditModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop hidden" onclick="window.app.closeModal('exportAuditModal')">
-        <div class="morandi-card w-full max-w-md p-5 bg-white border border-[#C7CBD3]/30 shadow-2xl flex flex-col gap-4 rounded-2xl" onclick="event.stopPropagation()">
+    <div id="exportAuditModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop hidden" data-modal-backdrop="exportAuditModal">
+        <div class="morandi-card w-full max-w-md p-5 bg-white border border-[#C7CBD3]/30 shadow-2xl flex flex-col gap-4 rounded-2xl">
             <div class="flex items-start gap-3">
                 <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-lg border border-amber-200 shrink-0">
                     <i class="fa-solid fa-triangle-exclamation"></i>
@@ -923,7 +923,7 @@
 
             <div class="export-audit-actions flex items-center justify-end gap-2 pt-2 border-t border-[#C7CBD3]/20">
                 <button type="button" id="btnAuditRenumber" class="btn-secondary px-3.5 py-1.5 rounded-lg text-xs font-bold" hidden>重新編號</button>
-                <button type="button" onclick="window.app.closeModal('exportAuditModal')" class="btn-secondary px-3.5 py-1.5 rounded-lg text-xs font-bold">
+                <button type="button" data-close-modal="exportAuditModal" class="btn-secondary px-3.5 py-1.5 rounded-lg text-xs font-bold">
                     取消
                 </button>
                 <button type="button" id="btnAuditViewIssues" class="btn-secondary px-3.5 py-1.5 rounded-lg text-xs font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-300 flex items-center gap-1">
@@ -937,8 +937,8 @@
     </div>
 
     <!-- 指定案件資料夾白話導引 Modal -->
-    <div id="exportDirGuideModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="exportDirGuideTitle" onclick="window.app.closeModal('exportDirGuideModal')">
-        <div class="morandi-card w-full max-w-md p-5 bg-white border-2 border-[#5B5CE2]/30 shadow-2xl flex flex-col gap-3 rounded-2xl" onclick="event.stopPropagation()">
+    <div id="exportDirGuideModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="exportDirGuideTitle" data-modal-backdrop="exportDirGuideModal">
+        <div class="morandi-card w-full max-w-md p-5 bg-white border-2 border-[#5B5CE2]/30 shadow-2xl flex flex-col gap-3 rounded-2xl">
             <div class="flex items-start gap-2.5">
                 <div class="w-9 h-9 rounded-xl bg-indigo-100 text-[#5B5CE2] flex items-center justify-center text-base flex-shrink-0">
                     <i class="fa-regular fa-folder-open"></i>
@@ -957,7 +957,7 @@
                 <p class="text-[11px] text-[#6B7280]">選完如果瀏覽器跳出「允許編輯檔案」，請記得按允許；若沒跳出提示又沒變更，請點網址列左側設定圖示檢查「檔案編輯」權限（若公司電腦 Chrome 受控管無法授權，可改用 Edge 開啟或維持預設下載）。之後想改回存到「下載」，按旁邊的「×」就好。</p>
             </div>
             <div class="flex items-center justify-end gap-2 pt-2 border-t border-[#C7CBD3]/20">
-                <button type="button" onclick="window.app.closeModal('exportDirGuideModal')" class="btn-secondary px-3.5 py-1.5 rounded-lg text-xs font-bold">
+                <button type="button" data-close-modal="exportDirGuideModal" class="btn-secondary px-3.5 py-1.5 rounded-lg text-xs font-bold">
                     取消
                 </button>
                 <button type="button" id="btnConfirmPickExportDir" class="btn-primary px-4 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow">
@@ -979,23 +979,27 @@
     </div>
 
     <!-- 模組化純邏輯與 UI 控制器抽離 (Phase 1 ~ Phase 3) -->
-    <script src="js/validation.js?v=v2.5.0-1b55d26e"></script>
-    <script src="js/audit.js?v=v2.5.0-1b55d26e"></script>
-    <script src="js/selection.js?v=v2.5.0-1b55d26e"></script>
-    <script src="js/history.js?v=v2.5.0-1b55d26e"></script>
-    <script src="js/photo-model.js?v=v2.5.0-1b55d26e"></script>
-    <script src="js/project-format.js?v=v2.5.0-1b55d26e"></script>
-    <script src="js/project-merge.js?v=v2.5.0-1b55d26e"></script>
-    <script src="js/ui/audit-ui.js?v=v2.5.0-1b55d26e"></script>
-    <script src="js/ui/modal-ui.js?v=v2.5.0-1b55d26e"></script>
-    <script src="js/ui/merge-report-ui.js?v=v2.5.0-1b55d26e"></script>
+    <script src="js/config.js?v=v2.5.0-4fdebce8"></script>
+    <script src="js/validation.js?v=v2.5.0-4fdebce8"></script>
+    <script src="js/audit.js?v=v2.5.0-4fdebce8"></script>
+    <script src="js/selection.js?v=v2.5.0-4fdebce8"></script>
+    <script src="js/history.js?v=v2.5.0-4fdebce8"></script>
+    <script src="js/photo-model.js?v=v2.5.0-4fdebce8"></script>
+    <script src="js/project-format.js?v=v2.5.0-4fdebce8"></script>
+    <script src="js/project-merge.js?v=v2.5.0-4fdebce8"></script>
+    <script src="js/ui/audit-ui.js?v=v2.5.0-4fdebce8"></script>
+    <script src="js/ui/modal-ui.js?v=v2.5.0-4fdebce8"></script>
+    <script src="js/ui/merge-report-ui.js?v=v2.5.0-4fdebce8"></script>
+    <script src="js/ui/workspace-render-ui.js?v=v2.5.0-4fdebce8"></script>
+    <script src="js/storage/auto-draft-store.js?v=v2.5.0-4fdebce8"></script>
+    <script src="js/storage/export-directory.js?v=v2.5.0-4fdebce8"></script>
 
     <!-- 模組化匯出引擎抽離 (Phase 4) -->
-    <script src="js/exporters/excel-exporter.js?v=v2.5.0-1b55d26e"></script>
-    <script src="js/exporters/docx-exporter.js?v=v2.5.0-1b55d26e"></script>
-    <script src="js/exporters/pdf-exporter.js?v=v2.5.0-1b55d26e"></script>
+    <script src="js/exporters/excel-exporter.js?v=v2.5.0-4fdebce8"></script>
+    <script src="js/exporters/docx-exporter.js?v=v2.5.0-4fdebce8"></script>
+    <script src="js/exporters/pdf-exporter.js?v=v2.5.0-4fdebce8"></script>
 
     <!-- 核心應用程式邏輯 -->
-    <script src="js/app.js?v=v2.5.0-1b55d26e"></script>
+    <script src="js/app.js?v=v2.5.0-4fdebce8"></script>
 </body>
 </html>

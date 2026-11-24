@@ -27,7 +27,7 @@
         caseSubject = '',
         caseDate = '',
         defaultLocation = '',
-        globalOfficer = '巡官梁家豪',
+        globalOfficer,
         xlsxLib = (typeof XLSX !== 'undefined' ? XLSX : (typeof window !== 'undefined' ? window.XLSX : null)),
         saveAs = null
     } = {}) {
@@ -40,10 +40,11 @@
             return;
         }
 
-        const title = (caseTitle || '').trim() || '詐欺案';
+        const cfg = (typeof PhotoReportConfig !== 'undefined' && PhotoReportConfig) ? PhotoReportConfig : {};
+        const title = (caseTitle || '').trim() || cfg.DEFAULT_CASE_TITLE || '詐欺案';
         const date = (caseDate || '').trim() || '';
         const loc = (defaultLocation || '').trim() || '';
-        const officer = (globalOfficer || '').trim() || '巡官梁家豪';
+        const officer = globalOfficer !== undefined ? String(globalOfficer ?? '').trim() : (cfg.DEFAULT_OFFICER_NAME || '巡官梁家豪');
 
         const headers = ['編號', '檔名', '案由', '日期', '時間', '地點', '製作人', '說明'];
         const data = [headers];
@@ -62,6 +63,19 @@
         });
 
         const ws = xlsxLib.utils.aoa_to_sheet(data);
+        // 強制編號、日期與時間欄位以純文字格式儲存，避免 Excel 開啟後吃掉前導零或誤轉為小數時間
+        const textCols = [0, 3, 4];
+        for (let r = 1; r < data.length; r++) {
+            for (const c of textCols) {
+                const ref = xlsxLib.utils.encode_cell({ r, c });
+                const cell = ws[ref];
+                if (cell) {
+                    cell.t = 's';
+                    cell.v = String(cell.v ?? '');
+                    cell.z = '@';
+                }
+            }
+        }
         const wb = xlsxLib.utils.book_new();
         xlsxLib.utils.book_append_sheet(wb, ws, '工作表1');
 

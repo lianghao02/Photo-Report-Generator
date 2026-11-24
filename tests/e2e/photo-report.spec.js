@@ -2616,7 +2616,7 @@ async function runE2eTests() {
             window.app.setActiveFilter('all');
 
             window.app.currentIndex = 0;
-            window.app.render();
+            window.app.switchView('grid');
             const gridDateInput = document.querySelector('#gridTbody tr:first-child td:nth-child(4) input');
             const gridTimeInput = document.querySelector('#gridTbody tr:first-child td:nth-child(5) input');
             gridDateInput.value = '115/11/20';
@@ -2625,6 +2625,7 @@ async function runE2eTests() {
             window.app.updatePhotoField(0, 'time', '18:30');
             const gridSyncDate = document.getElementById('editDate').value;
             const gridSyncTime = document.getElementById('editTime').value;
+            window.app.switchView('workspace');
 
             // 5. 先開早檔 A 再併入晚檔 B（僅變更案由），確認案由隨較晚存檔更新
             let savedBlobA = null;
@@ -3125,6 +3126,153 @@ async function runE2eTests() {
         throw new Error(`第 [10/5] 節版型動態上限與案件匯出區驗證失敗: ${JSON.stringify(zoneAndLayoutLimitsCheck)}`);
     }
     console.log('  ✅ 三種版型動態字數／行數上限、對象／嫌疑人欄位與案件匯出區歸檔／同步 .prp／防呆覆寫全部通過');
+
+    // [11/5] 驗證 Word 手動換行 <w:br/>、URL 協定防護、Excel 往返／復原、試算表篩選、清空預設與自動暫存中止防競態
+    console.log('[11/5] 驗證 Word 換行、安全防護、Excel 往返、試算表篩選、清空欄位與自動暫存防護...');
+    await page.setInputFiles('#fileInput', [
+        path.join(fixturesDir, 'sample01.jpg'),
+        path.join(fixturesDir, 'sample02.jpg')
+    ]);
+    await page.waitForFunction(() => window.app.photos.length === 2);
+
+    const deepAuditFixesCheck = await page.evaluate(async () => {
+        const origAlert = window.alert;
+        const origConfirm = window.confirm;
+        const origSaveAs = window.saveAs;
+        const origWriteFile = window.XLSX.writeFile;
+        window.alert = () => {};
+        window.confirm = () => true;
+        try {
+            // 1. Word 手動換行 <w:br/> 與刻意清空單位／製作人不被靜默填回
+            document.getElementById('deptName').value = '';
+            document.getElementById('officerName').value = '';
+            window.app.photos[0].seq = '01';
+            window.app.photos[0].desc = '第一行說明\n第二行說明';
+            window.app.photos[1].seq = '02';
+            window.app.photos[1].desc = '';
+            window.app.render();
+            let docxBlob = null;
+            window.saveAs = (b) => { docxBlob = b; };
+            await window.app.exportDocx();
+            const docxZip = await window.JSZip.loadAsync(await docxBlob.arrayBuffer());
+            const docXml = await docxZip.file('word/document.xml').async('string');
+            const headerFile = docxZip.file(/word\/header\d+\.xml/)[0];
+            const headerXml = headerFile ? await headerFile.async('string') : '';
+            const docxHasLineBreak = /<w:br\b/.test(docXml) && docXml.includes('第一行說明') && docXml.includes('第二行說明');
+            const blankDefaultsRespected = !docXml.includes('巡官梁家豪') && !headerXml.includes('臺南市政府警察局新化分局');
+
+            // 2. 更新頁連結協定防線（阻擋 javascript: URL）
+            window.app.showUpdateAvailable({ tag_name: 'v9.9.9', html_url: 'javascript:alert(1)', body: 'test', assets: [] }, 'v2.5.0');
+            const safeReleaseHref = document.getElementById('btnGoToRelease').getAttribute('href');
+            window.app.closeModal('updateModal');
+
+            // 3. Excel 匯出純文字鎖定 + 匯入前導零容錯 + 清空欄位 + Ctrl+Z 復原
+            let exportedWb = null;
+            window.XLSX.writeFile = (wb) => { exportedWb = wb; };
+            await window.app.exportExcel();
+            const exportedSheet = exportedWb.Sheets[exportedWb.SheetNames[0]];
+            const seqCellType = exportedSheet['A2']?.t;
+            const seqCellFmt = exportedSheet['A2']?.z;
+
+            window.app.recordHistory('Excel 匯入前基準');
+            const importSheet = window.XLSX.utils.aoa_to_sheet([
+                ['編號', '檔名', '日期', '時間', '地點', '說明'],
+                [1, '', '1150826', '0930', '新地點', 'Excel 帶入新說明'],
+                ['02', '', '', '', '', '']
+            ]);
+            const importWb = window.XLSX.utils.book_new();
+            window.XLSX.utils.book_append_sheet(importWb, importSheet, '工作表1');
+            const importFile = new File([window.XLSX.write(importWb, { bookType: 'xlsx', type: 'array' })], 'roundtrip.xlsx', {
+                type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            });
+            window.app.importExcel({ target: { files: [importFile], value: '' } });
+            await new Promise((resolve, reject) => {
+                const deadline = Date.now() + 3000;
+                const tick = () => {
+                    if (window.app.photos[0].desc === 'Excel 帶入新說明') return resolve();
+                    if (Date.now() > deadline) return reject(new Error('Excel 往返逾時'));
+                    setTimeout(tick, 25);
+                };
+                tick();
+            });
+            const afterExcelImport = {
+                date: window.app.photos[0].date,
+                time: window.app.photos[0].time,
+                desc: window.app.photos[0].desc
+            };
+            window.app.undo();
+            const afterExcelUndoDesc = window.app.photos[0].desc;
+
+            // 4. DataGrid 套用目前篩選條件（photo 1 缺說明 -> 篩選 missingDesc 應只剩 1 列）
+            window.app.setActiveFilter('missingDesc');
+            window.app.switchView('grid');
+            const filteredGridRows = document.querySelectorAll('#gridTbody tr').length;
+            window.app.setActiveFilter('all');
+            const fullGridRows = document.querySelectorAll('#gridTbody tr').length;
+            window.app.switchView('workspace');
+
+            // 5. 自動暫存遇 clearAutoDraftDb 時應中止過期寫入
+            const file0 = window.app.photos[0].file;
+            const origArrBuf = file0.arrayBuffer.bind(file0);
+            let clearedDuringDraft = false;
+            Object.defineProperty(file0, 'arrayBuffer', {
+                configurable: true,
+                value: async () => {
+                    if (!clearedDuringDraft) {
+                        clearedDuringDraft = true;
+                        await window.app.clearAutoDraftDb();
+                    }
+                    return origArrBuf();
+                }
+            });
+            let staleDraftWritten;
+            try {
+                staleDraftWritten = await window.app.saveAutoDraftNow();
+            } finally {
+                delete file0.arrayBuffer;
+            }
+
+            return {
+                docxHasLineBreak,
+                blankDefaultsRespected,
+                safeReleaseHref,
+                seqCellType,
+                seqCellFmt,
+                afterExcelImport,
+                afterExcelUndoDesc,
+                filteredGridRows,
+                fullGridRows,
+                staleDraftWritten
+            };
+        } finally {
+            document.getElementById('deptName').value = '臺南市政府警察局新化分局';
+            document.getElementById('officerName').value = '巡官梁家豪';
+            window.XLSX.writeFile = origWriteFile;
+            window.saveAs = origSaveAs;
+            window.confirm = () => true;
+            window.app.clearAll();
+            window.confirm = origConfirm;
+            window.alert = origAlert;
+        }
+    });
+
+    if (
+        !deepAuditFixesCheck.docxHasLineBreak ||
+        !deepAuditFixesCheck.blankDefaultsRespected ||
+        !String(deepAuditFixesCheck.safeReleaseHref || '').startsWith('https://github.com/') ||
+        deepAuditFixesCheck.seqCellType !== 's' ||
+        deepAuditFixesCheck.seqCellFmt !== '@' ||
+        deepAuditFixesCheck.afterExcelImport.date !== '115/08/26' ||
+        deepAuditFixesCheck.afterExcelImport.time !== '09:30' ||
+        deepAuditFixesCheck.afterExcelImport.desc !== 'Excel 帶入新說明' ||
+        deepAuditFixesCheck.afterExcelUndoDesc !== '第一行說明\n第二行說明' ||
+        deepAuditFixesCheck.filteredGridRows !== 1 ||
+        deepAuditFixesCheck.fullGridRows !== 2 ||
+        deepAuditFixesCheck.staleDraftWritten !== false
+    ) {
+        throw new Error(`第 [11/5] 節綜合修訂驗證失敗: ${JSON.stringify(deepAuditFixesCheck)}`);
+    }
+    console.log('  ✅ Word 換行 <w:br/>、URL 防線、Excel 往返／復原、試算表篩選、清空預設與自動暫存中止防護全部通過');
 
     assertNoPageErrors();
 

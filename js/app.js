@@ -28,8 +28,9 @@
                 this.pointerCardDrag = null;
                 this.suppressCardClickUntil = 0;
                 this.lastSelectedIndex = null;
-                this.maxRecommendedPhotos = 500;
-                this.maxRecommendedBytes = 2 * 1024 * 1024 * 1024;
+                const appCfg = (typeof PhotoReportConfig !== 'undefined' && PhotoReportConfig) ? PhotoReportConfig : {};
+                this.maxRecommendedPhotos = appCfg.RECOMMENDED_MAX_PHOTOS || 500;
+                this.maxRecommendedBytes = appCfg.RECOMMENDED_MAX_BYTES || (2 * 1024 * 1024 * 1024);
                 this.thumbnailSize = Math.max(90, Math.min(480, this.loadWorkspacePreference('thumbnailSize', 150)));
                 this.editorCollapsed = this.loadWorkspacePreference('editorCollapsed', false);
                 this.lightboxEditorCollapsed = this.loadWorkspacePreference('lightboxEditorCollapsed', false);
@@ -58,12 +59,15 @@
                 this.autoDraftDbName = 'PhotoReportAutoDraftDB';
                 this.autoDraftStoreName = 'drafts';
                 this.autoDraftTimer = null;
+                this.autoDraftInFlight = false;
+                this.autoDraftQueued = false;
+                this.autoDraftSequence = 0;
                 this.lastAutoDraftSavedAt = null;
                 this.lastAutoDraftSignature = '';
                 this.pendingAutoDraft = null;
                 this.hadPhotosInSession = false;
-                this.maxAutoDraftPhotos = 120;
-                this.maxAutoDraftBytes = 200 * 1024 * 1024;
+                this.maxAutoDraftPhotos = appCfg.AUTO_DRAFT_MAX_PHOTOS || 120;
+                this.maxAutoDraftBytes = appCfg.AUTO_DRAFT_MAX_BYTES || (200 * 1024 * 1024);
                 this.activeFilter = 'all';
                 this.pendingExportAction = null;
                 this.pendingSequenceExport = null;
@@ -504,6 +508,10 @@
                     };
                 });
                 this.bindGridTextLimitEvents();
+                if (typeof PhotoReportWorkspaceRenderUi !== 'undefined') {
+                    PhotoReportWorkspaceRenderUi.bindDelegatedWorkspaceEvents(this);
+                    PhotoReportWorkspaceRenderUi.bindStaticUiEvents(this);
+                }
 
                 // 右側向下填滿按鈕
                 document.getElementById('btnFillDownDate').addEventListener('click', () => this.fillDownFromIndex(this.currentIndex, 'date'));
@@ -865,7 +873,17 @@
                 document.getElementById('updateReleaseBody').textContent = release.body?.trim() || '此版本未提供更新說明。';
 
                 const releaseLink = document.getElementById('btnGoToRelease');
-                releaseLink.href = release.html_url;
+                let safeReleaseHref = 'https://github.com/lianghao02/Photo-Report-Generator/releases';
+                try {
+                    const parsedReleaseUrl = new URL(release.html_url);
+                    if (['https:', 'http:'].includes(parsedReleaseUrl.protocol)) {
+                        safeReleaseHref = parsedReleaseUrl.href;
+                    }
+                } catch {
+                    // 網址格式異常時退回官方 Releases 頁面
+                }
+                releaseLink.href = safeReleaseHref;
+                releaseLink.rel = 'noopener noreferrer';
                 const assetsContainer = document.getElementById('updateAssetsContainer');
                 const assetsList = document.getElementById('updateAssetsList');
                 assetsList.replaceChildren();
@@ -2380,11 +2398,7 @@
             }
 
             sanitizeFilename(rawName, fallback = '現場照片清冊') {
-                const cleaned = String(rawName ?? '')
-                    .replace(/[\\/:*?"<>|\u0000-\u001F]/g, '_')
-                    .replace(/\s+/g, ' ')
-                    .trim();
-                return cleaned || fallback;
+                return PhotoReportExportDirectory.sanitizeFilename(rawName, fallback);
             }
 
             isProjectArchiveFilename(filename) {
@@ -2392,41 +2406,15 @@
             }
 
             cleanFilenameSegment(rawValue, fallback = '', maxChars = 0) {
-                let cleaned = String(rawValue ?? '')
-                    .replace(/[\\/:*?"<>|\u0000-\u001F\s]+/g, '_')
-                    .replace(/_+/g, '_')
-                    .replace(/^_+|_+$/g, '');
-                if (maxChars > 0 && cleaned) {
-                    cleaned = Array.from(cleaned).slice(0, maxChars).join('').replace(/^_+|_+$/g, '');
-                }
-                return cleaned || fallback;
+                return PhotoReportExportDirectory.cleanFilenameSegment(rawValue, fallback, maxChars);
             }
 
             buildCaseFolderName(caseData = this.getCaseData()) {
-                const compactDate = String(caseData?.caseDate || '').replace(/[\\/:*?"<>|\s-]+/g, '');
-                const cleanSubject = this.cleanFilenameSegment(caseData?.caseSubject, '', 15);
-                const cleanTitle = this.cleanFilenameSegment(caseData?.caseTitle, '現場照片清冊');
-                return [compactDate, cleanSubject, cleanTitle].filter(Boolean).join('_') || '現場照片清冊';
+                return PhotoReportExportDirectory.buildCaseFolderName(caseData);
             }
 
             buildProjectSuggestedFilename(caseDataOrTitle, now = new Date(), options = {}) {
-                const caseTitle = typeof caseDataOrTitle === 'object' && caseDataOrTitle !== null
-                    ? caseDataOrTitle.caseTitle
-                    : caseDataOrTitle;
-                const caseSubject = typeof caseDataOrTitle === 'object' && caseDataOrTitle !== null
-                    ? caseDataOrTitle.caseSubject
-                    : '';
-                const cleanSubject = this.cleanFilenameSegment(caseSubject, '', 15);
-                const cleanTitle = this.cleanFilenameSegment(caseTitle, '現場照片清冊');
-                const baseName = [cleanSubject, cleanTitle].filter(Boolean).join('_') || '現場照片清冊';
-                if (options?.fixedForFolder) {
-                    return `${baseName}.prp`;
-                }
-                const month = String(now.getMonth() + 1).padStart(2, '0');
-                const day = String(now.getDate()).padStart(2, '0');
-                const hours = String(now.getHours()).padStart(2, '0');
-                const minutes = String(now.getMinutes()).padStart(2, '0');
-                return `${baseName}_${month}${day}_${hours}${minutes}.prp`;
+                return PhotoReportExportDirectory.buildProjectSuggestedFilename(caseDataOrTitle, now, options);
             }
 
             updateExportDirectoryUi() {
@@ -2589,100 +2577,29 @@
             }
 
             async ensureExportDirectoryWritable(targetHandle = this.exportDirectoryHandle) {
-                const handle = targetHandle;
-                if (!handle) return false;
-                if (typeof handle.queryPermission === 'function') {
-                    let status = await handle.queryPermission({ mode: 'readwrite' });
-                    if (status !== 'granted' && typeof handle.requestPermission === 'function') {
-                        status = await handle.requestPermission({ mode: 'readwrite' });
-                    }
-                    return status === 'granted';
-                }
-                return true;
+                return PhotoReportExportDirectory.ensureDirectoryWritable(targetHandle);
             }
 
             async prepareExportDirectoryPermission() {
-                if (!this.exportDirectoryHandle) return 'download';
-                let granted = false;
-                try {
-                    granted = await this.ensureExportDirectoryWritable(this.exportDirectoryHandle);
-                } catch {
-                    granted = false;
-                }
-                if (granted) return 'directory';
-                const folderLabel = this.exportDirectoryHandle.name || '已選資料夾';
-                const fallbackConfirm = typeof confirm === 'function'
-                    ? confirm(`瀏覽器目前沒有「${folderLabel}」的寫入權限（若剛重新開啟網頁，請按「取消」並點一下底部「存到：...」重新選取授權）。\n\n按「確定」＝本次先存進瀏覽器「下載」資料夾\n按「取消」＝先不匯出，去重新授權資料夾`)
-                    : false;
-                return fallbackConfirm ? 'fallback' : 'cancel';
+                return PhotoReportExportDirectory.prepareDirectoryPermission(this.exportDirectoryHandle);
             }
 
             buildTimeSuffixedFilename(filename) {
-                const now = new Date();
-                const stamp = [
-                    String(now.getHours()).padStart(2, '0'),
-                    String(now.getMinutes()).padStart(2, '0'),
-                    String(now.getSeconds()).padStart(2, '0')
-                ].join('');
-                const dotIdx = filename.lastIndexOf('.');
-                return dotIdx > 0
-                    ? `${filename.slice(0, dotIdx)}_${stamp}${filename.slice(dotIdx)}`
-                    : `${filename}_${stamp}`;
+                return PhotoReportExportDirectory.buildTimeSuffixedFilename(filename);
             }
 
             async writeBlobToCaseExportDirectory(filename, blob) {
-                if (!this.exportDirectoryHandle) return { written: false };
-                let granted = false;
-                try {
-                    granted = await this.ensureExportDirectoryWritable();
-                } catch {
-                    granted = false;
+                const result = await PhotoReportExportDirectory.writeBlobToCaseDirectory({
+                    directoryHandle: this.exportDirectoryHandle,
+                    folderName: this.buildCaseFolderName(),
+                    filename,
+                    blob,
+                    sessionKnownExportPaths: this.sessionKnownExportPaths
+                });
+                if (result.written) {
+                    this.showExportDirSavedNotice(result.folderName);
                 }
-                if (!granted) {
-                    const fallbackConfirm = typeof confirm === 'function'
-                        ? confirm('尚未取得案件匯出區資料夾的寫入權限，要改用瀏覽器下載區儲存嗎？')
-                        : true;
-                    return { written: false, fallbackToDownload: fallbackConfirm };
-                }
-
-                const folderName = this.buildCaseFolderName();
-                const caseDirHandle = await this.exportDirectoryHandle.getDirectoryHandle(folderName, { create: true });
-                let finalName = filename;
-                const initialPathKey = `${folderName}/${finalName}`;
-                if (!this.sessionKnownExportPaths.has(initialPathKey)) {
-                    let exists = false;
-                    try {
-                        await caseDirHandle.getFileHandle(finalName, { create: false });
-                        exists = true;
-                    } catch (err) {
-                        if (err?.name !== 'NotFoundError') {
-                            throw new Error(`無法檢查資料夾「${folderName}」內的「${finalName}」，可能權限不足或檔案正在被其他程式開啟（${err?.message || err?.name || '讀取異常'}）`);
-                        }
-                    }
-                    if (exists) {
-                        const overwrite = typeof confirm === 'function'
-                            ? confirm(`資料夾「${folderName}」內已有同名檔案「${finalName}」，是否覆寫為最新版？\n（按「取消」會加上時間尾碼另存新檔，不會覆寫舊檔）`)
-                            : true;
-                        if (!overwrite) {
-                            finalName = this.buildTimeSuffixedFilename(finalName);
-                        }
-                    }
-                }
-
-                const fileHandle = await caseDirHandle.getFileHandle(finalName, { create: true });
-                const writable = await fileHandle.createWritable();
-                try {
-                    await writable.write(blob);
-                    await writable.close();
-                } catch (error) {
-                    if (typeof writable.abort === 'function') {
-                        try { await writable.abort(); } catch {}
-                    }
-                    throw error;
-                }
-                this.sessionKnownExportPaths.add(`${folderName}/${finalName}`);
-                this.showExportDirSavedNotice(folderName);
-                return { written: true, folderName, fileName: finalName, fileHandle };
+                return result;
             }
 
             showExportSaveReminder(formatLabel = '報表') {
@@ -3534,22 +3451,10 @@
             }
 
             openAutoDraftDb() {
-                return new Promise((resolve, reject) => {
-                    if (typeof indexedDB === 'undefined') {
-                        return reject(new Error('瀏覽器不支援 IndexedDB'));
-                    }
-                    const request = indexedDB.open(this.autoDraftDbName, 2);
-                    request.onupgradeneeded = () => {
-                        const db = request.result;
-                        if (!db.objectStoreNames.contains(this.autoDraftStoreName)) {
-                            db.createObjectStore(this.autoDraftStoreName);
-                        }
-                        if (!db.objectStoreNames.contains(this.settingsStoreName)) {
-                            db.createObjectStore(this.settingsStoreName);
-                        }
-                    };
-                    request.onsuccess = () => resolve(request.result);
-                    request.onerror = () => reject(request.error || new Error('無法開啟自動暫存資料庫'));
+                return PhotoReportAutoDraftStore.openDb({
+                    dbName: this.autoDraftDbName,
+                    draftStoreName: this.autoDraftStoreName,
+                    settingsStoreName: this.settingsStoreName
                 });
             }
 
@@ -3569,40 +3474,58 @@
                 if (this.photos.length > this.maxAutoDraftPhotos || totalBytes > this.maxAutoDraftBytes) {
                     return false;
                 }
-                const sourcePhotos = this.photos.map(photo => PhotoReportPhotoModel.cloneForHistory(photo));
-                const snapshotCase = this.getCaseData();
-                const snapshotPhotos = [];
-                for (let i = 0; i < sourcePhotos.length; i++) {
-                    const photo = sourcePhotos[i];
-                    if (!photo || !photo.file) continue;
-                    const buffer = await photo.file.arrayBuffer();
-                    snapshotPhotos.push(PhotoReportPhotoModel.toRecord(photo, { buffer }));
+                if (this.autoDraftInFlight) {
+                    this.autoDraftQueued = true;
+                    return false;
                 }
-                if (!snapshotPhotos.length) return false;
-                const payload = PhotoReportProjectFormat.createManifest({
-                    draft: true, caseData: snapshotCase, currentIndex: this.currentIndex,
-                    lastSelectedIndex: this.lastSelectedIndex, photos: snapshotPhotos
-                });
-                const db = await this.openAutoDraftDb();
+                const runSeq = ++this.autoDraftSequence;
+                this.autoDraftInFlight = true;
                 try {
-                    await new Promise((resolve, reject) => {
-                        const tx = db.transaction(this.autoDraftStoreName, 'readwrite');
-                        tx.objectStore(this.autoDraftStoreName).put(payload, 'latest');
-                        tx.oncomplete = () => resolve();
-                        tx.onerror = () => reject(tx.error);
+                    const sourcePhotos = this.photos.map(photo => PhotoReportPhotoModel.cloneForHistory(photo));
+                    const snapshotCase = this.getCaseData();
+                    const snapshotPhotos = [];
+                    for (let i = 0; i < sourcePhotos.length; i++) {
+                        if (runSeq !== this.autoDraftSequence || !this.photos.length) return false;
+                        const photo = sourcePhotos[i];
+                        if (!photo || !photo.file) continue;
+                        const buffer = await photo.file.arrayBuffer();
+                        snapshotPhotos.push(PhotoReportPhotoModel.toRecord(photo, { buffer }));
+                    }
+                    if (!snapshotPhotos.length || runSeq !== this.autoDraftSequence || !this.photos.length) return false;
+                    const payload = PhotoReportProjectFormat.createManifest({
+                        draft: true, caseData: snapshotCase, currentIndex: this.currentIndex,
+                        lastSelectedIndex: this.lastSelectedIndex, photos: snapshotPhotos
                     });
-                    this.lastAutoDraftSavedAt = new Date();
-                    this.lastAutoDraftSignature = PhotoReportHistory.projectSignature(payload.caseData, payload.photos);
-                    this.updateProjectSaveStatusUi();
-                    return true;
+                    const db = await this.openAutoDraftDb();
+                    try {
+                        if (runSeq !== this.autoDraftSequence || !this.photos.length) return false;
+                        await new Promise((resolve, reject) => {
+                            const tx = db.transaction(this.autoDraftStoreName, 'readwrite');
+                            tx.objectStore(this.autoDraftStoreName).put(payload, 'latest');
+                            tx.oncomplete = () => resolve();
+                            tx.onerror = () => reject(tx.error);
+                        });
+                        this.lastAutoDraftSavedAt = new Date();
+                        this.lastAutoDraftSignature = PhotoReportHistory.projectSignature(payload.caseData, payload.photos);
+                        this.updateProjectSaveStatusUi();
+                        return true;
+                    } finally {
+                        db.close();
+                    }
                 } finally {
-                    db.close();
+                    this.autoDraftInFlight = false;
+                    if (this.autoDraftQueued && this.photos.length) {
+                        this.autoDraftQueued = false;
+                        this.scheduleAutoDraftSave();
+                    }
                 }
             }
 
             async clearAutoDraftDb() {
                 clearTimeout(this.autoDraftTimer);
                 this.autoDraftTimer = null;
+                this.autoDraftQueued = false;
+                this.autoDraftSequence++;
                 this.lastAutoDraftSavedAt = null;
                 this.pendingAutoDraft = null;
                 this.hideAutoDraftBanner();
@@ -3946,11 +3869,17 @@
                 }
             }
 
+            getGridRowElement(index) {
+                if (!this.gridTbody || !Number.isInteger(index) || index < 0) return null;
+                return this.gridTbody.querySelector(`tr[data-grid-row-index="${index}"]`);
+            }
+
             refreshSequenceBadgesAndGridInputs() {
                 this.photos.forEach((p, idx) => {
-                    const badge = document.querySelector(`#thumb_${p.uid} .game-seq-badge`);
+                    const thumbCard = document.getElementById(`thumb_${p.uid}`);
+                    const badge = thumbCard?.querySelector('.game-seq-badge');
                     if (badge) badge.textContent = `#${p.seq}`;
-                    const row = this.gridTbody?.children[idx];
+                    const row = this.getGridRowElement(idx);
                     if (row) {
                         const seqInput = row.querySelector('td:nth-child(3) input');
                         if (seqInput && document.activeElement !== seqInput) {
@@ -4354,7 +4283,7 @@
                 }
                 const indices = this.getSelectedIndicesOrCurrent();
                 if (!indices.length) return false;
-                if (this.currentView === 'workspace' && this.activeFilter !== 'all') {
+                if (this.activeFilter !== 'all') {
                     const visibleSet = new Set(this.getVisiblePhotoIndices().map(v => v.index));
                     if (visibleSet.size === 0 || indices.every(i => !visibleSet.has(i))) return false;
                 }
@@ -5079,6 +5008,35 @@
                 });
             }
 
+            syncWorkspaceSelectionInPlace() {
+                if (this.currentView !== 'workspace' || !this.thumbGrid) {
+                    this.render();
+                    return;
+                }
+                const cards = this.thumbGrid.querySelectorAll('.photo-thumb-card[data-card-index]');
+                if (!cards.length && this.photos.length) {
+                    this.render();
+                    return;
+                }
+                const totalPhotos = this.photos.length;
+                if (this.currentIndex >= totalPhotos) this.currentIndex = Math.max(0, totalPhotos - 1);
+                const selectedCount = this.updateSelectionUi();
+                this.updateAuditBarUi();
+                document.getElementById('selectAllText').textContent = (totalPhotos > 0 && selectedCount === totalPhotos) ? '全不選' : '全選';
+                this.updateToolbarButtons(totalPhotos, selectedCount);
+                this.updateProjectSaveStatusUi();
+                this.populateEditorFields();
+                cards.forEach(card => {
+                    const idx = Number(card.dataset.cardIndex);
+                    const p = this.photos[idx];
+                    if (!p) return;
+                    card.classList.toggle('selected', Boolean(p.selected));
+                    card.classList.toggle('active-editing', idx === this.currentIndex);
+                    const cb = card.querySelector('input[data-card-action="toggle-select"]');
+                    if (cb) cb.checked = Boolean(p.selected);
+                });
+            }
+
             handleCardClick(index, event) {
                 if (performance.now() < this.suppressCardClickUntil) return;
                 if (event.target.closest('button, a, label, input')) return;
@@ -5098,7 +5056,7 @@
                     this.lastSelectedIndex = index;
                 }
                 this.currentIndex = index;
-                this.render();
+                this.syncWorkspaceSelectionInPlace();
                 this.recordHistory('變更照片選取');
             }
 
@@ -5149,7 +5107,7 @@
             }
 
             syncEditorFieldToGridRow(index, field, value) {
-                const row = this.gridTbody?.children?.[index];
+                const row = this.getGridRowElement(index);
                 if (!row) return;
                 if (field === 'location' || field === 'desc') {
                     const input = row.querySelector(`input[data-grid-field="${field}"]`);
@@ -5625,101 +5583,11 @@
                 // 更新右側編輯器資料
                 this.populateEditorFields();
 
-                // 渲染左側縮圖卡片
-                this.thumbGrid.innerHTML = '<div id="selectionMarquee" class="selection-marquee hidden" aria-hidden="true"></div>' + visibleEntries.map(({ photo: p, index: idx }) => {
-                    const isSelected = p.selected ? 'selected' : '';
-                    const isCurrent = idx === this.currentIndex ? 'active-editing' : '';
-                    const isCropChild = this.isLinkedCropChild(p) ? 'photo-thumb-card--crop-child' : '';
-                    const missingFields = [!String(p.location || '').trim() && !defaultLocation ? '地點' : '', !String(p.desc || '').trim() ? '說明' : ''].filter(Boolean);
-                    const overLimit = this.inspectPhotoTextLimits(String(p.location || '').trim() || defaultLocation, String(p.desc || '').trim()).isOver;
-                    const statusIssues = [...missingFields, ...(overLimit ? ['字數過長'] : [])];
-                    const statusText = statusIssues.length ? `注意：${statusIssues.join('、')}` : '資料完整';
-                    const displayLayout = this.getPhotoDisplayLayout(p);
-                    const cardTitle = `第 ${p.seq} 張｜時間：${p.time || '未填'}｜${statusText}｜雙擊縮圖放大、雙擊編號列編輯，拖曳可排序`;
-
-                    return `
-                        <div class="photo-thumb-card morandi-card p-1.5 flex flex-col gap-1 bg-white border border-[#C7CBD3]/25 rounded-xl ${isSelected} ${isCurrent} ${isCropChild}"
-                             id="thumb_${p.uid}"
-                             style="--thumbnail-aspect:${displayLayout.safeAspect};"
-                             title="${escapeHtml(cardTitle)}"
-                             draggable="false"
-                             onclick="window.app.handleCardClick(${idx}, event)"
-                             ondblclick="window.app.handleCardDblClick(${idx}, event)"
-                             onpointerdown="window.app.beginCardPointerDrag(${idx}, event)">
-
-                            <div class="thumbnail-meta-row flex items-center justify-between min-h-5">
-                                <div class="flex min-w-0 items-center gap-1.5">
-                                    <input type="checkbox" ${p.selected ? 'checked' : ''} onclick="window.app.togglePhotoSelect(${idx}, event)" class="rounded text-blue-600 cursor-pointer" title="勾選">
-                                    <span class="game-seq-badge px-1.5 py-0.5 rounded text-[12px]">#${escapeHtml(p.seq)}</span>
-                                    <span class="thumbnail-card-time text-[12px] font-bold text-slate-800 whitespace-nowrap flex items-center gap-0.5" title="${escapeHtml(p.time || '未填時間')}">
-                                        <i class="fa-regular fa-clock text-blue-600"></i>${escapeHtml(p.time || '未填時間')}
-                                    </span>
-                                </div>
-                                <span class="thumb-status-icon text-[13px] ${statusIssues.length ? 'text-amber-700' : 'text-emerald-700'}" title="${escapeHtml(statusText)}">
-                                    <i class="fa-solid ${statusIssues.length ? 'fa-circle-exclamation' : 'fa-circle-check'}"></i>
-                                </span>
-                            </div>
-
-                            <div class="thumbnail-stage w-full bg-[#EEF0F3] rounded-lg overflow-hidden relative cursor-zoom-in"
-                                 title="雙擊放大檢視"
-                                 ondblclick="event.stopPropagation(); window.app.openLightboxByIndex(${idx})">
-                                <img src="${displayLayout.src || p.thumbnailSrc}" alt="${escapeHtml(p.name)}" loading="lazy" decoding="async" style="${displayLayout.imageStyle}" class="absolute left-1/2 top-1/2 object-contain pointer-events-none">
-                                ${this.getPhotoAnnotationBadgeHtml(p)}
-                            </div>
-
-                        </div>
-                    `;
-                }).join('');
-                this.selectionMarquee = document.getElementById('selectionMarquee');
-                this.thumbGrid.style.removeProperty('min-height');
-
-                // 渲染試算表視圖 (DataGrid)
-                const gridLimits = this.getActiveLayoutTextLimits();
-                this.gridTbody.innerHTML = this.photos.map((p, idx) => {
-                    const locCheck = this.inspectPhotoTextLimits(String(p.location || '').trim(), '');
-                    const descCheck = this.inspectPhotoTextLimits('', String(p.desc || '').trim());
-                    return `
-                    <tr class="hover:bg-[#F7F7F5]/70 ${idx === this.currentIndex ? 'bg-blue-50/50' : ''}"
-                        ondblclick="window.app.handleCardDblClick(${idx}, event)">
-                        <td class="p-2 text-center">
-                            <input type="checkbox" ${p.selected ? 'checked' : ''} onclick="window.app.togglePhotoSelect(${idx}, event)" class="rounded text-[#5B5CE2] cursor-pointer">
-                        </td>
-                        <td class="p-2 text-center">
-                            <img src="${(p.sideCrop && p.compositeThumbnailSrc) ? p.compositeThumbnailSrc : p.thumbnailSrc}" style="transform: ${(p.sideCrop && p.compositeThumbnailSrc) ? 'none' : `${p.flipH ? 'scaleX(-1) ' : ''}rotate(${p.rotation}deg)`};" class="w-10 h-10 object-contain mx-auto rounded border bg-[#EEF0F3] cursor-pointer" onclick="event.stopPropagation(); window.app.openLightboxByIndex(${idx})" title="點擊放大">
-                        </td>
-                        <td class="p-2">
-                            ${(() => {
-                                const parentPhoto = this.getValidParentPhoto(p);
-                                return parentPhoto
-                                    ? `<input type="text" value="${escapeHtml(p.seq)}" readonly class="input-field w-full text-xs font-bold seq-locked" title="隨原圖 #${escapeHtml(parentPhoto.seq)} 自動連動鎖定"><div class="grid-crop-parent-hint text-[10px] text-sky-700 font-bold mt-0.5 whitespace-nowrap">↳ #${escapeHtml(parentPhoto.seq)} 特寫</div>`
-                                    : `<input type="text" value="${escapeHtml(p.seq)}" oninput="window.app.updatePhotoField(${idx}, 'seq', this.value)" class="input-field w-full text-xs font-bold text-[#5B5CE2]">`;
-                            })()}
-                        </td>
-                        <td class="p-2">
-                            <input type="text" value="${escapeHtml(p.date || '')}" onpointerdown="window.app.handleMaskedPointerDown(event, this)" onfocus="window.app.beginMaskedEntry(this)" oninput="this.value = window.app.sanitizeMaskedEntry(this, 7); window.app.markMaskedEntryChanged(this); window.app.updatePhotoField(${idx}, 'date', this.value)" onblur="this.value = window.app.finishMaskedEntry(this, window.app.formatDateMask); window.app.updatePhotoField(${idx}, 'date', this.value)" class="input-field w-full text-xs font-mono" placeholder="留空＝清冊預設">
-                        </td>
-                        <td class="p-2">
-                            <input type="text" value="${escapeHtml(p.time)}" onpointerdown="window.app.handleMaskedPointerDown(event, this)" onfocus="window.app.beginMaskedEntry(this)" oninput="this.value = window.app.sanitizeMaskedEntry(this, 6); window.app.markMaskedEntryChanged(this); window.app.updatePhotoField(${idx}, 'time', this.value)" onblur="this.value = window.app.finishMaskedEntry(this, window.app.formatTimeMask); window.app.updatePhotoField(${idx}, 'time', this.value)" class="input-field w-full text-xs font-mono" placeholder="輸入 4 或 6 碼">
-                        </td>
-                        <td class="p-2">
-                            <input type="text" data-grid-index="${idx}" data-grid-field="location" value="${escapeHtml(p.location)}" class="input-field w-full text-xs ${locCheck.locationOver ? 'input-over-limit' : ''}" placeholder="留空＝清冊預設" title="地點最多 ${gridLimits.locationMaxFullWidth} 個全形（2 半形＝1 全形）">
-                        </td>
-                        <td class="p-2">
-                            <input type="text" data-grid-index="${idx}" data-grid-field="desc" value="${escapeHtml(p.desc)}" class="input-field w-full text-xs ${descCheck.descOver ? 'input-over-limit' : ''}" placeholder="請填寫現場跡證或狀況說明" title="說明最多 ${gridLimits.descMaxFullWidth} 個全形・最多 ${gridLimits.descMaxLines} 行（單行約 ${gridLimits.descLineFullWidth} 全形，2 半形＝1 全形）">
-                        </td>
-                        <td class="p-2 text-[#6B7280] truncate max-w-[110px]" title="${escapeHtml(p.name)}">
-                            ${escapeHtml(p.name)}
-                        </td>
-                        <td class="p-2 text-center">
-                            <button type="button" onclick="window.app.rotatePhoto(${idx})" title="旋轉" class="p-1 text-[#5B5CE2]"><i class="fa-solid fa-rotate-right"></i></button>
-                            <button type="button" onclick="window.app.removePhoto(${idx})" title="刪除" class="p-1 text-red-500"><i class="fa-regular fa-trash-can"></i></button>
-                        </td>
-                    </tr>
-                `;
-                }).join('');
-                this.gridTbody.querySelectorAll('input[data-grid-field="location"], input[data-grid-field="desc"]').forEach(gridInput => {
-                    this.syncTextLimitInputState(gridInput, gridInput.value || '');
-                });
+                if (this.currentView === 'workspace') {
+                    PhotoReportWorkspaceRenderUi.renderThumbGrid(this, visibleEntries, defaultLocation);
+                } else if (this.currentView === 'grid') {
+                    PhotoReportWorkspaceRenderUi.renderGridTable(this, visibleEntries);
+                }
                 if (this.isLightboxOpen()) {
                     this.lightboxIndex = this.currentIndex;
                     this.updateLightbox({ preserveZoomIfSamePhoto: true });
@@ -6098,7 +5966,6 @@
                 this.layoutSelect.value = cell.layout;
                 this.updateLayoutDescription();
                 this.updatePageEstimate();
-                if (this.currentView === 'preview') this.renderPagePreview();
                 this.syncLightboxAnnotationLayerBounds();
                 this.scheduleHistory('變更清冊版型');
             }
@@ -6538,7 +6405,10 @@
 
             updateAnnotationElementDom(ann) {
                 if (!this.lightboxAnnotationLayer || !ann) return;
-                const el = this.lightboxAnnotationLayer.querySelector(`[data-ann-id="${ann.id}"]`);
+                const safeAnnId = (typeof CSS !== 'undefined' && typeof CSS.escape === 'function')
+                    ? CSS.escape(String(ann.id ?? ''))
+                    : String(ann.id ?? '').replace(/["\\]/g, '\\$&');
+                const el = this.lightboxAnnotationLayer.querySelector(`[data-ann-id="${safeAnnId}"]`);
                 if (!el) {
                     this.renderLightboxAnnotations();
                     return;
@@ -7693,8 +7563,9 @@
                         img.style.cssText = layout.imageStyle;
                     }
                 }
-                if (idx >= 0 && this.gridTbody && this.gridTbody.children[idx]) {
-                    const rowImg = this.gridTbody.children[idx].querySelector('td:nth-child(2) img');
+                const gridRow = idx >= 0 ? this.getGridRowElement(idx) : null;
+                if (gridRow) {
+                    const rowImg = gridRow.querySelector('td:nth-child(2) img');
                     if (rowImg) {
                         rowImg.src = layout.isComposite ? layout.src : photo.thumbnailSrc;
                         rowImg.style.transform = layout.isComposite ? 'none' : `${photo.flipH ? 'scaleX(-1) ' : ''}rotate(${photo.rotation || 0}deg)`;
@@ -7744,8 +7615,9 @@
                     }
                 }
                 // 更新試算表 DataGrid 縮圖
-                if (this.gridTbody && this.gridTbody.children[index]) {
-                    const row = this.gridTbody.children[index];
+                const gridRow = this.getGridRowElement(index);
+                if (gridRow) {
+                    const row = gridRow;
                     const rowImg = row.querySelector('td:nth-child(2) img');
                     if (rowImg) {
                         const isComp = Boolean(photo.sideCrop && photo.compositeThumbnailSrc);
@@ -8255,8 +8127,8 @@
                     caseSubject: caseData.caseSubject || '',
                     caseDate: caseData.caseDate || '',
                     defaultLocation: caseData.defaultLocation || '',
-                    deptName: caseData.deptName || '臺南市政府警察局新化分局',
-                    globalOfficer: caseData.officerName || '巡官梁家豪',
+                    deptName: caseData.deptName ?? '',
+                    globalOfficer: caseData.officerName ?? '',
                     layout: this.layoutSelect.value,
                     processImageToBlob: (photo, maxDim, quality) => this.processImageToBlob(photo, maxDim, quality),
                     setProgress: (msg, cur, total) => this.setProgress(msg, cur, total),
@@ -8340,7 +8212,7 @@
                         caseSubject: caseData.caseSubject || '',
                         caseDate: caseData.caseDate || '',
                         defaultLocation: caseData.defaultLocation || '',
-                        globalOfficer: caseData.officerName || '巡官梁家豪',
+                        globalOfficer: caseData.officerName ?? '',
                         saveAs: useExportDir
                             ? async (blob, safeName) => {
                                 const res = await this.writeBlobToCaseExportDirectory(safeName, blob);
@@ -8367,11 +8239,11 @@
                         const wb = XLSX.read(data, { type: 'array' });
                         const wsName = wb.SheetNames[0];
                         const ws = wb.Sheets[wsName];
-                        const json = XLSX.utils.sheet_to_json(ws, { header: 1 });
+                        const json = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
 
                         if (json.length < 2) return alert('Excel 內無有效資料！');
 
-                        const headerRow = json[0];
+                        const headerRow = json[0].map(h => String(h ?? '').trim());
                         const idxSeq = headerRow.findIndex(h => /編號|序號/i.test(h));
                         const idxName = headerRow.findIndex(h => /檔名|照片/i.test(h));
                         const idxDate = headerRow.findIndex(h => /日期/i.test(h));
@@ -8384,25 +8256,43 @@
 
                         for (let r = 1; r < json.length; r++) {
                             const row = json[r];
-                            if (!row || !row.length) continue;
+                            if (!row || !row.length || row.every(cell => !String(cell ?? '').trim())) continue;
 
-                            const rowSeq = idxSeq !== -1 ? String(row[idxSeq] || '').trim() : '';
-                            const rowName = idxName !== -1 ? String(row[idxName] || '').trim() : '';
-                            const matches = this.photos.filter(p => (rowName && p.name === rowName) || (rowSeq && p.seq === rowSeq));
+                            const rowSeq = idxSeq !== -1 ? String(row[idxSeq] ?? '').trim() : '';
+                            const rowName = idxName !== -1 ? String(row[idxName] ?? '').trim() : '';
+                            let matches = this.photos.filter(p => (rowName && p.name === rowName) || (rowSeq && String(p.seq || '').trim() === rowSeq));
+                            // 若 Excel 曾把編號前導零吃掉（例如 01 變 1），在無精確命中時嘗試純數值比對
+                            if (matches.length === 0 && rowSeq && /^\d+$/.test(rowSeq)) {
+                                const seqNum = Number(rowSeq);
+                                matches = this.photos.filter(p => /^\d+$/.test(String(p.seq || '').trim()) && Number(p.seq) === seqNum);
+                            }
 
                             if (matches.length === 1) {
                                 const target = matches[0];
-                                if (idxDate !== -1 && row[idxDate]) target.date = String(row[idxDate]).trim();
-                                if (idxTime !== -1 && row[idxTime]) target.time = String(row[idxTime]).trim();
-                                if (idxLoc !== -1 && row[idxLoc]) target.location = String(row[idxLoc]).trim();
-                                if (idxDesc !== -1 && row[idxDesc]) target.desc = String(row[idxDesc]).trim();
+                                if (idxDate !== -1) {
+                                    const nextDate = String(row[idxDate] ?? '').trim();
+                                    target.date = nextDate ? this.formatDateMask(nextDate, true) : '';
+                                }
+                                if (idxTime !== -1) {
+                                    const nextTime = String(row[idxTime] ?? '').trim();
+                                    target.time = nextTime ? this.formatTimeMask(nextTime, true) : '';
+                                    if (nextTime) target.timeAutoDefaulted = false;
+                                }
+                                if (idxLoc !== -1) target.location = String(row[idxLoc] ?? '').trim();
+                                if (idxDesc !== -1) target.desc = String(row[idxDesc] ?? '').trim();
                                 matchCount++;
                             } else if (matches.length > 1) {
                                 ambiguousCount++;
                             }
                         }
 
-                        this.render();
+                        if (matchCount > 0) {
+                            this.flushPendingHistory();
+                            this.render();
+                            this.recordHistory('匯入 Excel 資料');
+                        } else {
+                            this.render();
+                        }
                         const ambiguousMessage = ambiguousCount ? `另有 ${ambiguousCount} 筆因編號或檔名重複而略過。` : '';
                         alert(`已從 Excel 帶入 ${matchCount} 筆說明。${ambiguousMessage}`);
                     } catch (error) {
@@ -8466,6 +8356,14 @@
         }
 
         window.addEventListener('DOMContentLoaded', () => {
-            if (typeof PhotoReportPhotoModel === 'undefined' || typeof PhotoReportProjectFormat === 'undefined' || typeof PhotoReportProjectMerge === 'undefined' || typeof PhotoReportMergeReportUi === 'undefined') throw new Error('必要的照片資料模組尚未載入。');
+            if (
+                typeof PhotoReportPhotoModel === 'undefined' ||
+                typeof PhotoReportProjectFormat === 'undefined' ||
+                typeof PhotoReportProjectMerge === 'undefined' ||
+                typeof PhotoReportMergeReportUi === 'undefined' ||
+                typeof PhotoReportWorkspaceRenderUi === 'undefined' ||
+                typeof PhotoReportAutoDraftStore === 'undefined' ||
+                typeof PhotoReportExportDirectory === 'undefined'
+            ) throw new Error('必要的照片資料模組尚未載入。');
             window.app = new PhotoReportApp();
         });

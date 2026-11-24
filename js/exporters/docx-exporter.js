@@ -24,8 +24,8 @@
         caseSubject = '',
         caseDate = '',
         defaultLocation = '',
-        deptName = '臺南市政府警察局新化分局',
-        globalOfficer = '巡官梁家豪',
+        deptName,
+        globalOfficer,
         layout = 'up_down_2',
         processImageToBlob,
         setProgress = () => {},
@@ -46,11 +46,12 @@
             return;
         }
 
-        const title = (caseTitle || '').trim() || '現場照片清冊';
+        const cfg = (typeof PhotoReportConfig !== 'undefined' && PhotoReportConfig) ? PhotoReportConfig : {};
+        const title = (caseTitle || '').trim() || cfg.DEFAULT_REPORT_FALLBACK_TITLE || '現場照片清冊';
         const date = (caseDate || '').trim() || '';
         const loc = (defaultLocation || '').trim() || '';
-        const dept = (deptName || '').trim() || '臺南市政府警察局新化分局';
-        const officer = (globalOfficer || '').trim() || '巡官梁家豪';
+        const dept = deptName !== undefined ? String(deptName ?? '').trim() : (cfg.DEFAULT_DEPT_NAME || '臺南市政府警察局新化分局');
+        const officer = globalOfficer !== undefined ? String(globalOfficer ?? '').trim() : (cfg.DEFAULT_OFFICER_NAME || '巡官梁家豪');
 
         const {
             Document, Packer, Paragraph, Table, TableRow, TableCell,
@@ -61,6 +62,19 @@
 
         const borderSingle = { style: BorderStyle.SINGLE, size: 4, color: "000000" };
         const bordersAllSingle = { top: borderSingle, bottom: borderSingle, left: borderSingle, right: borderSingle };
+
+        function buildMultilineTextRuns(rawText, fallbackText = '', size = 20) {
+            const textStr = (rawText !== undefined && rawText !== null && String(rawText).length > 0)
+                ? String(rawText)
+                : String(fallbackText ?? '');
+            const lines = textStr.replace(/\r\n?/g, '\n').split('\n');
+            return lines.map((line, idx) => new TextRun({
+                text: line,
+                font: "標楷體",
+                size: size,
+                ...(idx > 0 ? { break: 1 } : {})
+            }));
+        }
 
         const processedPhotos = [];
         setProgress('正在壓縮照片並建立 Word 報表…', 0, photos.length);
@@ -230,7 +244,7 @@
                                             children: [
                                                 new Paragraph({
                                                     alignment: AlignmentType.CENTER,
-                                                    children: [new TextRun({ text: p.item.desc || "現場照片紀錄。", font: "標楷體", size: 20 })]
+                                                    children: buildMultilineTextRuns(p.item.desc, "現場照片紀錄。", 20)
                                                 })
                                             ]
                                         })
@@ -397,9 +411,9 @@
                                     height: { value: 1200, rule: HeightRule.ATLEAST },
                                     children: [
                                         new TableCell({ width: { size: 1000, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "說明", bold: true, font: "標楷體", size: 22 })] })] }),
-                                        new TableCell({ width: { size: 3932, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ children: [new TextRun({ text: p1.item.desc || "無說明", font: "標楷體", size: 20 })] })] }),
+                                        new TableCell({ width: { size: 3932, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ children: buildMultilineTextRuns(p1.item.desc, "無說明", 20) })] }),
                                         new TableCell({ width: { size: 1000, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "說明", bold: true, font: "標楷體", size: 22 })] })] }),
-                                        new TableCell({ width: { size: 3932, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ children: [new TextRun({ text: p2 ? (p2.item.desc || "無說明") : "", font: "標楷體", size: 20 })] })] }),
+                                        new TableCell({ width: { size: 3932, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ children: p2 ? buildMultilineTextRuns(p2.item.desc, "無說明", 20) : [new TextRun({ text: "", font: "標楷體", size: 20 })] })] }),
                                     ]
                                 })
                             ]
@@ -518,11 +532,11 @@
                                     height: { value: 962, rule: HeightRule.ATLEAST },
                                     children: [
                                         new TableCell({ width: { size: 1266, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "照片說明", bold: true, font: "標楷體", size: 24 })] })] }),
-                                        new TableCell({ width: { size: 3950, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: p1.item.desc || "無", font: "標楷體", size: 20 })] })] }),
+                                        new TableCell({ width: { size: 3950, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: buildMultilineTextRuns(p1.item.desc, "無", 20) })] }),
                                         new TableCell({ width: { size: 1295, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "照片說明", bold: true, font: "標楷體", size: 24 })] })] }),
-                                        new TableCell({ width: { size: 3921, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: p2 ? (p2.item.desc || "無") : "", font: "標楷體", size: 20 })] })] }),
+                                        new TableCell({ width: { size: 3921, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: p2 ? buildMultilineTextRuns(p2.item.desc, "無", 20) : [new TextRun({ text: "", font: "標楷體", size: 20 })] })] }),
                                         new TableCell({ width: { size: 1182, type: WidthType.DXA }, borders: bordersAllSingle, verticalAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "照片說明", bold: true, font: "標楷體", size: 24 })] })] }),
-                                        new TableCell({ width: { size: 4034, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: p3 ? (p3.item.desc || "無") : "", font: "標楷體", size: 20 })] })] }),
+                                        new TableCell({ width: { size: 4034, type: WidthType.DXA }, borders: bordersAllSingle, children: [new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: p3 ? buildMultilineTextRuns(p3.item.desc, "無", 20) : [new TextRun({ text: "", font: "標楷體", size: 20 })] })] }),
                                     ]
                                 })
                             ]
