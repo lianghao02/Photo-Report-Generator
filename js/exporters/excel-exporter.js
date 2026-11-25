@@ -44,7 +44,7 @@
         const title = (caseTitle || '').trim() || cfg.DEFAULT_CASE_TITLE || '詐欺案';
         const date = (caseDate || '').trim() || '';
         const loc = (defaultLocation || '').trim() || '';
-        const officer = globalOfficer !== undefined ? String(globalOfficer ?? '').trim() : (cfg.DEFAULT_OFFICER_NAME || '巡官梁家豪');
+        const officer = globalOfficer !== undefined ? String(globalOfficer ?? '').trim() : (cfg.DEFAULT_OFFICER_NAME || '');
 
         const headers = ['編號', '檔名', '案由', '日期', '時間', '地點', '製作人', '說明'];
         const data = [headers];

@@ -181,6 +181,40 @@ async function main() {
         assert.equal(delegationCheck.gridRows, 1, '切換試算表視圖後應正常渲染資料列');
         await page.click('#btnViewWorkspace');
 
+        // 驗證製作單位／製作人：首次開啟應空白並顯示灰階提示，輸入後記住偏好並在重新整理後自動帶入
+        const initialIdentity = await page.evaluate(() => ({
+            deptVal: document.getElementById('deptName')?.value ?? '',
+            officerVal: document.getElementById('officerName')?.value ?? '',
+            deptPlaceholder: document.getElementById('deptName')?.getAttribute('placeholder') || '',
+            officerPlaceholder: document.getElementById('officerName')?.getAttribute('placeholder') || ''
+        }));
+        assert.equal(initialIdentity.deptVal, '', '首次開啟製作單位不應硬編碼預填個人單位');
+        assert.equal(initialIdentity.officerVal, '', '首次開啟製作人不應硬編碼預填個人姓名');
+        assert(initialIdentity.deptPlaceholder.includes('如：'), '製作單位應提供灰階範例提示');
+        assert(initialIdentity.officerPlaceholder.includes('如：'), '製作人應提供灰階範例提示');
+
+        await page.fill('#deptName', '測試市政府警察局第一分局');
+        await page.fill('#officerName', '警員張測試');
+        await page.reload();
+        await page.waitForFunction(() => Boolean(window.app));
+        const reloadedIdentity = await page.evaluate(() => ({
+            deptVal: document.getElementById('deptName')?.value ?? '',
+            officerVal: document.getElementById('officerName')?.value ?? ''
+        }));
+        assert.equal(reloadedIdentity.deptVal, '測試市政府警察局第一分局', '重新整理後應自動帶入上次輸入的製作單位');
+        assert.equal(reloadedIdentity.officerVal, '警員張測試', '重新整理後應自動帶入上次輸入的製作人');
+
+        await page.fill('#deptName', '');
+        await page.fill('#officerName', '');
+        await page.reload();
+        await page.waitForFunction(() => Boolean(window.app));
+        const clearedIdentity = await page.evaluate(() => ({
+            deptVal: document.getElementById('deptName')?.value ?? '',
+            officerVal: document.getElementById('officerName')?.value ?? ''
+        }));
+        assert.equal(clearedIdentity.deptVal, '', '主動清空製作單位後重開仍應維持空白');
+        assert.equal(clearedIdentity.officerVal, '', '主動清空製作人後重開仍應維持空白');
+
         assert.deepEqual(errors, [], '桌面 CSP 不應產生未捕捉例外');
         console.log('桌面 CSP：照片／資料夾選擇、載入照片、動態縮圖燈箱、指定案件資料夾匯出、零行內事件委派及拖放設定通過');
     } finally {

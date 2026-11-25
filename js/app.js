@@ -78,6 +78,7 @@
                 this.sessionKnownExportPaths = new Set();
                 this.settingsStoreName = 'settings';
                 this.initElements();
+                this.restoreSavedIdentityPreferences();
                 this.initEvents();
                 this.applyWorkspaceLayout();
                 this.setDefaultTodayDate();
@@ -415,12 +416,14 @@
                     event.returnValue = '';
                 });
                 ['caseTitle', 'caseSubject', 'caseDate', 'deptName', 'officerName'].forEach(id => {
-                    document.getElementById(id)?.addEventListener('input', () => {
+                    document.getElementById(id)?.addEventListener('input', (event) => {
                         if (id === 'caseTitle') this.refreshCaseTitleLimitUi();
                         if (id === 'caseDate') this.refreshInheritedDateLocationHints();
                         if (id === 'caseTitle' || id === 'caseSubject' || id === 'caseDate') {
                             this.updateExportDirectoryUi();
                         }
+                        if (id === 'deptName') this.saveWorkspacePreference('savedDeptName', event.target.value);
+                        if (id === 'officerName') this.saveWorkspacePreference('savedOfficerName', event.target.value);
                         this.scheduleHistory('修改案件基本資料');
                     });
                 });
@@ -1546,7 +1549,9 @@
                 try {
                     const value = localStorage.getItem(`photoReport.${key}`);
                     if (value === null) return fallback;
-                    return typeof fallback === 'boolean' ? value === 'true' : Number(value) || fallback;
+                    if (typeof fallback === 'boolean') return value === 'true';
+                    if (typeof fallback === 'string') return value;
+                    return Number(value) || fallback;
                 } catch {
                     return fallback;
                 }
@@ -1557,6 +1562,19 @@
                     localStorage.setItem(`photoReport.${key}`, String(value));
                 } catch {
                     // 隱私模式或受限制環境不儲存版面偏好，仍維持本次操作。
+                }
+            }
+
+            restoreSavedIdentityPreferences() {
+                const deptEl = document.getElementById('deptName');
+                const officerEl = document.getElementById('officerName');
+                if (deptEl && !deptEl.value) {
+                    const savedDept = this.loadWorkspacePreference('savedDeptName', '');
+                    if (savedDept) deptEl.value = savedDept;
+                }
+                if (officerEl && !officerEl.value) {
+                    const savedOfficer = this.loadWorkspacePreference('savedOfficerName', '');
+                    if (savedOfficer) officerEl.value = savedOfficer;
                 }
             }
 

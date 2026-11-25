@@ -7,7 +7,7 @@
     <title>現場照片清冊生成工具 v2.5.0</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📷</text></svg>">
 
-    <link rel="stylesheet" href="vendor/tailwind.css?v=v2.5.0-4fdebce8">
+    <link rel="stylesheet" href="vendor/tailwind.css?v=v2.5.0-8d79930a">
     <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css">
     <script src="vendor/docx.umd.js"></script>
     <script src="vendor/FileSaver.min.js"></script>
@@ -15,7 +15,7 @@
     <script src="vendor/jszip.min.js"></script>
     <script src="vendor/jspdf.umd.min.js"></script>
 
-    <link rel="stylesheet" href="css/app.css?v=v2.5.0-4fdebce8">
+    <link rel="stylesheet" href="css/app.css?v=v2.5.0-8d79930a">
 </head>
 <body class="p-2 md:p-3.5 flex flex-col items-center">
 
@@ -140,11 +140,11 @@
                 </div>
                 <div>
                     <label for="deptName" class="block text-[11px] font-bold text-[#6B7280] mb-0.5">製作單位（印在頁首）</label>
-                    <input type="text" id="deptName" class="input-field w-full text-xs font-semibold py-1 px-2" placeholder="例：臺南市政府警察局新化分局" value="臺南市政府警察局新化分局">
+                    <input type="text" id="deptName" class="input-field w-full text-xs font-semibold py-1 px-2" placeholder="請填寫，如：○○警察局○○分局" value="">
                 </div>
                 <div>
                     <label for="officerName" class="block text-[11px] font-bold text-[#6B7280] mb-0.5">製作人</label>
-                    <input type="text" id="officerName" class="input-field w-full text-xs font-semibold py-1 px-2" placeholder="例：巡官梁家豪" value="巡官梁家豪">
+                    <input type="text" id="officerName" class="input-field w-full text-xs font-semibold py-1 px-2" placeholder="請填寫，如：警員王小明" value="">
                 </div>
                 <button type="button" id="btnApplyDefaultsToSelected" class="btn-secondary w-full px-2 py-1.5 rounded-lg text-xs font-bold" title="把上方日期與地點寫進已選照片（之後改案件資料，這些照片不會跟著變）">把日期與地點寫進已選照片</button>
             </div>
@@ -979,27 +979,27 @@
     </div>
 
     <!-- 模組化純邏輯與 UI 控制器抽離 (Phase 1 ~ Phase 3) -->
-    <script src="js/config.js?v=v2.5.0-4fdebce8"></script>
-    <script src="js/validation.js?v=v2.5.0-4fdebce8"></script>
-    <script src="js/audit.js?v=v2.5.0-4fdebce8"></script>
-    <script src="js/selection.js?v=v2.5.0-4fdebce8"></script>
-    <script src="js/history.js?v=v2.5.0-4fdebce8"></script>
-    <script src="js/photo-model.js?v=v2.5.0-4fdebce8"></script>
-    <script src="js/project-format.js?v=v2.5.0-4fdebce8"></script>
-    <script src="js/project-merge.js?v=v2.5.0-4fdebce8"></script>
-    <script src="js/ui/audit-ui.js?v=v2.5.0-4fdebce8"></script>
-    <script src="js/ui/modal-ui.js?v=v2.5.0-4fdebce8"></script>
-    <script src="js/ui/merge-report-ui.js?v=v2.5.0-4fdebce8"></script>
-    <script src="js/ui/workspace-render-ui.js?v=v2.5.0-4fdebce8"></script>
-    <script src="js/storage/auto-draft-store.js?v=v2.5.0-4fdebce8"></script>
-    <script src="js/storage/export-directory.js?v=v2.5.0-4fdebce8"></script>
+    <script src="js/config.js?v=v2.5.0-8d79930a"></script>
+    <script src="js/validation.js?v=v2.5.0-8d79930a"></script>
+    <script src="js/audit.js?v=v2.5.0-8d79930a"></script>
+    <script src="js/selection.js?v=v2.5.0-8d79930a"></script>
+    <script src="js/history.js?v=v2.5.0-8d79930a"></script>
+    <script src="js/photo-model.js?v=v2.5.0-8d79930a"></script>
+    <script src="js/project-format.js?v=v2.5.0-8d79930a"></script>
+    <script src="js/project-merge.js?v=v2.5.0-8d79930a"></script>
+    <script src="js/ui/audit-ui.js?v=v2.5.0-8d79930a"></script>
+    <script src="js/ui/modal-ui.js?v=v2.5.0-8d79930a"></script>
+    <script src="js/ui/merge-report-ui.js?v=v2.5.0-8d79930a"></script>
+    <script src="js/ui/workspace-render-ui.js?v=v2.5.0-8d79930a"></script>
+    <script src="js/storage/auto-draft-store.js?v=v2.5.0-8d79930a"></script>
+    <script src="js/storage/export-directory.js?v=v2.5.0-8d79930a"></script>
 
     <!-- 模組化匯出引擎抽離 (Phase 4) -->
-    <script src="js/exporters/excel-exporter.js?v=v2.5.0-4fdebce8"></script>
-    <script src="js/exporters/docx-exporter.js?v=v2.5.0-4fdebce8"></script>
-    <script src="js/exporters/pdf-exporter.js?v=v2.5.0-4fdebce8"></script>
+    <script src="js/exporters/excel-exporter.js?v=v2.5.0-8d79930a"></script>
+    <script src="js/exporters/docx-exporter.js?v=v2.5.0-8d79930a"></script>
+    <script src="js/exporters/pdf-exporter.js?v=v2.5.0-8d79930a"></script>
 
     <!-- 核心應用程式邏輯 -->
-    <script src="js/app.js?v=v2.5.0-4fdebce8"></script>
+    <script src="js/app.js?v=v2.5.0-8d79930a"></script>
 </body>
 </html>

@@ -102,8 +102,8 @@
         const title = (caseTitle || '').trim() || cfg.DEFAULT_REPORT_FALLBACK_TITLE || '現場照片清冊';
         const date = (caseDate || '').trim() || '';
         const loc = (defaultLocation || '').trim() || '';
-        const officer = globalOfficer !== undefined ? String(globalOfficer ?? '').trim() : (cfg.DEFAULT_OFFICER_NAME || '巡官梁家豪');
-        const dept = deptName !== undefined ? String(deptName ?? '').trim() : (cfg.DEFAULT_DEPT_NAME || '臺南市政府警察局新化分局');
+        const officer = globalOfficer !== undefined ? String(globalOfficer ?? '').trim() : (cfg.DEFAULT_OFFICER_NAME || '');
+        const dept = deptName !== undefined ? String(deptName ?? '').trim() : (cfg.DEFAULT_DEPT_NAME || '');
 
         const pxPerMm = 4.2 * 3.78;
         const measureCanvas = document.createElement('canvas');
