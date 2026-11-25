@@ -3162,7 +3162,7 @@ async function runE2eTests() {
             const blankDefaultsRespected = !docXml.includes('巡官梁家豪') && !headerXml.includes('臺南市政府警察局新化分局');
 
             // 2. 更新頁連結協定防線（阻擋 javascript: URL）
-            window.app.showUpdateAvailable({ tag_name: 'v9.9.9', html_url: 'javascript:alert(1)', body: 'test', assets: [] }, 'v2.5.0');
+            window.app.showUpdateAvailable({ tag_name: 'v9.9.9', html_url: 'javascript:alert(1)', body: 'test', assets: [] }, 'v2.6.0');
             const safeReleaseHref = document.getElementById('btnGoToRelease').getAttribute('href');
             window.app.closeModal('updateModal');
 

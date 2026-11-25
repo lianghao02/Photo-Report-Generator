@@ -1,5 +1,12 @@
 # 📝 更新日誌 (CHANGELOG)
 
+## 🏆 v2.6.0 (2026-11-25) - 範例提示記憶、Word／Excel 修復、模組拆分與嚴格 CSP
+
+- **灰階範例提示與本機偏好記憶**：製作單位與製作人欄位改為灰階範例提示，使用者輸入即自動記憶於本機，留白匯出時尊重空白不靜默補回預設字樣。
+- **Word／Excel 匯出與資料處理修復**：`js/exporters/docx-exporter.js` 補齊手動換行 `<w:br/>` 輸出並維持三大版型 Golden Baseline；`js/exporters/excel-exporter.js` 與 `importExcel` 鎖定純文字型別保留前導零、補上容錯比對與 `Ctrl+Z` 復原支援。
+- **效能、暫存防競態與安全強化**：`saveAutoDraftNow` 改採排隊與過期丟棄機制；DataGrid 套用篩選與就地選取樣式更新；`pdf-exporter.js` 逐頁壓縮寫入控制記憶體；`project-format.js` 與更新對話框加入 XSS 與 URL 協定防線。
+- **模組化與嚴格 CSP**：拆出 `js/config.js`、`js/storage/auto-draft-store.js`、`js/storage/export-directory.js`、`js/ui/workspace-render-ui.js`，全面改採事件委派達成 0 處行內 `on*` 屬性並收緊 Tauri CSP。
+
 ## 🏆 v2.5.0 (2026-11-22) - 進度彙整強化、採證排序、字數防呆與匯出修正
 
 - **案件匯出區與對象辨識命名**：新增「對象／嫌疑人（選填）」欄位（僅用於建立資料夾與檔名如 `1151102_某A_詐欺案`，不更動 Word／PDF 內文「案由」欄位）；匯出列新增選填「案件匯出區」資料夾設定（授權記憶於 `IndexedDB`，支援自動建 `{日期}_{對象}_{案由}` 子資料夾、陌生同名覆寫確認、同步更新單一 `.prp` 進度檔，不指定或 `file://` 環境自動維持下載區）。

@@ -3,21 +3,21 @@
 ## 核心元資料 (Metadata)
 - **Repository**：lianghao02/Photo-Report-Generator
 - **Branch**：main
-- **Commit SHA**：未提交（前次遠端基線 `d4766d0`，v2.5.0）
+- **Commit SHA**：`d9abf88` 之後之 `v2.6.0` 發布提交
 - **Skill Version**：v1.0.0
-- **Task Type**：FIX
+- **Task Type**：RELEASE
 - **Local Path Hint**：04_Photo-Report-Generator
 
 ---
 
 ## 目前狀態
-可交付（本機待使用者確認是否提交並推送 `origin/main`）；全套單元測試、Playwright E2E、Golden Baseline 與共用 QA 皆已通過，依先前指示未建立桌面打包檔。
+已完成 `v2.6.0` 版本升版、全套單元測試、Playwright E2E、Golden Baseline、QA 與 Tauri 桌面版打包發布。
 
 ## 本輪目標
 依全專案深度 AUDIT 清單，在不影響任何既有功能與三大 Word／PDF 版型尺寸的前提下，一次修訂 9 項 P1／P2／P3 問題：Word 手動換行、DOM XSS／URL 協定防線、Excel 匯出匯入修復、自動暫存排隊防覆蓋、試算表套用篩選與按視圖條件渲染、PDF 逐頁寫入降記憶體、預設參數集中管理、打包腳本可攜性與四檔版本檢查、拆出 3 個模組並全面改為事件委派以移除 Tauri CSP `script-src-attr 'unsafe-inline'`，以及瘦身本 `HANDOFF.md`。
 
 ## 基準與已確認事實 (Baseline & Confirmed Facts)
-- 版本號四檔一致為 `v2.5.0`（`version.txt`、`package.json`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml`）。
+- 版本號四檔一致為 `v2.6.0`（`version.txt`、`package.json`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml`）。
 - 全專案靜態 HTML（`index.html`）與動態 JS 渲染已達成 **0 處行內 `on*` 事件屬性**，Tauri CSP 已收緊移除 `script-src-attr 'unsafe-inline'`。
 - 三大公務版型（`up_down_2`、`left_right_2`、`landscape_3`）之 Word／PDF 表格尺寸、段落數與 Golden Baseline 完全維持不變。
 
